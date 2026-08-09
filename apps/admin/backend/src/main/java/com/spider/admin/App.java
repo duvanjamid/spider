@@ -1,9 +1,12 @@
 package com.spider.admin;
 
 import com.ligero.Ligero;
+import com.spider.admin.access.AccessController;
+import com.spider.admin.access.AccessService;
 import com.spider.admin.app.AppRegistryController;
 import com.spider.admin.auth.AuthController;
 import com.spider.admin.auth.AuthService;
+import com.spider.admin.auth.Sessions;
 import com.spider.admin.config.Env;
 import com.spider.admin.db.DbConfig;
 import com.spider.admin.db.Migrations;
@@ -44,10 +47,13 @@ public final class App {
         int port = Env.port();
         Ligero app = Ligero.create(port);
 
+        var access = new AccessService(ds);
+        var auth = new AuthService(new Sessions(Env.authJwtSecret()));
+
         HealthController.register(app);
-        new AppRegistryController(ds).register(app);
-        new AuthController(new AuthService(ds, Env.get("AUTH_JWT_SECRET", "dev-secret")))
-                .register(app);
+        new AppRegistryController(ds).register(app);   // /apps (registro público)
+        new AuthController(auth, access).register(app); // login/sesión/identidad
+        new AccessController(auth, access).register(app); // /me/apps + panel admin
 
         log.info("Backend '{}' escuchando en :{} (schema '{}')",
                 Env.appName(), port, db.schema());

@@ -44,4 +44,25 @@ public final class Env {
     public static String dbSchema() {
         return get("DB_SCHEMA", appName());
     }
+
+    // ── Secreto para firmar las sesiones (HMAC). ──
+    public static String authJwtSecret() {
+        return get("AUTH_JWT_SECRET", "dev-secret-change-me");
+    }
+
+    // ── Correos con rol de super-admin (separados por coma). ──
+    public static java.util.Set<String> adminEmails() {
+        String raw = get("ADMIN_EMAILS", "");
+        java.util.Set<String> out = new java.util.HashSet<>();
+        for (String e : raw.split(",")) {
+            String t = e.trim().toLowerCase();
+            if (!t.isBlank()) out.add(t);
+        }
+        return out;
+    }
+
+    // ── Login de desarrollo (sin Google). NUNCA activar en producción. ──
+    public static boolean devLoginEnabled() {
+        return Boolean.parseBoolean(get("AUTH_DEV_LOGIN", "false"));
+    }
 }
