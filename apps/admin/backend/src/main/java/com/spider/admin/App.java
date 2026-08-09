@@ -28,7 +28,7 @@ public final class App {
 
     private static final Logger log = LoggerFactory.getLogger(App.class);
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         log.info("Iniciando backend '{}' …", Env.appName());
 
         // 1) Configuración de BD (base única, aislamiento por schema).
