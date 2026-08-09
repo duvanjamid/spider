@@ -110,6 +110,10 @@ services:
         value: https://admin-frontend-kwyh.onrender.com
       - key: ADMIN_BACKEND
         value: https://admin-backend-ejrr.onrender.com
+      - key: GASTOS_FRONTEND
+        value: https://gastos-frontend-35qp.onrender.com
+      - key: GASTOS_BACKEND
+        value: https://gastos-backend-xfii.onrender.com
 
   - type: web
     name: spider-gateway-test
@@ -126,6 +130,10 @@ services:
         value: https://admin-frontend-test.onrender.com
       - key: ADMIN_BACKEND
         value: https://admin-backend-test.onrender.com
+      - key: GASTOS_FRONTEND
+        value: https://gastos-frontend-test.onrender.com
+      - key: GASTOS_BACKEND
+        value: https://gastos-backend-test.onrender.com
   # ─────────────────────────────────────────────────────────
   # ═════════════════════ APP: gastos ═════════════════════════
   - type: web
