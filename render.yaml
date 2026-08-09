@@ -127,5 +127,62 @@ services:
       - key: ADMIN_BACKEND
         value: https://admin-backend-test.onrender.com
   # ─────────────────────────────────────────────────────────
+  # ═════════════════════ APP: gastos ═════════════════════════
+  - type: web
+    name: gastos-backend
+    runtime: docker
+    branch: main
+    dockerfilePath: apps/gastos/backend/Dockerfile
+    dockerContext: apps/gastos/backend
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: gastos
+      - key: DB_SCHEMA
+        value: gastos
+      - key: DATABASE_URL
+        sync: false
+
+  - type: web
+    name: gastos-frontend
+    runtime: docker
+    branch: main
+    dockerfilePath: apps/gastos/frontend/Dockerfile
+    dockerContext: apps/gastos/frontend
+    plan: free
+    region: oregon
+    autoDeploy: true
+
+  - type: web
+    name: gastos-backend-test
+    runtime: docker
+    branch: develop
+    dockerfilePath: apps/gastos/backend/Dockerfile
+    dockerContext: apps/gastos/backend
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: gastos
+      - key: DB_SCHEMA
+        value: test_gastos
+      - key: DATABASE_URL
+        sync: false
+
+  - type: web
+    name: gastos-frontend-test
+    runtime: docker
+    branch: develop
+    dockerfilePath: apps/gastos/frontend/Dockerfile
+    dockerContext: apps/gastos/frontend
+    plan: free
+    region: oregon
+    autoDeploy: true
+
   # SCAFFOLD:SERVICES  ← no borrar; el generador inyecta apps aquí
   # SCAFFOLD:END

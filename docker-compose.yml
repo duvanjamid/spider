@@ -76,6 +76,33 @@ services:
 
 
 
+
+  # ═════════════════════ APP: gastos ═════════════════════════
+  gastos-backend:
+    build:
+      context: ./apps/gastos/backend
+    container_name: spider-gastos-backend
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-spider}
+      DB_USER: ${POSTGRES_USER:-spider_user}
+      DB_PASSWORD: ${BD_PASS:?define BD_PASS}
+      DB_SCHEMA: gastos
+      APP_NAME: gastos
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  gastos-frontend:
+    build:
+      context: ./apps/gastos/frontend
+    container_name: spider-gastos-frontend
+    depends_on:
+      - gastos-backend
+    restart: unless-stopped
+
   # SCAFFOLD:SERVICES  ← no borrar; el generador inyecta apps aquí
   # SCAFFOLD:END
 

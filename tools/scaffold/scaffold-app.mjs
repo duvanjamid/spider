@@ -155,9 +155,12 @@ const COMPOSE_SNIPPET = `
     restart: unless-stopped
 `;
 
+// Enrutado LOCAL por convención /<app> y /<app>-api (hostnames de docker-compose).
+// En Render el gateway usa URLs públicas por variable de entorno: al añadir una
+// app se cablea su ruta en infra/gateway (ver admin/gastos como referencia).
 const GATEWAY_SNIPPET = `
     # ═════════════════════ APP: __APP__ ═══════════════════════
-    location /api/__APP__/ {
+    location /__APP__-api/ {
       proxy_pass         http://__APP__-backend:8080/;
       proxy_set_header   Host \$host;
       proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -650,8 +653,8 @@ stylesScss: `html, body { margin: 0; min-height: 100%; background: #0f1115; colo
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
 `,
 
-envTs: `export const environment = { production: false, apiBase: '/api/__APP__' };\n`,
-envProdTs: `export const environment = { production: true, apiBase: '/api/__APP__' };\n`,
+envTs: `export const environment = { production: false, apiBase: '/__APP__-api' };\n`,
+envProdTs: `export const environment = { production: true, apiBase: '/__APP__-api' };\n`,
 
 appConfigTs: `import { ApplicationConfig, provideZoneChangeDetection } from '@angular/core';
 import { provideHttpClient, withFetch } from '@angular/common/http';
