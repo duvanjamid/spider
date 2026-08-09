@@ -1,38 +1,47 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { Observable, tap } from 'rxjs';
 import { environment } from '../../environments/environment';
 
-export interface CurrentUser {
-  id: number;
+export interface Me {
   email: string;
-  displayName: string;
-  pictureUrl?: string;
+  admin: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private http = inject(HttpClient);
+  private base = environment.apiBase;
 
-  readonly user = signal<CurrentUser | null>(null);
+  /** Usuario actual (null = no autenticado). */
+  readonly user = signal<Me | null>(null);
+  /** true cuando ya se resolvió el primer /auth/me. */
+  readonly ready = signal(false);
 
-  /** Redirige al flujo de login con Google (lo maneja el backend). */
-  loginWithGoogle(): void {
-    window.location.href = `${environment.apiBase}/auth/google/login`;
+  /** Carga el usuario actual desde la cookie de sesión. */
+  refresh(): void {
+    this.http.get<Me>(`${this.base}/auth/me`, { withCredentials: true }).subscribe({
+      next: (u) => { this.user.set(u); this.ready.set(true); },
+      error: () => { this.user.set(null); this.ready.set(true); },
+    });
   }
 
-  /** Carga el usuario actual (cookie de sesión). */
-  refresh(): void {
-    this.http
-      .get<CurrentUser>(`${environment.apiBase}/auth/me`, { withCredentials: true })
-      .subscribe({
-        next: (u) => this.user.set(u),
-        error: () => this.user.set(null),
-      });
+  /** Login de desarrollo (sin Google). Requiere AUTH_DEV_LOGIN=true en el backend. */
+  devLogin(email: string): Observable<Me> {
+    const url = `${this.base}/auth/dev-login?email=${encodeURIComponent(email)}`;
+    return this.http.post<Me>(url, {}, { withCredentials: true }).pipe(
+      tap((u) => this.user.set(u)),
+    );
+  }
+
+  /** Inicia el login con Google (pendiente de credenciales). */
+  loginWithGoogle(): void {
+    window.location.href = `${this.base}/auth/google/login`;
   }
 
   logout(): void {
-    this.http
-      .post(`${environment.apiBase}/auth/logout`, {}, { withCredentials: true })
-      .subscribe(() => this.user.set(null));
+    this.http.post(`${this.base}/auth/logout`, {}, { withCredentials: true }).subscribe(() =>
+      this.user.set(null),
+    );
   }
 }
