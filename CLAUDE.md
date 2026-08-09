@@ -56,8 +56,7 @@ spider/
 ├── CLAUDE.md                 ← este archivo (fuente de verdad)
 ├── docker-compose.yml        ← entorno local COMPLETO (BD + gateway + apps)
 ├── .env.example              ← plantilla de variables locales
-├── render.yaml               ← Blueprint Render · production (rama main)
-├── render.test.yaml          ← Blueprint Render · test (rama develop)
+├── render.yaml               ← Blueprint Render ÚNICO (prod + test vía projects)
 ├── infra/
 │   ├── db/init/00-init.sql    ← init de Postgres (solo local)
 │   └── gateway/               ← nginx (reverse proxy local, rutas por app)
@@ -163,16 +162,18 @@ Para compilar un backend sin Docker, primero: `./scripts/install-ligero.sh`.
 
 ## 8. Despliegue en Render
 
-- **Blueprints Docker**, un servicio por backend y por frontend.
-- **Dos entornos** ya creados en Render, con **gitflow**:
-  - **`spider`**      → **production**, rama **main**      (`render.yaml`).
-  - **`spider-test`** → **test**, rama **develop**         (`render.test.yaml`,
-    servicios con sufijo `-test`).
-- Ambos entornos comparten la **misma** `spider-db` y la **misma `DATABASE_URL`**
-  (aislados por schema: `test` usa `test_<app>`). La BD vive solo en prod; test
-  reutiliza esa conexión.
-- Al crear el Blueprint de test en Render, indica `render.test.yaml` como
-  *Blueprint file path*.
+- **Un solo `render.yaml`** (Blueprints Docker), con un servicio por backend y
+  por frontend. Los **dos entornos** se declaran en el mismo archivo con la
+  clave `projects.environments`:
+  - entorno **`production`** → servicios con rama **main**, schema `<app>`.
+  - entorno **`test`**       → servicios con rama **develop**, sufijo `-test`,
+    schema `test_<app>`.
+  Es la **fuente de verdad única**: test valida el mismo código/imagen que se
+  promociona a main; entre entornos solo cambia rama, nombre y schema.
+- Ambos entornos comparten la **misma** `spider-db` y la **misma `DATABASE_URL`**.
+  La BD vive solo en prod; test reutiliza esa conexión, aislado por schema.
+- ⚠️ `dockerfilePath` y `dockerContext` son **relativos a la raíz del repo**
+  (p.ej. `apps/admin/backend/Dockerfile` + `dockerContext: apps/admin/backend`).
 - Secretos por servicio (dashboard): `DATABASE_URL`, `GOOGLE_CLIENT_ID`,
   `GOOGLE_CLIENT_SECRET`, `PUBLIC_BASE_URL`. `AUTH_JWT_SECRET` se autogenera.
 - Health check del backend: `/health`. El frontend (nginx) escucha en `$PORT`.
@@ -187,8 +188,8 @@ Para compilar un backend sin Docker, primero: `./scripts/install-ligero.sh`.
 
 ## 9. Gitflow
 
-- `main`     → despliega a **production** (`render.yaml`).
-- `develop`  → despliega a **test** (`render.test.yaml`).
+- `main`     → despliega al entorno **production** (`render.yaml`).
+- `develop`  → despliega al entorno **test** (mismo `render.yaml`).
 - `feature/*` → se integran en `develop`. `release/*` y `hotfix/*` según gitflow.
 - Regla de oro: no se rompe `main`. Todo pasa antes por `develop`/test.
 
@@ -203,9 +204,10 @@ node tools/scaffold/scaffold-app.mjs <name>   # name: ^[a-z][a-z0-9]{1,29}$
 ```
 
 Genera `apps/<name>/backend` + `frontend`, su migración `V1`, y **registra** la
-app en `docker-compose.yml`, `infra/gateway/nginx.conf`, `render.yaml` y
-`render.test.yaml`. **Rechaza nombres repetidos.** No borres los marcadores
-`# SCAFFOLD:*` de esos archivos: el generador inyecta ahí.
+app en `docker-compose.yml`, `infra/gateway/nginx.conf` y `render.yaml` (crea
+los 4 servicios —back/front × prod/test— y los añade a los dos entornos).
+**Rechaza nombres repetidos.** No borres los marcadores `# SCAFFOLD:*` de esos
+archivos: el generador inyecta ahí.
 
 ---
 

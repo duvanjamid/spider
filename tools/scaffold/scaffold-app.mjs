@@ -8,8 +8,8 @@
 //  y la registra en:
 //     - docker-compose.yml        (entorno local)
 //     - infra/gateway/nginx.conf  (rutas /<name> y /api/<name>)
-//     - render.yaml               (production, DB_SCHEMA=<name>)
-//     - render.test.yaml          (test, DB_SCHEMA=test_<name>)
+//     - render.yaml               (4 servicios back/front × prod/test y su
+//                                  membresía en los entornos production y test)
 //
 //  Reglas:
 //     - No se permiten nombres repetidos.
@@ -85,12 +85,12 @@ w(fe('src/app/app.component.ts'), T(TPL.appComponentTs));
 // ── 5) Registro en configs compartidas ────────────────────────
 injectCompose(name);
 injectGateway(name);
-injectRender('render.yaml', composeBlock(RENDER_PROD(name)));
-injectRender('render.test.yaml', composeBlock(RENDER_TEST(name)));
+injectRenderServices(name);
+injectRenderEnv(name);
 
 console.log(`✓ App "${name}" creada y registrada.
   - apps/${name}/backend  · apps/${name}/frontend
-  - docker-compose.yml · infra/gateway/nginx.conf · render.yaml · render.test.yaml
+  - docker-compose.yml · infra/gateway/nginx.conf · render.yaml (prod + test)
 
 Siguientes pasos:
   export BD_PASS=...  &&  docker compose up --build
@@ -121,11 +121,16 @@ function injectCompose(n) {
 function injectGateway(n) {
   injectBeforeMarker('infra/gateway/nginx.conf', '# SCAFFOLD:LOCATIONS', T_(n, GATEWAY_SNIPPET));
 }
-function injectRender(file, snippet) {
-  injectBeforeMarker(file, '# SCAFFOLD:SERVICES', snippet);
+function injectRenderServices(n) {
+  injectBeforeMarker('render.yaml', '# SCAFFOLD:SERVICES', renderServices(n));
+}
+function injectRenderEnv(n) {
+  injectBeforeMarker('render.yaml', '# SCAFFOLD:ENV_PROD',
+    `          - ${n}-backend\n          - ${n}-frontend`);
+  injectBeforeMarker('render.yaml', '# SCAFFOLD:ENV_TEST',
+    `          - ${n}-backend-test\n          - ${n}-frontend-test`);
 }
 function T_(n, s) { return s.replaceAll('__APP__', n); }
-function composeBlock(s) { return s; }
 
 // ── Snippets de configs compartidas ───────────────────────────
 const COMPOSE_SNIPPET = `
@@ -171,18 +176,15 @@ const GATEWAY_SNIPPET = `
     }
 `;
 
-function RENDER_PROD(n) { return renderServices(n, '', n); }
-function RENDER_TEST(n) { return renderServices(n, '-test', 'test_' + n); }
-function renderServices(n, suffix, schema) {
+// Bloques de servicios para render.yaml (prod + test en un solo archivo).
+function renderBackend(n, suffix, branch, schema) {
   return `
-  # ═════════════════════ APP: ${n} ═════════════════════════
   - type: web
     name: ${n}-backend${suffix}
     runtime: docker
-    branch: ${suffix ? 'develop' : 'main'}
-    rootDir: apps/${n}/backend
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
+    branch: ${branch}
+    dockerfilePath: apps/${n}/backend/Dockerfile
+    dockerContext: apps/${n}/backend
     plan: free
     region: oregon
     healthCheckPath: /health
@@ -194,18 +196,27 @@ function renderServices(n, suffix, schema) {
         value: ${schema}
       - key: DATABASE_URL
         sync: false
-
+`;
+}
+function renderFrontend(n, suffix, branch) {
+  return `
   - type: web
     name: ${n}-frontend${suffix}
     runtime: docker
-    branch: ${suffix ? 'develop' : 'main'}
-    rootDir: apps/${n}/frontend
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
+    branch: ${branch}
+    dockerfilePath: apps/${n}/frontend/Dockerfile
+    dockerContext: apps/${n}/frontend
     plan: free
     region: oregon
     autoDeploy: true
 `;
+}
+function renderServices(n) {
+  return `  # ═════════════════════ APP: ${n} ═════════════════════════`
+    + renderBackend(n, '', 'main', n)
+    + renderFrontend(n, '', 'main')
+    + renderBackend(n, '-test', 'develop', 'test_' + n)
+    + renderFrontend(n, '-test', 'develop');
 }
 
 // ══════════════════════════════════════════════════════════════

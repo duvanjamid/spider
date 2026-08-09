@@ -29,8 +29,7 @@ o usa la skill `scaffold-app` desde Claude Code.
 apps/<app>/backend    Java + Ligero + Flyway
 apps/<app>/frontend   Angular
 infra/gateway         nginx (rutas /<app> y /api/<app>)
-render.yaml           Render · production (main)
-render.test.yaml      Render · test (develop)
+render.yaml           Render · un archivo, dos entornos (prod=main, test=develop)
 ```
 
 ## Gitflow

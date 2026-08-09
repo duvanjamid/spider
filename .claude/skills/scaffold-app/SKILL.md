@@ -25,8 +25,8 @@ Cuando se pida crear/añadir una app nueva al ecosistema Spider.
 3. El generador crea:
    - `apps/<name>/backend` (Java + Ligero + Flyway, con `V1__init_<name>.sql`)
    - `apps/<name>/frontend` (Angular)
-   y registra la app en `docker-compose.yml`, `infra/gateway/nginx.conf`,
-   `render.yaml` (production) y `render.test.yaml` (test).
+   y registra la app en `docker-compose.yml`, `infra/gateway/nginx.conf` y
+   `render.yaml` (servicios back/front para los entornos production y test).
 4. Verifica en local:
    ```bash
    export BD_PASS=...

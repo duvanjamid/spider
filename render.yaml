@@ -1,13 +1,21 @@
 # ══════════════════════════════════════════════════════════════
-#  Spider · Render Blueprint · ENTORNO PRODUCTION (rama: main)
+#  Spider · Render Blueprint (ÚNICO archivo, dos entornos)
 #
-#  Gitflow:  main → production   |   develop → test (render.test.yaml)
+#  Gitflow:
+#     production ← rama main      (schema  <app>)
+#     test       ← rama develop   (schema  test_<app>)
 #
-#  Base de datos: se REUTILIZA la instancia existente `spider-db`
-#  (no se declara aquí). Cada servicio recibe DATABASE_URL como
-#  secreto (sync:false) y se aísla por schema:
-#     production → DB_SCHEMA = <app>
-#     test       → DB_SCHEMA = test_<app>
+#  Un solo render.yaml es la fuente de verdad: los dos entornos se
+#  declaran con la clave `projects.environments`. Test valida el
+#  MISMO código/imagen que luego se promociona a main; lo único que
+#  cambia entre entornos es la rama, el nombre del servicio y el
+#  schema de BD.
+#
+#  Base de datos: una sola instancia `spider-db` y una sola
+#  `DATABASE_URL` para ambos entornos (aislados por schema). La BD
+#  vive solo en producción; test reutiliza esa conexión.
+#
+#  ⚠️ dockerfilePath y dockerContext son relativos a la RAÍZ del repo.
 #
 #  El generador (skill scaffold-app) inyecta servicios entre los
 #  marcadores SCAFFOLD:*. No borres esas líneas.
@@ -18,9 +26,8 @@ services:
     name: admin-backend
     runtime: docker
     branch: main
-    rootDir: apps/admin/backend
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
+    dockerfilePath: apps/admin/backend/Dockerfile
+    dockerContext: apps/admin/backend
     plan: free
     region: oregon
     healthCheckPath: /health
@@ -30,7 +37,7 @@ services:
         value: admin
       - key: DB_SCHEMA
         value: admin
-      - key: DATABASE_URL          # URL interna de spider-db (secreto)
+      - key: DATABASE_URL          # URL de spider-db (secreto)
         sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
@@ -45,13 +52,64 @@ services:
     name: admin-frontend
     runtime: docker
     branch: main
-    rootDir: apps/admin/frontend
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
+    dockerfilePath: apps/admin/frontend/Dockerfile
+    dockerContext: apps/admin/frontend
+    plan: free
+    region: oregon
+    autoDeploy: true
+
+  - type: web
+    name: admin-backend-test
+    runtime: docker
+    branch: develop
+    dockerfilePath: apps/admin/backend/Dockerfile
+    dockerContext: apps/admin/backend
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: admin
+      - key: DB_SCHEMA
+        value: test_admin
+      - key: DATABASE_URL          # misma spider-db que production (secreto)
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: AUTH_JWT_SECRET
+        generateValue: true
+      - key: PUBLIC_BASE_URL
+        sync: false
+
+  - type: web
+    name: admin-frontend-test
+    runtime: docker
+    branch: develop
+    dockerfilePath: apps/admin/frontend/Dockerfile
+    dockerContext: apps/admin/frontend
     plan: free
     region: oregon
     autoDeploy: true
   # ─────────────────────────────────────────────────────────
-
   # SCAFFOLD:SERVICES  ← no borrar; el generador inyecta apps aquí
   # SCAFFOLD:END
+
+# ── Entornos (gitflow): agrupan qué servicios van a prod y a test ──
+projects:
+  - name: Spider
+    environments:
+      - name: production   # rama main
+        services:
+          - admin-backend
+          - admin-frontend
+          # SCAFFOLD:ENV_PROD  ← no borrar; el generador inyecta apps aquí
+          # SCAFFOLD:END
+      - name: test         # rama develop
+        services:
+          - admin-backend-test
+          - admin-frontend-test
+          # SCAFFOLD:ENV_TEST  ← no borrar; el generador inyecta apps aquí
+          # SCAFFOLD:END
