@@ -65,4 +65,9 @@ public final class Env {
     public static boolean devLoginEnabled() {
         return Boolean.parseBoolean(get("AUTH_DEV_LOGIN", "false"));
     }
+
+    // ── Secreto servicio-a-servicio para el auto-registro de apps. ──
+    public static String registryToken() {
+        return get("REGISTRY_TOKEN", "");
+    }
 }

@@ -75,6 +75,7 @@ services:
 
 
 
+
   # SCAFFOLD:SERVICES  ← no borrar; el generador inyecta apps aquí
   # SCAFFOLD:END
 
