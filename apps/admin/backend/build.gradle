@@ -52,6 +52,11 @@ shadowJar {
     archiveBaseName = 'app'
     archiveClassifier = ''
     archiveVersion = ''
+    // CRÍTICO: fusiona los META-INF/services (ServiceLoader). Sin esto, el
+    // fat-jar sobrescribe los plugins de Flyway (flyway-core vs
+    // flyway-database-postgresql) y se pierden los prefijos V/U/R de las
+    // migraciones ("Unrecognised migration name format").
+    mergeServiceFiles()
 }
 
 tasks.named('jar') { enabled = false }

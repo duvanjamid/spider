@@ -22,7 +22,7 @@
               "node_modules/primeicons/primeicons.css",
               "src/styles.scss"
             ],
-            "baseHref": "/admin/"
+            "baseHref": "./"
           },
           "configurations": {
             "production": {

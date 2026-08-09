@@ -256,6 +256,9 @@ shadowJar {
     archiveBaseName = 'app'
     archiveClassifier = ''
     archiveVersion = ''
+    // Fusiona META-INF/services (ServiceLoader): imprescindible para que
+    // Flyway cargue sus plugins (prefijos V/U/R, tipos de BD) en el fat-jar.
+    mergeServiceFiles()
 }
 tasks.named('jar') { enabled = false }
 `,
@@ -403,7 +406,7 @@ public final class Migrations {
                 .defaultSchema(db.schema())
                 .createSchemas(true)
                 .locations("classpath:db/migration")
-                .baselineOnMigrate(true)
+                .validateMigrationNaming(true)
                 .load();
         var r = flyway.migrate();
         log.info("Migraciones aplicadas: {} (schema '{}')", r.migrationsExecuted, db.schema());
@@ -488,7 +491,7 @@ angularJson: `{
               "node_modules/primeicons/primeicons.css",
               "src/styles.scss"
             ],
-            "baseHref": "/__APP__/"
+            "baseHref": "./"
           },
           "configurations": {
             "production": {
@@ -572,7 +575,7 @@ indexHtml: `<!doctype html>
 <head>
   <meta charset="utf-8">
   <title>Spider · __APP__</title>
-  <base href="/__APP__/">
+  <base href="./">
   <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
 <body><app-root></app-root></body>
