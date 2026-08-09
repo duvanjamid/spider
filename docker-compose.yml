@@ -1,0 +1,79 @@
+# ══════════════════════════════════════════════════════════════
+#  Spider · entorno local COMPLETO (un solo compose)
+#  Levanta: Postgres + gateway + TODAS las apps (back y front).
+#
+#  Uso:
+#    export BD_PASS=una_clave_local
+#    docker compose up --build
+#    → http://localhost:8080            (gateway → admin)
+#    → http://localhost:8080/admin      (frontend admin)
+#    → http://localhost:8080/api/admin  (backend admin)
+#
+#  El generador de apps (skill `scaffold-app`) inyecta nuevos
+#  servicios entre los marcadores SCAFFOLD:*. No borres esas líneas.
+# ══════════════════════════════════════════════════════════════
+services:
+  # ── Base de datos única (schema por app, nada compartido) ──
+  db:
+    image: postgres:16-alpine
+    container_name: spider-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-spider}
+      POSTGRES_USER: ${POSTGRES_USER:-spider_user}
+      POSTGRES_PASSWORD: ${BD_PASS:?define BD_PASS en tu entorno}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-spider_user} -d ${POSTGRES_DB:-spider}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Gateway: enruta /{app} y /api/{app} a cada servicio ──
+  gateway:
+    build: ./infra/gateway
+    container_name: spider-gateway
+    ports:
+      - "8080:80"
+    depends_on:
+      - admin-frontend
+      - admin-backend
+    restart: unless-stopped
+
+  # ═════════════════════ APP: admin ═════════════════════════
+  admin-backend:
+    build:
+      context: ./apps/admin/backend
+    container_name: spider-admin-backend
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-spider}
+      DB_USER: ${POSTGRES_USER:-spider_user}
+      DB_PASSWORD: ${BD_PASS:?define BD_PASS}
+      DB_SCHEMA: admin
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-dev-secret-change-me}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  admin-frontend:
+    build:
+      context: ./apps/admin/frontend
+    container_name: spider-admin-frontend
+    depends_on:
+      - admin-backend
+    restart: unless-stopped
+  # ─────────────────────────────────────────────────────────
+  # SCAFFOLD:SERVICES  ← no borrar; el generador inyecta apps aquí
+  # SCAFFOLD:END
+
+volumes:
+  pgdata:

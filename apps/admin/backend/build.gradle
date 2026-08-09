@@ -1,0 +1,57 @@
+plugins {
+    id 'application'
+    // Fat-jar runnable para el contenedor de Render.
+    id 'com.gradleup.shadow' version '8.3.5'
+}
+
+group = 'com.spider.admin'
+version = '0.1.0'
+
+java {
+    toolchain {
+        // Ligero requiere Java 21+ (virtual threads).
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    // Ligero aún NO está en Maven Central: se publica a mavenLocal
+    // con el paso de bootstrap (ver Dockerfile / scripts/install-ligero.sh).
+    mavenLocal()
+    mavenCentral()
+}
+
+ext {
+    ligeroVersion = '0.5.0'
+    flywayVersion = '10.17.0'
+}
+
+dependencies {
+    // ── Ligero (backend HTTP) ──
+    implementation "com.ligeroframework:ligero-core:${ligeroVersion}"
+    implementation "com.ligeroframework:ligero-server-jdk:${ligeroVersion}"
+    implementation "com.ligeroframework:ligero-json:${ligeroVersion}"
+
+    // ── Migraciones SQL (Flyway) · nada de DDL a mano ──
+    implementation "org.flywaydb:flyway-core:${flywayVersion}"
+    implementation "org.flywaydb:flyway-database-postgresql:${flywayVersion}"
+
+    // ── Postgres ──
+    implementation 'org.postgresql:postgresql:42.7.4'
+
+    // ── Logging (binding SLF4J que pide Ligero) ──
+    implementation 'org.slf4j:slf4j-simple:2.0.16'
+}
+
+application {
+    mainClass = 'com.spider.admin.App'
+}
+
+// Nombre estable del artefacto para el runtime del contenedor.
+shadowJar {
+    archiveBaseName = 'app'
+    archiveClassifier = ''
+    archiveVersion = ''
+}
+
+tasks.named('jar') { enabled = false }

@@ -1,0 +1,56 @@
+# ══════════════════════════════════════════════════════════════
+#  Spider · Render Blueprint · ENTORNO PRODUCTION (rama: main)
+#
+#  Gitflow:  main → production   |   develop → test (render.test.yaml)
+#
+#  Base de datos: se REUTILIZA la instancia existente `spider-db`
+#  (no se declara aquí). Cada servicio recibe DATABASE_URL como
+#  secreto (sync:false) y se aísla por schema:
+#     production → DB_SCHEMA = <app>
+#     test       → DB_SCHEMA = test_<app>
+#
+#  El generador (skill scaffold-app) inyecta servicios entre los
+#  marcadores SCAFFOLD:*. No borres esas líneas.
+# ══════════════════════════════════════════════════════════════
+services:
+  # ═════════════════════ APP: admin ═════════════════════════
+  - type: web
+    name: admin-backend
+    runtime: docker
+    branch: main
+    rootDir: apps/admin/backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: admin
+      - key: DB_SCHEMA
+        value: admin
+      - key: DATABASE_URL          # URL interna de spider-db (secreto)
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: AUTH_JWT_SECRET
+        generateValue: true
+      - key: PUBLIC_BASE_URL
+        sync: false
+
+  - type: web
+    name: admin-frontend
+    runtime: docker
+    branch: main
+    rootDir: apps/admin/frontend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: oregon
+    autoDeploy: true
+  # ─────────────────────────────────────────────────────────
+  # SCAFFOLD:SERVICES  ← no borrar; el generador inyecta apps aquí
+  # SCAFFOLD:END

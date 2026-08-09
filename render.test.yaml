@@ -1,0 +1,55 @@
+# ══════════════════════════════════════════════════════════════
+#  Spider · Render Blueprint · ENTORNO TEST (rama: develop)
+#
+#  Al crear el Blueprint en Render, indica la ruta de este archivo
+#  ("render.test.yaml") como Blueprint file path.
+#
+#  MISMA base de datos que production (spider-db); el aislamiento es
+#  por schema con prefijo test_ (DB_SCHEMA = test_<app>). Nombres de
+#  servicio con sufijo -test para no chocar con production.
+#
+#  El generador (skill scaffold-app) inyecta servicios entre los
+#  marcadores SCAFFOLD:*. No borres esas líneas.
+# ══════════════════════════════════════════════════════════════
+services:
+  # ═════════════════════ APP: admin ═════════════════════════
+  - type: web
+    name: admin-backend-test
+    runtime: docker
+    branch: develop
+    rootDir: apps/admin/backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: admin
+      - key: DB_SCHEMA
+        value: test_admin
+      - key: DATABASE_URL          # misma spider-db que production (secreto)
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: AUTH_JWT_SECRET
+        generateValue: true
+      - key: PUBLIC_BASE_URL
+        sync: false
+
+  - type: web
+    name: admin-frontend-test
+    runtime: docker
+    branch: develop
+    rootDir: apps/admin/frontend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: oregon
+    autoDeploy: true
+  # ─────────────────────────────────────────────────────────
+  # SCAFFOLD:SERVICES  ← no borrar; el generador inyecta apps aquí
+  # SCAFFOLD:END
