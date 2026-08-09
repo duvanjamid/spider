@@ -32,12 +32,6 @@ public final class Migrations {
                 .locations("classpath:db/migration")
                 .validateMigrationNaming(true)
                 .load();
-        // Diagnóstico: qué migraciones ve Flyway y en qué estado.
-        var infos = flyway.info().all();
-        log.info("Flyway detectó {} migración(es) válidas en '{}'", infos.length, db.schema());
-        for (var mi : infos) {
-            log.info("  → {} | {} | {}", mi.getVersion(), mi.getScript(), mi.getState());
-        }
         var result = flyway.migrate();
         log.info("Migraciones aplicadas: {} (schema '{}')",
                 result.migrationsExecuted, db.schema());
