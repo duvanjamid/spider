@@ -51,5 +51,6 @@ services:
     region: oregon
     autoDeploy: true
   # ─────────────────────────────────────────────────────────
+
   # SCAFFOLD:SERVICES  ← no borrar; el generador inyecta apps aquí
   # SCAFFOLD:END

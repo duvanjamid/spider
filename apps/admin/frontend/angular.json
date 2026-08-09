@@ -18,7 +18,10 @@
             "polyfills": ["zone.js"],
             "tsConfig": "tsconfig.app.json",
             "assets": [],
-            "styles": ["src/styles.scss"],
+            "styles": [
+              "node_modules/primeicons/primeicons.css",
+              "src/styles.scss"
+            ],
             "baseHref": "/admin/"
           },
           "configurations": {

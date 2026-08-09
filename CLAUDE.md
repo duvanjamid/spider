@@ -34,7 +34,7 @@ arquitectura y diseño priman siempre.**
 |-------------|---------------------------------------------------------------|
 | Backend     | **Java 21** + **Ligero Framework** (`ligeroframework.com`)     |
 | Migraciones | **Flyway** (una carpeta de migraciones por app)               |
-| Frontend    | **Angular 18** (standalone components)                         |
+| Frontend    | **Angular 18** (standalone) + **PrimeNG** (UI, tema Aura)       |
 | Base datos  | **PostgreSQL** (una sola instancia; **un schema por app**)    |
 | Gateway     | **nginx** (enruta `/<app>` y `/api/<app>`)                    |
 | Local       | **docker-compose** (todas las apps + BD en un solo entorno)   |
@@ -116,8 +116,15 @@ Si tu versión de Ligero difiere en nombres, ajusta en los controllers (punto ú
 - name: `spider` · user: `spider_user` · host: `dpg-d9rv602jnfac738gmja0-a` · port `5432`
 - La contraseña vive en la variable de entorno `BD_PASS` (local) y como secreto
   en Render. **No se commitea.**
-- Cada backend recibe `DATABASE_URL` (URL interna de `spider-db`) como secreto
-  (`sync: false`) y se conecta con `sslmode=require`.
+- Cada backend recibe `DATABASE_URL` como secreto (`sync: false`) y se conecta
+  con `sslmode=require`.
+- **Una sola base, una sola conexión, para prod y test.** La BD existe solo en
+  producción; **test usa la MISMA `DATABASE_URL`** (mismo `spider-db`) y se
+  aísla por el prefijo de schema (`test_<app>`). Así no hace falta una segunda
+  base para el entorno de test.
+  - Si `spider` y `spider-test` están en la misma región/cuenta de Render, usa
+    la **URL interna** en ambos. Si el servicio de test no alcanza la interna,
+    usa la **URL externa** (`...oregon-postgres.render.com/...`).
 
 ---
 
@@ -157,10 +164,13 @@ Para compilar un backend sin Docker, primero: `./scripts/install-ligero.sh`.
 ## 8. Despliegue en Render
 
 - **Blueprints Docker**, un servicio por backend y por frontend.
-- **Dos entornos** con **gitflow**:
-  - `render.yaml`      → **production**, rama **main**.
-  - `render.test.yaml` → **test**, rama **develop** (nombres con sufijo `-test`).
-- Ambos entornos usan la **misma** `spider-db` (aislados por schema).
+- **Dos entornos** ya creados en Render, con **gitflow**:
+  - **`spider`**      → **production**, rama **main**      (`render.yaml`).
+  - **`spider-test`** → **test**, rama **develop**         (`render.test.yaml`,
+    servicios con sufijo `-test`).
+- Ambos entornos comparten la **misma** `spider-db` y la **misma `DATABASE_URL`**
+  (aislados por schema: `test` usa `test_<app>`). La BD vive solo en prod; test
+  reutiliza esa conexión.
 - Al crear el Blueprint de test en Render, indica `render.test.yaml` como
   *Blueprint file path*.
 - Secretos por servicio (dashboard): `DATABASE_URL`, `GOOGLE_CLIENT_ID`,
@@ -205,6 +215,11 @@ app en `docker-compose.yml`, `infra/gateway/nginx.conf`, `render.yaml` y
   servicios; sin estado global mutable; `record` para modelos inmutables.
 - **Angular**: standalone components, `signal()` para estado local, servicios
   con `inject()`, un servicio por recurso de API (`environment.apiBase`).
+- **PrimeNG (obligatorio)**: toda la UI usa **PrimeNG** con el tema **Aura**
+  (`@primeng/themes`). Se configura en `app.config.ts` con
+  `provideAnimationsAsync()` + `providePrimeNG({ theme: { preset: Aura } })`.
+  Iconos con **PrimeIcons**. No se introducen otras librerías de componentes
+  ni CSS a mano donde PrimeNG ya resuelve (botones, tablas, formularios, etc.).
 - **SQL**: snake_case; claves `id BIGINT GENERATED ALWAYS AS IDENTITY`;
   timestamps `TIMESTAMPTZ DEFAULT now()`.
 - **Secretos**: jamás en el repo. Siempre por entorno.

@@ -437,12 +437,16 @@ pkgJson: `{
   "private": true,
   "scripts": { "start": "ng serve", "build": "ng build" },
   "dependencies": {
+    "@angular/animations": "^18.2.0",
     "@angular/common": "^18.2.0",
     "@angular/compiler": "^18.2.0",
     "@angular/core": "^18.2.0",
     "@angular/forms": "^18.2.0",
     "@angular/platform-browser": "^18.2.0",
     "@angular/router": "^18.2.0",
+    "@primeng/themes": "^18.0.0",
+    "primeng": "^18.0.0",
+    "primeicons": "^7.0.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
     "zone.js": "~0.14.10"
@@ -476,7 +480,10 @@ angularJson: `{
             "polyfills": ["zone.js"],
             "tsConfig": "tsconfig.app.json",
             "assets": [],
-            "styles": ["src/styles.scss"],
+            "styles": [
+              "node_modules/primeicons/primeicons.css",
+              "src/styles.scss"
+            ],
             "baseHref": "/__APP__/"
           },
           "configurations": {
@@ -583,23 +590,33 @@ envProdTs: `export const environment = { production: true, apiBase: '/api/__APP_
 
 appConfigTs: `import { ApplicationConfig, provideZoneChangeDetection } from '@angular/core';
 import { provideHttpClient, withFetch } from '@angular/common/http';
+import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
+import { providePrimeNG } from 'primeng/config';
+import Aura from '@primeng/themes/aura';
 export const appConfig: ApplicationConfig = {
-  providers: [ provideZoneChangeDetection({ eventCoalescing: true }), provideHttpClient(withFetch()) ],
+  providers: [
+    provideZoneChangeDetection({ eventCoalescing: true }),
+    provideHttpClient(withFetch()),
+    provideAnimationsAsync(),
+    providePrimeNG({ theme: { preset: Aura } }),
+  ],
 };
 `,
 
 appComponentTs: `import { Component, OnInit, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { CardModule } from 'primeng/card';
 import { environment } from '../environments/environment';
 
 @Component({
   selector: 'app-root',
   standalone: true,
+  imports: [CardModule],
   template: \`
     <div style="max-width:720px;margin:0 auto;padding:48px 20px">
-      <h1>🕷️ __APP__</h1>
-      <p>App generada por el scaffolding de Spider.</p>
-      <p>Backend health: <code>{{ health() }}</code></p>
+      <p-card header="🕷️ __APP__" subheader="App generada por el scaffolding de Spider">
+        <p>Backend health: <code>{{ health() }}</code></p>
+      </p-card>
     </div>\`,
 })
 export class AppComponent implements OnInit {
