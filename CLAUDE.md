@@ -162,12 +162,12 @@ Para compilar un backend sin Docker, primero: `./scripts/install-ligero.sh`.
 
 ## 8. Despliegue en Render
 
-- **Un solo `render.yaml`** (Blueprints Docker), con un servicio por backend y
-  por frontend. Los **dos entornos** se declaran en el mismo archivo con la
-  clave `projects.environments`:
-  - entorno **`production`** → servicios con rama **main**, schema `<app>`.
-  - entorno **`test`**       → servicios con rama **develop**, sufijo `-test`,
-    schema `test_<app>`.
+- **Un solo `render.yaml`** (Blueprint Docker, `services` a nivel raíz), con un
+  servicio por backend y por frontend. Los **dos entornos** se expresan por
+  servicio con su rama + schema:
+  - **production** → servicios sin sufijo, rama **main**, schema `<app>`.
+  - **test**       → servicios con sufijo `-test`, rama **develop**, schema
+    `test_<app>`.
   Es la **fuente de verdad única**: test valida el mismo código/imagen que se
   promociona a main; entre entornos solo cambia rama, nombre y schema.
 - Ambos entornos comparten la **misma** `spider-db` y la **misma `DATABASE_URL`**.

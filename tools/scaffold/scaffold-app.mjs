@@ -86,7 +86,6 @@ w(fe('src/app/app.component.ts'), T(TPL.appComponentTs));
 injectCompose(name);
 injectGateway(name);
 injectRenderServices(name);
-injectRenderEnv(name);
 
 console.log(`✓ App "${name}" creada y registrada.
   - apps/${name}/backend  · apps/${name}/frontend
@@ -123,12 +122,6 @@ function injectGateway(n) {
 }
 function injectRenderServices(n) {
   injectBeforeMarker('render.yaml', '# SCAFFOLD:SERVICES', renderServices(n));
-}
-function injectRenderEnv(n) {
-  injectBeforeMarker('render.yaml', '# SCAFFOLD:ENV_PROD',
-    `          - ${n}-backend\n          - ${n}-frontend`);
-  injectBeforeMarker('render.yaml', '# SCAFFOLD:ENV_TEST',
-    `          - ${n}-backend-test\n          - ${n}-frontend-test`);
 }
 function T_(n, s) { return s.replaceAll('__APP__', n); }
 

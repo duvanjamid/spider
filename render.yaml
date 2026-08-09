@@ -1,19 +1,17 @@
 # ══════════════════════════════════════════════════════════════
 #  Spider · Render Blueprint (ÚNICO archivo, dos entornos)
 #
-#  Gitflow:
-#     production ← rama main      (schema  <app>)
-#     test       ← rama develop   (schema  test_<app>)
+#  Un solo render.yaml es la fuente de verdad. Los "dos entornos"
+#  se expresan por servicio, con la rama + el schema:
+#     production → servicios sin sufijo, branch main,    schema <app>
+#     test       → servicios con sufijo -test, branch develop, schema test_<app>
 #
-#  Un solo render.yaml es la fuente de verdad: los dos entornos se
-#  declaran con la clave `projects.environments`. Test valida el
-#  MISMO código/imagen que luego se promociona a main; lo único que
-#  cambia entre entornos es la rama, el nombre del servicio y el
-#  schema de BD.
+#  Test valida el MISMO código/imagen que se promociona a main; entre
+#  entornos solo cambia rama, nombre de servicio y schema de BD.
 #
 #  Base de datos: una sola instancia `spider-db` y una sola
-#  `DATABASE_URL` para ambos entornos (aislados por schema). La BD
-#  vive solo en producción; test reutiliza esa conexión.
+#  `DATABASE_URL` para ambos (aislados por schema). La BD vive solo en
+#  prod; test reutiliza esa conexión.
 #
 #  ⚠️ dockerfilePath y dockerContext son relativos a la RAÍZ del repo.
 #
@@ -21,7 +19,7 @@
 #  marcadores SCAFFOLD:*. No borres esas líneas.
 # ══════════════════════════════════════════════════════════════
 services:
-  # ═════════════════════ APP: admin ═════════════════════════
+  # ═════════════════ APP: admin · PRODUCTION (main) ═════════════════
   - type: web
     name: admin-backend
     runtime: docker
@@ -58,6 +56,7 @@ services:
     region: oregon
     autoDeploy: true
 
+  # ═══════════════════ APP: admin · TEST (develop) ═══════════════════
   - type: web
     name: admin-backend-test
     runtime: docker
@@ -96,20 +95,3 @@ services:
   # ─────────────────────────────────────────────────────────
   # SCAFFOLD:SERVICES  ← no borrar; el generador inyecta apps aquí
   # SCAFFOLD:END
-
-# ── Entornos (gitflow): agrupan qué servicios van a prod y a test ──
-projects:
-  - name: Spider
-    environments:
-      - name: production   # rama main
-        services:
-          - admin-backend
-          - admin-frontend
-          # SCAFFOLD:ENV_PROD  ← no borrar; el generador inyecta apps aquí
-          # SCAFFOLD:END
-      - name: test         # rama develop
-        services:
-          - admin-backend-test
-          - admin-frontend-test
-          # SCAFFOLD:ENV_TEST  ← no borrar; el generador inyecta apps aquí
-          # SCAFFOLD:END
