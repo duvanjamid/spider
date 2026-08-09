@@ -1,10 +1,8 @@
 package com.spider.gastos.expense;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.ligero.Ligero;
 import com.spider.gastos.ai.ExpenseScanner;
 import com.spider.gastos.config.Env;
-import com.spider.gastos.util.Json;
 
 import java.util.Map;
 
@@ -20,8 +18,17 @@ import java.util.Map;
  *   <li>{@code POST /scan}            → extrae un gasto de una imagen con IA.</li>
  *   <li>{@code GET  /ai-status}       → si la IA está configurada.</li>
  * </ul>
+ *
+ * <p>Los cuerpos JSON se deserializan con la API de Ligero {@code ctx.body(Class)}.
  */
 public final class ExpenseController {
+
+    /** Cuerpo para crear un gasto. */
+    public record ExpenseInput(Double amount, String currency, String categorySlug,
+                               String merchant, String description, String spentOn, String source) {}
+
+    /** Cuerpo para escanear una imagen. */
+    public record ScanInput(String image, String mediaType) {}
 
     private final ExpenseService svc;
     private final ExpenseScanner scanner;
@@ -37,17 +44,11 @@ public final class ExpenseController {
         app.get("/expenses", ctx -> ctx.json(svc.listByMonth(ctx.queryParam("month"))));
 
         app.post("/expenses", ctx -> {
-            JsonNode b = Json.MAPPER.readTree(ctx.body());
-            double amount = b.path("amount").asDouble(0);
+            ExpenseInput in = ctx.body(ExpenseInput.class);
+            double amount = in == null || in.amount() == null ? 0 : in.amount();
             if (amount <= 0) { ctx.status(400).json(Map.of("error", "amount inválido")); return; }
-            long id = svc.create(
-                    amount,
-                    text(b, "currency", "COP"),
-                    text(b, "categorySlug", "otros"),
-                    text(b, "merchant", ""),
-                    text(b, "description", ""),
-                    text(b, "spentOn", null),
-                    text(b, "source", "manual"));
+            long id = svc.create(amount, or(in.currency(), "COP"), or(in.categorySlug(), "otros"),
+                    nz(in.merchant()), nz(in.description()), in.spentOn(), or(in.source(), "manual"));
             ctx.status(201).json(Map.of("id", id));
         });
 
@@ -70,19 +71,19 @@ public final class ExpenseController {
                 ctx.status(503).json(Map.of("error", "IA no configurada (falta ANTHROPIC_API_KEY)"));
                 return;
             }
-            JsonNode b = Json.MAPPER.readTree(ctx.body());
-            String image = text(b, "image", "");
-            if (image.isBlank()) { ctx.status(400).json(Map.of("error", "falta 'image' (base64)")); return; }
+            ScanInput in = ctx.body(ScanInput.class);
+            if (in == null || in.image() == null || in.image().isBlank()) {
+                ctx.status(400).json(Map.of("error", "falta 'image' (base64)"));
+                return;
+            }
             try {
-                ctx.json(scanner.scan(image, text(b, "mediaType", "image/jpeg")));
+                ctx.json(scanner.scan(in.image(), or(in.mediaType(), "image/jpeg")));
             } catch (Exception e) {
                 ctx.status(502).json(Map.of("error", "No se pudo leer la imagen: " + e.getMessage()));
             }
         });
     }
 
-    private static String text(JsonNode n, String field, String def) {
-        JsonNode v = n.path(field);
-        return v.isMissingNode() || v.isNull() ? def : v.asText();
-    }
+    private static String or(String v, String def) { return v == null || v.isBlank() ? def : v; }
+    private static String nz(String v) { return v == null ? "" : v; }
 }
