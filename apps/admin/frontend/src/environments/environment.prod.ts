@@ -1,5 +1,5 @@
-// Entorno de producción (mismo path relativo; el gateway/route enruta la API).
+// Entorno de producción (mismo origen; el gateway enruta la API).
 export const environment = {
   production: true,
-  apiBase: '/api/admin',
+  apiBase: '/admin-api',
 };

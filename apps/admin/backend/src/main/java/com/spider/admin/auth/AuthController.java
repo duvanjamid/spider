@@ -41,7 +41,7 @@ public final class AuthController {
     public void register(Ligero app) {
         app.get("/auth/google/login", ctx -> {
             String redirectUri = Env.get("PUBLIC_BASE_URL", "http://localhost:8080")
-                    + "/api/admin/auth/google/callback";
+                    + "/admin-api/auth/google/callback";
             String url = GOOGLE_AUTH_ENDPOINT
                     + "?client_id=" + enc(Env.get("GOOGLE_CLIENT_ID", ""))
                     + "&redirect_uri=" + enc(redirectUri)

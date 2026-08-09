@@ -92,6 +92,40 @@ services:
     plan: free
     region: oregon
     autoDeploy: true
+
+  # ═════════════════ GATEWAY (punto de entrada único) ═════════════════
+  # Enruta /<app> y /<app>-api a cada servicio por la red interna de Render.
+  - type: web
+    name: spider-gateway
+    runtime: docker
+    branch: main
+    dockerfilePath: infra/gateway/Dockerfile
+    dockerContext: infra/gateway
+    plan: free
+    region: oregon
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: ADMIN_FRONTEND
+        value: admin-frontend:10000
+      - key: ADMIN_BACKEND
+        value: admin-backend:10000
+
+  - type: web
+    name: spider-gateway-test
+    runtime: docker
+    branch: develop
+    dockerfilePath: infra/gateway/Dockerfile
+    dockerContext: infra/gateway
+    plan: free
+    region: oregon
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: ADMIN_FRONTEND
+        value: admin-frontend-test:10000
+      - key: ADMIN_BACKEND
+        value: admin-backend-test:10000
   # ─────────────────────────────────────────────────────────
   # SCAFFOLD:SERVICES  ← no borrar; el generador inyecta apps aquí
   # SCAFFOLD:END
