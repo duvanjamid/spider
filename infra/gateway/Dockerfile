@@ -1,7 +1,6 @@
 FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY entrypoint.sh /entrypoint.sh
-COPY pwa/ /pwa/
 RUN chmod +x /entrypoint.sh
 # Valores por defecto para local (docker-compose). Render los sobrescribe.
 ENV PORT=80 \

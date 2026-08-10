@@ -20,6 +20,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { deflateSync } from 'node:zlib';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -45,7 +46,7 @@ for (const [file, token] of [
 
 const PKG = `com.spider.${name}`;
 const PKG_PATH = `com/spider/${name}`;
-const T = (s) => s.replaceAll('__APP__', name).replaceAll('__PKG__', PKG);
+const T = (s) => s.replaceAll('__APP__', name).replaceAll('__PKG__', PKG).replaceAll('__THEME__', colorForApp(name));
 
 function main() {
 console.log(`▸ Generando app "${name}" …`);
@@ -82,6 +83,11 @@ w(fe('src/environments/environment.ts'), T(TPL.envTs));
 w(fe('src/environments/environment.prod.ts'), T(TPL.envProdTs));
 w(fe('src/app/app.config.ts'), TPL.appConfigTs);
 w(fe('src/app/app.component.ts'), T(TPL.appComponentTs));
+// PWA propia de la app (instalable por separado con su icono).
+w(fe('src/manifest.webmanifest'), T(TPL.manifest));
+w(fe('src/sw.js'), TPL.sw);
+writeBuffer(fe('src/icon-192.png'), pngIcon(192, colorForApp(name)));
+writeBuffer(fe('src/icon-512.png'), pngIcon(512, colorForApp(name)));
 
 // ── 5) Registro en configs compartidas ────────────────────────
 injectCompose(name);
@@ -106,6 +112,45 @@ function fail(msg) { console.error(`✗ ${msg}`); process.exit(1); }
 function w(path, content) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, content);
+}
+function writeBuffer(path, buf) { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, buf); }
+
+// ── Icono PWA generado (anillo de color por app), PNG puro con zlib ──
+function colorForApp(n) {
+  const palette = ['#6c8cff', '#10b981', '#ef4444', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6', '#3b82f6'];
+  let h = 0; for (const ch of n) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return palette[h % palette.length];
+}
+function pngIcon(size, hex) {
+  const fg = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const bg = [15, 17, 21];
+  const cx = size / 2, cy = size / 2, rOut = size * 0.30, rIn = size * 0.15;
+  const rows = [];
+  for (let y = 0; y < size; y++) {
+    const row = Buffer.alloc(1 + size * 3);
+    for (let x = 0; x < size; x++) {
+      const d = Math.hypot(x - cx + 0.5, y - cy + 0.5);
+      const c = d <= rIn ? bg : d <= rOut ? fg : bg;
+      const o = 1 + x * 3; row[o] = c[0]; row[o + 1] = c[1]; row[o + 2] = c[2];
+    }
+    rows.push(row);
+  }
+  const idat = deflateSync(Buffer.concat(rows), { level: 9 });
+  const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(size, 0); ihdr.writeUInt32BE(size, 4); ihdr[8] = 8; ihdr[9] = 2;
+  return Buffer.concat([sig, pngChunk('IHDR', ihdr), pngChunk('IDAT', idat), pngChunk('IEND', Buffer.alloc(0))]);
+}
+function pngChunk(type, data) {
+  const len = Buffer.alloc(4); len.writeUInt32BE(data.length, 0);
+  const t = Buffer.from(type);
+  const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(Buffer.concat([t, data])) >>> 0, 0);
+  return Buffer.concat([len, t, data, crc]);
+}
+function crc32(buf) {
+  let c = ~0;
+  for (let i = 0; i < buf.length; i++) { c ^= buf[i]; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xEDB88320 & -(c & 1)); }
+  return ~c;
 }
 function injectBeforeMarker(file, marker, snippet) {
   const p = join(ROOT, file);
@@ -547,7 +592,12 @@ angularJson: `{
             "browser": "src/main.ts",
             "polyfills": ["zone.js"],
             "tsConfig": "tsconfig.app.json",
-            "assets": [],
+            "assets": [
+              "src/manifest.webmanifest",
+              "src/sw.js",
+              "src/icon-192.png",
+              "src/icon-512.png"
+            ],
             "styles": [
               "node_modules/primeicons/primeicons.css",
               "src/styles.scss"
@@ -637,10 +687,49 @@ indexHtml: `<!doctype html>
   <meta charset="utf-8">
   <title>Spider · __APP__</title>
   <base href="./">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- PWA propia de esta app (scope = /__APP__/): se instala por separado con su icono. -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="__THEME__">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="__APP__">
+  <link rel="apple-touch-icon" href="icon-192.png">
 </head>
-<body><app-root></app-root></body>
+<body>
+  <app-root></app-root>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').catch(function () {});
+      });
+    }
+  </script>
+</body>
 </html>
+`,
+
+manifest: `{
+  "name": "Spider · __APP__",
+  "short_name": "__APP__",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#0f1115",
+  "theme_color": "__THEME__",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
+`,
+
+sw: `self.addEventListener('install', function () { self.skipWaiting(); });
+self.addEventListener('activate', function (e) { e.waitUntil(self.clients.claim()); });
+self.addEventListener('fetch', function (e) {
+  if (e.request.method !== 'GET') return;
+  e.respondWith(fetch(e.request).catch(function () { return caches.match(e.request); }));
+});
 `,
 
 mainTs: `import { bootstrapApplication } from '@angular/platform-browser';
