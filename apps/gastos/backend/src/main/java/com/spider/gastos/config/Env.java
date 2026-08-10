@@ -18,8 +18,12 @@ public final class Env {
     public static String appName() { return get("APP_NAME", "gastos"); }
     public static String dbSchema() { return get("DB_SCHEMA", appName()); }
 
-    // ── IA (Anthropic) para leer gastos desde una captura. ──
-    public static String anthropicApiKey() { return get("ANTHROPIC_API_KEY", ""); }
-    public static String anthropicModel() { return get("ANTHROPIC_MODEL", "claude-sonnet-4-5"); }
-    public static boolean aiEnabled() { return !anthropicApiKey().isBlank(); }
+    // ── IA (Gemini · Google AI Studio) para leer gastos desde una captura. ──
+    public static String geminiApiKey() { return get("GEMINI_API_KEY", ""); }
+    public static String geminiModel() { return get("GEMINI_MODEL", "gemini-2.0-flash"); }
+    public static boolean aiEnabled() { return !geminiApiKey().isBlank(); }
+
+    // ── Secreto de sesión de la plataforma (mismo que el admin) para
+    //    identificar al usuario por la cookie spider_session. ──
+    public static String authJwtSecret() { return get("AUTH_JWT_SECRET", "dev-secret-change-me"); }
 }

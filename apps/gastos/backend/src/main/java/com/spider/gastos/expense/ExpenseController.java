@@ -1,88 +1,103 @@
 package com.spider.gastos.expense;
 
 import com.ligero.Ligero;
-import com.spider.gastos.ai.ExpenseScanner;
+import com.spider.gastos.ai.GeminiScanner;
 import com.spider.gastos.config.Env;
+import com.spider.gastos.session.Identity;
 
 import java.util.Map;
 
 /**
- * API de gastos.
+ * API de gastos (todo aislado por usuario, identificado por la cookie de sesión
+ * de la plataforma; invitado si no hay sesión).
+ *
  * <ul>
- *   <li>{@code GET  /categories}      → categorías.</li>
- *   <li>{@code GET  /expenses?month=} → gastos del mes (por defecto, el actual).</li>
- *   <li>{@code POST /expenses}        → crea un gasto (JSON).</li>
- *   <li>{@code DELETE /expenses/{id}} → borra un gasto.</li>
+ *   <li>{@code GET  /categories}      → categorías del usuario (se siembran al 1er acceso).</li>
+ *   <li>{@code GET  /expenses?month=} → gastos del mes.</li>
+ *   <li>{@code POST /expenses}        → crea un gasto (categoría por id, NIT, fecha compra).</li>
+ *   <li>{@code DELETE /expenses/{id}} → borra un gasto del usuario.</li>
  *   <li>{@code GET  /summary?month=}  → total y desglose por categoría.</li>
  *   <li>{@code GET  /trend?months=}   → serie mensual + estimación.</li>
- *   <li>{@code POST /scan}            → extrae un gasto de una imagen con IA.</li>
+ *   <li>{@code POST /scan}            → lee una imagen con IA (Gemini) usando las
+ *       categorías del usuario; devuelve montos candidatos, NIT, etc.</li>
  *   <li>{@code GET  /ai-status}       → si la IA está configurada.</li>
  * </ul>
- *
- * <p>Los cuerpos JSON se deserializan con la API de Ligero {@code ctx.body(Class)}.
  */
 public final class ExpenseController {
 
     /** Cuerpo para crear un gasto. */
-    public record ExpenseInput(Double amount, String currency, String categorySlug,
-                               String merchant, String description, String spentOn, String source) {}
+    public record ExpenseInput(Double amount, String currency, Long categoryId,
+                               String merchant, String description, String spentOn,
+                               String nit, String source) {}
 
     /** Cuerpo para escanear una imagen. */
     public record ScanInput(String image, String mediaType) {}
 
     private final ExpenseService svc;
-    private final ExpenseScanner scanner;
+    private final CategoryService categories;
+    private final GeminiScanner scanner;
+    private final Identity identity = new Identity();
 
-    public ExpenseController(ExpenseService svc, ExpenseScanner scanner) {
+    public ExpenseController(ExpenseService svc, CategoryService categories, GeminiScanner scanner) {
         this.svc = svc;
+        this.categories = categories;
         this.scanner = scanner;
     }
 
     public void register(Ligero app) {
-        app.get("/categories", ctx -> ctx.json(svc.categories()));
+        app.get("/categories", ctx -> ctx.json(categories.ensureAndList(email(ctx.header("Cookie")))));
 
-        app.get("/expenses", ctx -> ctx.json(svc.listByMonth(ctx.queryParam("month"))));
+        app.get("/expenses", ctx ->
+                ctx.json(svc.listByMonth(email(ctx.header("Cookie")), ctx.queryParam("month"))));
 
         app.post("/expenses", ctx -> {
+            String user = email(ctx.header("Cookie"));
             ExpenseInput in = ctx.body(ExpenseInput.class);
             double amount = in == null || in.amount() == null ? 0 : in.amount();
             if (amount <= 0) { ctx.status(400).json(Map.of("error", "amount inválido")); return; }
-            long id = svc.create(amount, or(in.currency(), "COP"), or(in.categorySlug(), "otros"),
-                    nz(in.merchant()), nz(in.description()), in.spentOn(), or(in.source(), "manual"));
+            Long catId = categories.resolveCategoryId(user, in.categoryId(), null);
+            long id = svc.create(user, amount, or(in.currency(), "COP"), catId,
+                    nz(in.merchant()), nz(in.description()), in.spentOn(), nz(in.nit()),
+                    or(in.source(), "manual"));
             ctx.status(201).json(Map.of("id", id));
         });
 
         app.delete("/expenses/{id}", ctx -> {
-            svc.delete(Long.parseLong(ctx.pathParam("id")));
+            svc.delete(email(ctx.header("Cookie")), Long.parseLong(ctx.pathParam("id")));
             ctx.json(Map.of("status", "deleted"));
         });
 
-        app.get("/summary", ctx -> ctx.json(svc.summary(ctx.queryParam("month"))));
+        app.get("/summary", ctx ->
+                ctx.json(svc.summary(email(ctx.header("Cookie")), ctx.queryParam("month"))));
 
         app.get("/trend", ctx -> {
             String m = ctx.queryParam("months");
-            ctx.json(svc.trend(m == null ? 6 : Integer.parseInt(m)));
+            ctx.json(svc.trend(email(ctx.header("Cookie")), m == null ? 6 : Integer.parseInt(m)));
         });
 
         app.get("/ai-status", ctx -> ctx.json(Map.of("enabled", Env.aiEnabled())));
 
         app.post("/scan", ctx -> {
             if (!Env.aiEnabled()) {
-                ctx.status(503).json(Map.of("error", "IA no configurada (falta ANTHROPIC_API_KEY)"));
+                ctx.status(503).json(Map.of("error", "IA no configurada (falta GEMINI_API_KEY)"));
                 return;
             }
+            String user = email(ctx.header("Cookie"));
             ScanInput in = ctx.body(ScanInput.class);
             if (in == null || in.image() == null || in.image().isBlank()) {
                 ctx.status(400).json(Map.of("error", "falta 'image' (base64)"));
                 return;
             }
             try {
-                ctx.json(scanner.scan(in.image(), or(in.mediaType(), "image/jpeg")));
+                var cats = categories.ensureAndList(user);
+                ctx.json(scanner.scan(in.image(), or(in.mediaType(), "image/jpeg"), cats));
             } catch (Exception e) {
                 ctx.status(502).json(Map.of("error", "No se pudo leer la imagen: " + e.getMessage()));
             }
         });
     }
+
+    private String email(String cookieHeader) { return identity.emailOrGuest(cookieHeader); }
 
     private static String or(String v, String def) { return v == null || v.isBlank() ? def : v; }
     private static String nz(String v) { return v == null ? "" : v; }

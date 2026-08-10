@@ -1,10 +1,11 @@
 package com.spider.gastos;
 
 import com.ligero.Ligero;
-import com.spider.gastos.ai.ExpenseScanner;
+import com.spider.gastos.ai.GeminiScanner;
 import com.spider.gastos.config.Env;
 import com.spider.gastos.db.DbConfig;
 import com.spider.gastos.db.Migrations;
+import com.spider.gastos.expense.CategoryService;
 import com.spider.gastos.expense.ExpenseController;
 import com.spider.gastos.expense.ExpenseService;
 import com.spider.gastos.health.HealthController;
@@ -26,11 +27,12 @@ public final class App {
 
         DataSource ds = dataSource(db);
         var expenses = new ExpenseService(ds);
-        var scanner = new ExpenseScanner();
+        var categories = new CategoryService(ds);
+        var scanner = new GeminiScanner();
 
         Ligero app = Ligero.create(Env.port());
         HealthController.register(app);
-        new ExpenseController(expenses, scanner).register(app);
+        new ExpenseController(expenses, categories, scanner).register(app);
 
         log.info("Backend '{}' escuchando en :{} (schema '{}', IA={})",
                 Env.appName(), Env.port(), db.schema(), Env.aiEnabled());
