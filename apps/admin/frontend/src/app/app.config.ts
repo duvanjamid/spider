@@ -13,6 +13,7 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(withFetch()),
     // PrimeNG (tema Aura) · estándar de UI del proyecto.
     provideAnimationsAsync(),
-    providePrimeNG({ theme: { preset: Aura } }),
+    // Tema claro/oscuro automático según el dispositivo (prefers-color-scheme).
+    providePrimeNG({ theme: { preset: Aura, options: { darkModeSelector: 'system' } } }),
   ],
 };

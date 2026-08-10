@@ -9,6 +9,7 @@ public final class HealthController {
     private HealthController() {}
     public static void register(Ligero app) {
         app.get("/health", ctx -> ctx.json(Map.of(
-                "status", "UP", "app", Env.appName(), "schema", Env.dbSchema())));
+                "status", "UP", "app", Env.appName(), "schema", Env.dbSchema(),
+                "env", Env.environment())));
     }
 }

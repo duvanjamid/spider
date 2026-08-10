@@ -37,7 +37,7 @@ public class AccessService {
     public List<Map<String, Object>> appsForEmail(String email) {
         if (isAdmin(email)) return listAllApps();
         String sql = """
-                SELECT a.slug, a.name, a.description
+                SELECT a.slug, a.name, a.description, a.icon, a.color
                 FROM access_grant g
                 JOIN application a ON a.id = g.application_id
                 WHERE lower(g.email) = lower(?) AND a.is_active = TRUE
@@ -56,7 +56,7 @@ public class AccessService {
     }
 
     public List<Map<String, Object>> listAllApps() {
-        String sql = "SELECT slug, name, description FROM application WHERE is_active = TRUE ORDER BY name";
+        String sql = "SELECT slug, name, description, icon, color FROM application WHERE is_active = TRUE ORDER BY name";
         List<Map<String, Object>> out = new ArrayList<>();
         try (Connection c = ds.getConnection(); Statement st = c.createStatement();
              ResultSet rs = st.executeQuery(sql)) {
@@ -141,7 +141,11 @@ public class AccessService {
 
     private static Map<String, Object> appRow(ResultSet rs) throws java.sql.SQLException {
         String desc = rs.getString("description");
+        String icon = rs.getString("icon");
+        String color = rs.getString("color");
         return Map.of("slug", rs.getString("slug"), "name", rs.getString("name"),
-                "description", desc == null ? "" : desc);
+                "description", desc == null ? "" : desc,
+                "icon", icon == null ? "🧩" : icon,
+                "color", color == null ? "#6c8cff" : color);
     }
 }

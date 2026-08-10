@@ -18,6 +18,11 @@ public final class Env {
     public static String appName() { return get("APP_NAME", "gastos"); }
     public static String dbSchema() { return get("DB_SCHEMA", appName()); }
 
+    // ── Entorno lógico ("test" | "production"), derivado del prefijo de schema. ──
+    public static String environment() {
+        return get("SPIDER_ENV", dbSchema().startsWith("test_") ? "test" : "production");
+    }
+
     // ── IA (Gemini · Google AI Studio) para leer gastos desde una captura. ──
     public static String geminiApiKey() { return get("GEMINI_API_KEY", ""); }
     public static String geminiModel() { return get("GEMINI_MODEL", "gemini-flash-latest"); }

@@ -7,6 +7,15 @@ export interface SpiderApp {
   slug: string;
   name: string;
   description: string;
+  icon: string;
+  color: string;
+}
+
+export interface HealthInfo {
+  status: string;
+  app: string;
+  schema: string;
+  env: string;
 }
 
 export interface Grant {
@@ -24,6 +33,11 @@ export class PlatformService {
   /** Apps habilitadas para el usuario actual. */
   myApps(): Observable<SpiderApp[]> {
     return this.http.get<SpiderApp[]>(`${this.base}/me/apps`, this.opts);
+  }
+
+  /** Info del backend (entorno test/prod, etc.). */
+  health(): Observable<HealthInfo> {
+    return this.http.get<HealthInfo>(`${this.base}/health`, this.opts);
   }
 
   // ── Solo admin ──

@@ -8,6 +8,7 @@ export const appConfig: ApplicationConfig = {
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideHttpClient(withFetch()),
     provideAnimationsAsync(),
-    providePrimeNG({ theme: { preset: Aura } }),
+    // Tema claro/oscuro automático según el dispositivo (prefers-color-scheme).
+    providePrimeNG({ theme: { preset: Aura, options: { darkModeSelector: 'system' } } }),
   ],
 };

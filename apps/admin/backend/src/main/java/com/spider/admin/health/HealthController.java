@@ -21,7 +21,8 @@ public final class HealthController {
         app.get("/health", ctx -> ctx.json(Map.of(
                 "status", "UP",
                 "app", Env.appName(),
-                "schema", Env.dbSchema()
+                "schema", Env.dbSchema(),
+                "env", Env.environment()
         )));
     }
 }

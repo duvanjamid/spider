@@ -28,10 +28,13 @@ public final class Registry {
             return;
         }
         String slug = Env.appName();
-        String name = Env.get("APP_TITLE", slug);
-        String desc = Env.get("APP_DESCRIPTION", "");
+        String name = Env.get("APP_TITLE", "Gastos");
+        String desc = Env.get("APP_DESCRIPTION", "Registra tus gastos del día a día con IA");
+        String icon = Env.get("APP_ICON", "💸");
+        String color = Env.get("APP_COLOR", "#10b981");
         String url = adminUrl.replaceAll("/+$", "") + "/registry"
-                + "?slug=" + enc(slug) + "&name=" + enc(name) + "&description=" + enc(desc);
+                + "?slug=" + enc(slug) + "&name=" + enc(name) + "&description=" + enc(desc)
+                + "&icon=" + enc(icon) + "&color=" + enc(color);
         try {
             HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
             HttpRequest req = HttpRequest.newBuilder(URI.create(url))

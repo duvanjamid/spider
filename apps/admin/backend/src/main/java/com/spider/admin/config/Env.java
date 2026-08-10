@@ -45,6 +45,12 @@ public final class Env {
         return get("DB_SCHEMA", appName());
     }
 
+    // ── Entorno lógico: "test" o "production". Se deriva del prefijo de
+    //    schema (test_*) salvo que se fije SPIDER_ENV explícitamente. ──
+    public static String environment() {
+        return get("SPIDER_ENV", dbSchema().startsWith("test_") ? "test" : "production");
+    }
+
     // ── Secreto para firmar las sesiones (HMAC). ──
     public static String authJwtSecret() {
         return get("AUTH_JWT_SECRET", "dev-secret-change-me");

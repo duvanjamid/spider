@@ -398,6 +398,9 @@ public final class Env {
     public static int port() { return getInt("PORT", 8080); }
     public static String appName() { return get("APP_NAME", "__APP__"); }
     public static String dbSchema() { return get("DB_SCHEMA", appName()); }
+    public static String environment() {
+        return get("SPIDER_ENV", dbSchema().startsWith("test_") ? "test" : "production");
+    }
 }
 `,
 
@@ -478,7 +481,8 @@ public final class HealthController {
     private HealthController() {}
     public static void register(Ligero app) {
         app.get("/health", ctx -> ctx.json(Map.of(
-                "status", "UP", "app", Env.appName(), "schema", Env.dbSchema())));
+                "status", "UP", "app", Env.appName(), "schema", Env.dbSchema(),
+                "env", Env.environment())));
     }
 }
 `,
@@ -515,8 +519,11 @@ public final class Registry {
         String slug = Env.appName();
         String name = Env.get("APP_TITLE", slug);
         String desc = Env.get("APP_DESCRIPTION", "");
+        String icon = Env.get("APP_ICON", "🧩");
+        String color = Env.get("APP_COLOR", "#6c8cff");
         String url = adminUrl.replaceAll("/+$", "") + "/registry"
-                + "?slug=" + enc(slug) + "&name=" + enc(name) + "&description=" + enc(desc);
+                + "?slug=" + enc(slug) + "&name=" + enc(name) + "&description=" + enc(desc)
+                + "&icon=" + enc(icon) + "&color=" + enc(color);
         try {
             HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
             HttpRequest req = HttpRequest.newBuilder(URI.create(url))

@@ -44,29 +44,44 @@ public final class AppRegistryController {
             String slug = ctx.queryParam("slug");
             String name = ctx.queryParam("name");
             String description = ctx.queryParam("description");
+            String icon = ctx.queryParam("icon");
+            String color = ctx.queryParam("color");
             if (slug == null || slug.isBlank() || name == null || name.isBlank()) {
                 ctx.status(400).json(Map.of("error", "slug y name son obligatorios"));
                 return;
             }
-            upsertApp(slug.trim(), name.trim(), description == null ? "" : description.trim());
+            upsertApp(slug.trim(), name.trim(), description == null ? "" : description.trim(),
+                    blank(icon) ? null : icon.trim(), blank(color) ? null : color.trim());
             ctx.json(Map.of("status", "registered", "slug", slug));
         });
     }
 
-    /** Upsert idempotente por slug: reactiva y actualiza nombre/descripción. */
-    private void upsertApp(String slug, String name, String description) {
+    private static boolean blank(String s) { return s == null || s.isBlank(); }
+
+    /**
+     * Upsert idempotente por slug: reactiva y actualiza nombre/descripción y,
+     * si la app los envía, su branding (icono/color). Si vienen null se
+     * conserva el branding existente (COALESCE).
+     */
+    private void upsertApp(String slug, String name, String description, String icon, String color) {
         String sql = """
-                INSERT INTO application (slug, name, description, is_active)
-                VALUES (?, ?, ?, TRUE)
+                INSERT INTO application (slug, name, description, icon, color, is_active)
+                VALUES (?, ?, ?, COALESCE(?, '🧩'), COALESCE(?, '#6c8cff'), TRUE)
                 ON CONFLICT (slug) DO UPDATE
                   SET name = EXCLUDED.name,
                       description = EXCLUDED.description,
+                      icon = COALESCE(?, application.icon),
+                      color = COALESCE(?, application.color),
                       is_active = TRUE
                 """;
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setString(1, slug);
             ps.setString(2, name);
             ps.setString(3, description);
+            ps.setString(4, icon);
+            ps.setString(5, color);
+            ps.setString(6, icon);
+            ps.setString(7, color);
             ps.executeUpdate();
         } catch (Exception e) {
             throw new RuntimeException("Error registrando app", e);
@@ -75,7 +90,7 @@ public final class AppRegistryController {
 
     private List<Map<String, Object>> listApps() {
         String sql = """
-                SELECT slug, name, description, is_active
+                SELECT slug, name, description, icon, color, is_active
                 FROM application
                 WHERE is_active = TRUE
                 ORDER BY name
@@ -89,6 +104,8 @@ public final class AppRegistryController {
                         "slug", rs.getString("slug"),
                         "name", rs.getString("name"),
                         "description", rs.getString("description") == null ? "" : rs.getString("description"),
+                        "icon", rs.getString("icon") == null ? "🧩" : rs.getString("icon"),
+                        "color", rs.getString("color") == null ? "#6c8cff" : rs.getString("color"),
                         "active", rs.getBoolean("is_active")
                 ));
             }
