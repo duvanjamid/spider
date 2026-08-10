@@ -594,11 +594,17 @@ export class AppComponent implements OnInit {
   ngOnInit(): void {
     this.api.aiStatus().subscribe({ next: (s) => this.aiEnabled.set(s.enabled), error: () => {} });
     this.api.health().subscribe({ next: (h) => this.isTest.set(h.env === 'test'), error: () => {} });
-    // Decide onboarding vs dashboard.
+    // Decide onboarding vs dashboard: primer ingreso o sin categorías.
     this.api.me().subscribe({
       next: (me: Me) => {
-        if (!me.onboarded) { this.startOnboarding(); }
-        else { this.loadCategories(); this.loadBudgets(); this.reload(); }
+        this.api.categories().subscribe({
+          next: (cats) => {
+            this.categories.set(cats);
+            if (!me.onboarded || cats.length === 0) { this.startOnboarding(); }
+            else { this.loadBudgets(); this.reload(); }
+          },
+          error: () => { this.loadBudgets(); this.reload(); },
+        });
       },
       error: () => { this.loadCategories(); this.loadBudgets(); this.reload(); },
     });
