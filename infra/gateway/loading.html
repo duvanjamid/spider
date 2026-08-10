@@ -4,8 +4,9 @@
   <meta charset="utf-8">
   <title>Spider · iniciando…</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <!-- Reintenta solo: cuando el servicio despierta, este refresco carga la app. -->
-  <meta http-equiv="refresh" content="5">
+  <!-- Respaldo sin JS: si el JS está desactivado, este refresco recarga la app
+       cuando el servicio despierta. Con JS, el redirect es más rápido (ver abajo). -->
+  <meta http-equiv="refresh" content="15">
   <meta name="theme-color" content="#0f1115">
   <style>
     :root{
@@ -75,20 +76,51 @@
   </div>
 
   <script>
-    // Reintento activo: además del <meta refresh>, sondeamos y recargamos
-    // en cuanto la app responde, para no esperar el ciclo completo.
-    var msgs = ['conectando', 'levantando servicios', 'casi listo'];
+    // ── Despierta TODOS los servicios y redirige en cuanto la app esté lista ──
+    // 1) Pregunta al admin la lista de apps (endpoint público) — genérico: al
+    //    añadir apps nuevas se despiertan solas, sin tocar esta página.
+    // 2) Hace peticiones a cada frontend (/slug/) y backend (/slug-api/health)
+    //    para forzar el arranque en paralelo (free tier "duerme" los servicios).
+    // 3) Sondea la URL pedida; cuando responde OK (ya no es esta página de
+    //    carga), redirige. El <meta refresh> queda como respaldo sin JS.
+    var msgs = ['conectando', 'despertando servicios', 'casi listo'];
     var i = 0, el = document.getElementById('dots');
     setInterval(function(){ i = (i + 1) % msgs.length; el.textContent = msgs[i] + '…'; }, 1800);
-    (function poll(){
+
+    var done = false;
+    function warm(path){ fetch(path, { method: 'GET', cache: 'no-store' }).catch(function(){}); }
+
+    function warmAll(){
+      warm('/healthz');
+      // La lista de apps (también despierta el backend del admin).
+      fetch('/admin-api/apps', { cache: 'no-store' })
+        .then(function(r){ return r.ok ? r.json() : []; })
+        .then(function(apps){
+          (apps || []).forEach(function(a){
+            if (a && a.slug){ warm('/' + a.slug + '/'); warm('/' + a.slug + '-api/health'); }
+          });
+        })
+        .catch(function(){ warm('/admin/'); warm('/admin-api/health'); });
+    }
+
+    function checkReady(){
+      if (done) return;
       fetch(location.href, { method: 'GET', cache: 'no-store' })
-        .then(function(r){ if (r.ok && (r.headers.get('content-type')||'').indexOf('text/html') >= 0) {
-          // Recarga solo si ya NO es esta misma página de carga.
-          if (!r.headers.get('x-spider-loading')) location.reload();
-        }})
-        .catch(function(){})
-        .finally(function(){ setTimeout(poll, 3500); });
-    })();
+        .then(function(r){
+          // r.ok (200) y sin la cabecera de esta página = la app ya responde.
+          if (r.ok && !r.headers.get('x-spider-loading')){
+            done = true;
+            el.textContent = '¡listo! entrando…';
+            location.reload();
+          }
+        })
+        .catch(function(){});
+    }
+
+    warmAll();
+    var w = setInterval(warmAll, 6000);      // insiste hasta que respondan
+    var c = setInterval(checkReady, 2500);   // redirige en cuanto esté lista
+    window.addEventListener('pagehide', function(){ clearInterval(w); clearInterval(c); });
   </script>
 </body>
 </html>
