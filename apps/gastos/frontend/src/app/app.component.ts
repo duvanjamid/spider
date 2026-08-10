@@ -26,6 +26,7 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
            padding: 14px 4px; background: color-mix(in srgb, var(--bg) 86%, transparent);
            backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
     .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.2rem; }
+    .brand .blogo { width: 28px; height: 28px; color: #10b981; }
     .env { font-size: .66rem; font-weight: 800; letter-spacing: .5px; padding: 3px 7px; border-radius: 6px;
            background: #f59e0b; color: #1a1200; text-transform: uppercase; }
     .spacer { flex: 1; }
@@ -57,6 +58,18 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
     .bud .bar { flex: 1; height: 8px; background: var(--panel-2); border-radius: 999px; overflow: hidden; }
     .bud .bar .fill { height: 100%; border-radius: 999px; transition: width .4s ease; }
     .bud .bfig { font-size: .8rem; white-space: nowrap; min-width: 140px; text-align: right; }
+    /* Presupuesto: resumen con donut + barras por categoría */
+    .bud-summary { display: flex; align-items: center; gap: 18px; margin-bottom: 8px; flex-wrap: wrap; }
+    .donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+    .donut-center b { font-size: 1.25rem; font-weight: 800; } .donut-center small { color: var(--muted); font-size: .72rem; }
+    .bud-legend { display: flex; flex-direction: column; gap: 4px; font-size: .9rem; }
+    .bud-legend .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+    .bud2 { padding: 10px 0; border-top: 1px solid var(--border); }
+    .bud2 .dot { width: 11px; height: 11px; border-radius: 50%; }
+    .bud2-top { display: flex; align-items: center; gap: 8px; }
+    .bud2 .bar { height: 10px; background: var(--panel-2); border-radius: 999px; overflow: hidden; margin-top: 7px; }
+    .bud2 .bar .fill { height: 100%; border-radius: 999px; transition: width .4s ease; }
+    .bud2-foot { font-size: .8rem; color: var(--muted); margin-top: 5px; }
 
     /* Movimientos */
     .filters { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
@@ -153,7 +166,7 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
       </div>
       <div class="tgrid">
         <div class="tcard" *ngFor="let t of templates()" [class.on]="isChosen(t.slug)" (click)="toggleChoice(t.slug)">
-          <span class="ic" [style.background]="t.color"><i class="pi {{ t.icon }}"></i></span>
+          <span class="ic" [style.background]="t.color"><i [class]="t.icon"></i></span>
           <span class="nm">{{ t.name }}</span>
           <i class="pi pi-check-circle ck" *ngIf="isChosen(t.slug)"></i>
         </div>
@@ -168,7 +181,15 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
     <!-- ═══════════════ APP ═══════════════ -->
     <div class="wrap" *ngIf="!onboarding()">
       <div class="bar">
-        <div class="brand">💸 Gastos <span class="env" *ngIf="isTest()">test</span></div>
+        <div class="brand">
+          <svg class="blogo" viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="4" y="9" width="24" height="17" rx="4" fill="currentColor" opacity=".16" />
+            <rect x="4" y="9" width="24" height="17" rx="4" fill="none" stroke="currentColor" stroke-width="2.4" />
+            <path d="M4 14 H24 a4 4 0 0 1 4 4 v0 h-7 a3 3 0 0 0 0 6 h7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" />
+            <circle cx="22" cy="21" r="1.7" fill="currentColor" />
+          </svg>
+          Gastos <span class="env" *ngIf="isTest()">test</span>
+        </div>
         <span class="spacer"></span>
         <div class="month">
           <p-button icon="pi pi-chevron-left" [text]="true" (onClick)="shiftMonth(-1)" aria-label="Mes anterior" />
@@ -195,90 +216,116 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
 
       <p-tabView>
         <!-- Resumen -->
-        <p-tabPanel header="Resumen" leftIcon="pi pi-th-large">
-          <div class="kpis" *ngIf="summary() as s" style="margin-bottom:16px">
-            <div class="kpi">
-              <div class="lbl"><i class="pi pi-wallet"></i> Total del mes</div>
-              <div class="val">{{ fmt(s.total) }}</div>
-              <div class="sub muted">{{ s.count }} movimiento(s)</div>
-            </div>
-            <div class="kpi">
-              <div class="lbl"><i class="pi pi-calendar"></i> Promedio diario</div>
-              <div class="val">{{ fmt(s.dailyAverage) }}</div>
-              <div class="sub muted">día {{ s.daysElapsed }} de {{ s.daysInMonth }}</div>
-            </div>
-            <div class="kpi">
-              <div class="lbl"><i class="pi pi-chart-line"></i> Proyección fin de mes</div>
-              <div class="val accent">{{ fmt(s.projectedEndOfMonth) }}</div>
-              <div class="sub muted">a este ritmo</div>
-            </div>
-            <div class="kpi">
-              <div class="lbl"><i class="pi pi-sync"></i> vs mes anterior</div>
-              <div class="val">{{ fmt(s.previousMonthTotal) }}</div>
-              <div class="sub" [class.up]="change() > 0" [class.down]="change() < 0" *ngIf="s.previousMonthTotal > 0">
-                {{ change() > 0 ? '▲' : change() < 0 ? '▼' : '' }} {{ absChange() }}%
+        <p-tabPanel header="Resumen" leftIcon="fa-solid fa-gauge-high">
+          <ng-template pTemplate="content">
+            <div class="kpis" *ngIf="summary() as s" style="margin-bottom:16px">
+              <div class="kpi">
+                <div class="lbl"><i class="fa-solid fa-wallet"></i> Total del mes</div>
+                <div class="val">{{ fmt(s.total) }}</div>
+                <div class="sub muted">{{ s.count }} movimiento(s)</div>
               </div>
-              <div class="sub muted" *ngIf="s.previousMonthTotal === 0">sin datos previos</div>
+              <div class="kpi">
+                <div class="lbl"><i class="fa-solid fa-calendar-day"></i> Promedio diario</div>
+                <div class="val">{{ fmt(s.dailyAverage) }}</div>
+                <div class="sub muted">día {{ s.daysElapsed }} de {{ s.daysInMonth }}</div>
+              </div>
+              <div class="kpi">
+                <div class="lbl"><i class="fa-solid fa-arrow-trend-up"></i> Proyección fin de mes</div>
+                <div class="val accent">{{ fmt(s.projectedEndOfMonth) }}</div>
+                <div class="sub muted">a este ritmo</div>
+              </div>
+              <div class="kpi">
+                <div class="lbl"><i class="fa-solid fa-rotate"></i> vs mes anterior</div>
+                <div class="val">{{ fmt(s.previousMonthTotal) }}</div>
+                <div class="sub" [class.up]="change() > 0" [class.down]="change() < 0" *ngIf="s.previousMonthTotal > 0">
+                  {{ change() > 0 ? '▲' : change() < 0 ? '▼' : '' }} {{ absChange() }}%
+                </div>
+                <div class="sub muted" *ngIf="s.previousMonthTotal === 0">sin datos previos</div>
+              </div>
             </div>
-          </div>
 
-          <div class="grid2">
-            <p-card header="Distribución por categoría">
-              <div class="chart-box" *ngIf="(summary()?.byCategory?.length || 0) > 0; else noData">
-                <p-chart type="doughnut" [data]="pieData()" [options]="pieOptions()" />
-              </div>
-            </p-card>
-            <p-card header="Presupuestos" *ngIf="budgeted().length; else noBudget">
-              <div class="bud" *ngFor="let b of budgeted()">
-                <span class="dot" [style.background]="b.color"></span>
-                <span class="bname">{{ b.name }}</span>
-                <div class="bar"><div class="fill" [style.width.%]="b.pct" [style.background]="b.over ? '#ef4444' : b.color"></div></div>
-                <span class="bfig" [class.up]="b.over">{{ fmt(b.total) }} / {{ fmt(b.budget) }}</span>
-              </div>
-            </p-card>
-          </div>
+            <div class="grid2">
+              <p-card header="Distribución por categoría">
+                <div class="chart-box" *ngIf="(summary()?.byCategory?.length || 0) > 0; else noData">
+                  <p-chart type="doughnut" [data]="pieData()" [options]="pieOptions()" />
+                </div>
+              </p-card>
+              <p-card header="Presupuesto del mes" *ngIf="budgeted().length; else noBudget">
+                <div class="bud-summary">
+                  <div style="width:132px;height:132px;position:relative">
+                    <p-chart type="doughnut" [data]="budgetDonut()" [options]="budgetDonutOpts()" />
+                    <div class="donut-center">
+                      <b [class.up]="budgetTotals().remaining < 0">{{ budgetTotals().pct }}%</b>
+                      <small>usado</small>
+                    </div>
+                  </div>
+                  <div class="bud-legend">
+                    <div><span class="sw" style="background:#6c8cff"></span> Gastado <b>{{ fmt(budgetTotals().spent) }}</b></div>
+                    <div><span class="sw" [style.background]="dark() ? '#2a2f3a' : '#e2e6ef'"></span>
+                      {{ budgetTotals().remaining < 0 ? 'Excedido' : 'Restante' }}
+                      <b [class.up]="budgetTotals().remaining < 0">{{ fmt(abs(budgetTotals().remaining)) }}</b></div>
+                    <div class="muted">Presupuesto {{ fmt(budgetTotals().budget) }}</div>
+                  </div>
+                </div>
+                <div class="bud2" *ngFor="let b of budgeted()">
+                  <div class="bud2-top"><span class="dot" [style.background]="b.color"></span> <b>{{ b.name }}</b>
+                    <span class="spacer"></span><span class="muted">{{ fmt(b.total) }} / {{ fmt(b.budget) }}</span></div>
+                  <div class="bar"><div class="fill" [style.width.%]="b.pct" [style.background]="b.over ? '#ef4444' : b.color"></div></div>
+                  <div class="bud2-foot" [class.up]="b.over">
+                    {{ b.over ? ('Excedido ' + fmt(b.total - b.budget)) : ('Quedan ' + fmt(b.budget - b.total)) }} · {{ b.pct }}%
+                  </div>
+                </div>
+              </p-card>
+            </div>
+          </ng-template>
         </p-tabPanel>
 
         <!-- Categorías -->
-        <p-tabPanel header="Categorías" leftIcon="pi pi-chart-pie">
-          <p-card header="Gasto por categoría (mes)">
-            <div class="chart-box" style="height:320px" *ngIf="(summary()?.byCategory?.length || 0) > 0; else noData">
-              <p-chart type="bar" [data]="barData()" [options]="barOptions()" />
-            </div>
-          </p-card>
+        <p-tabPanel header="Categorías" leftIcon="fa-solid fa-chart-pie">
+          <ng-template pTemplate="content">
+            <p-card header="Gasto por categoría (mes)">
+              <div class="chart-box" style="height:320px" *ngIf="(summary()?.byCategory?.length || 0) > 0; else noData">
+                <p-chart type="bar" [data]="barData()" [options]="barOptions()" />
+              </div>
+            </p-card>
+          </ng-template>
         </p-tabPanel>
 
         <!-- Tendencia -->
-        <p-tabPanel header="Tendencia" leftIcon="pi pi-chart-line">
-          <p-card header="Tendencia y estimación">
-            <div class="chart-box" style="height:320px" *ngIf="(trend()?.series?.length || 0) > 0; else noData">
-              <p-chart type="line" [data]="lineData()" [options]="lineOptions()" />
-            </div>
-          </p-card>
+        <p-tabPanel header="Tendencia" leftIcon="fa-solid fa-chart-line">
+          <ng-template pTemplate="content">
+            <p-card header="Tendencia y estimación">
+              <div class="chart-box" style="height:320px" *ngIf="(trend()?.series?.length || 0) > 0; else noData">
+                <p-chart type="line" [data]="lineData()" [options]="lineOptions()" />
+              </div>
+            </p-card>
+          </ng-template>
         </p-tabPanel>
 
         <!-- Movimientos -->
-        <p-tabPanel header="Movimientos" leftIcon="pi pi-list">
-          <div class="filters">
-            <input class="inp" style="flex:1;min-width:180px" type="text" [(ngModel)]="query" placeholder="Buscar (comercio, descripción, NIT)…" />
-            <select class="sel" style="width:auto" [(ngModel)]="filterCat">
-              <option value="">Todas las categorías</option>
-              <option *ngFor="let c of categories()" [value]="c.slug">{{ c.name }}</option>
-            </select>
-            <span class="muted">{{ filtered().length }} de {{ expenses().length }}</span>
-          </div>
-          <div class="list">
-            <div class="row" *ngFor="let e of filtered()">
-              <span class="dot" [style.background]="e.categoryColor || '#9aa3b2'"></span>
-              <div class="grow">
-                <div>{{ e.merchant || e.description || e.categoryName || 'Gasto' }}</div>
-                <small>{{ e.categoryName || 'Otros' }} · {{ e.spentOn }}<span *ngIf="e.source === 'scan'"> · 🤖</span><span *ngIf="e.source === 'recurring'"> · 🔁</span></small>
-              </div>
-              <span class="amt">{{ fmt(e.amount, e.currency) }}</span>
-              <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="del(e.id)" />
+        <p-tabPanel header="Movimientos" leftIcon="fa-solid fa-list-ul">
+          <ng-template pTemplate="content">
+            <div class="filters">
+              <input class="inp" style="flex:1;min-width:180px" type="text" [(ngModel)]="query" placeholder="Buscar (comercio, descripción, NIT)…" />
+              <select class="sel" style="width:auto" [(ngModel)]="filterCat">
+                <option value="">Todas las categorías</option>
+                <option *ngFor="let c of categories()" [value]="c.slug">{{ c.name }}</option>
+              </select>
+              <span class="muted">{{ filtered().length }} de {{ expenses().length }}</span>
             </div>
-            <p class="muted" *ngIf="loaded() && filtered().length === 0" style="text-align:center;padding:24px">Sin movimientos que coincidan.</p>
-          </div>
+            <div class="list">
+              <div class="row" *ngFor="let e of filtered()">
+                <span class="dot" [style.background]="e.categoryColor || '#9aa3b2'"></span>
+                <div class="grow">
+                  <div>{{ e.merchant || e.description || e.categoryName || 'Gasto' }}</div>
+                  <small>{{ e.categoryName || 'Otros' }} · {{ e.spentOn }}<span *ngIf="e.source === 'scan'"> · 🤖</span><span *ngIf="e.source === 'recurring'"> · 🔁</span></small>
+                </div>
+                <span class="amt">{{ fmt(e.amount, e.currency) }}</span>
+                <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="del(e.id)" />
+              </div>
+              <p class="muted" *ngIf="loaded() && filtered().length === 0" style="text-align:center;padding:24px">Sin movimientos que coincidan.</p>
+            </div>
+          </ng-template>
         </p-tabPanel>
       </p-tabView>
     </div>
@@ -536,6 +583,28 @@ export class AppComponent implements OnInit {
     }));
   });
 
+  // Totales de presupuesto (gastado vs restante) para el resumen y el donut.
+  readonly budgetTotals = computed(() => {
+    const b = this.budgeted();
+    const budget = b.reduce((a, c) => a + c.budget, 0);
+    const spent = b.reduce((a, c) => a + c.total, 0);
+    const remaining = budget - spent;
+    const pct = budget > 0 ? Math.round((spent / budget) * 100) : 0;
+    return { budget, spent, remaining, pct };
+  });
+  readonly budgetDonut = computed(() => {
+    const t = this.budgetTotals();
+    const spent = Math.min(t.spent, t.budget);
+    const rest = Math.max(t.budget - t.spent, 0);
+    const over = t.remaining < 0;
+    return { labels: ['Gastado', 'Restante'],
+      datasets: [{ data: [over ? t.budget : spent, rest],
+        backgroundColor: [over ? '#ef4444' : '#6c8cff', this.dark() ? '#2a2f3a' : '#e2e6ef'], borderWidth: 0 }] };
+  });
+  readonly budgetDonutOpts = computed(() => ({ maintainAspectRatio: false, cutout: '72%',
+    plugins: { legend: { display: false } } }));
+  abs(n: number): number { return Math.abs(n); }
+
   readonly filtered = computed(() => {
     const q = this.query.trim().toLowerCase();
     const cat = this.filterCat;
@@ -663,7 +732,7 @@ export class AppComponent implements OnInit {
     if (this.catForm.id) {
       this.api.updateCategory(this.catForm.id, { name: this.catForm.name, color: this.catForm.color }).subscribe(done);
     } else {
-      this.api.createCategory(this.catForm.name, this.catForm.color, 'pi-wallet').subscribe(done);
+      this.api.createCategory(this.catForm.name, this.catForm.color, 'fa-solid fa-wallet').subscribe(done);
     }
   }
   delCat(c: Category): void {

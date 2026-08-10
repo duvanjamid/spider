@@ -145,7 +145,7 @@ public class AccessService {
         String color = rs.getString("color");
         return Map.of("slug", rs.getString("slug"), "name", rs.getString("name"),
                 "description", desc == null ? "" : desc,
-                "icon", icon == null ? "🧩" : icon,
+                "icon", icon == null ? "fa-solid fa-cube" : icon,
                 "color", color == null ? "#6c8cff" : color);
     }
 }

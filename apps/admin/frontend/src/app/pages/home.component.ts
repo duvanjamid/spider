@@ -20,7 +20,8 @@ import { PlatformService, SpiderApp } from '../core/platform.service';
            padding: 14px 4px; background: color-mix(in srgb, var(--bg) 86%, transparent);
            backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); }
     .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.15rem; }
-    .brand .logo { font-size: 1.4rem; }
+    .brand .blogo { width: 26px; height: 26px; color: var(--accent); }
+    .hlogo { width: 68px; height: 68px; color: var(--accent); }
     .spacer { flex: 1; }
     .env { font-size: .68rem; font-weight: 800; letter-spacing: .5px; padding: 3px 8px; border-radius: 6px;
            background: #f59e0b; color: #1a1200; text-transform: uppercase; }
@@ -74,7 +75,17 @@ import { PlatformService, SpiderApp } from '../core/platform.service';
     <div class="shell">
       <!-- App bar -->
       <div class="bar">
-        <div class="brand"><span class="logo">🕷️</span> Spider <span class="env" *ngIf="isTest()">test</span></div>
+        <div class="brand">
+          <svg class="blogo" viewBox="0 0 32 32" aria-hidden="true">
+            <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M11 12 L4 7 M11 16 L3 16 M11 20 L4 25" />
+              <path d="M21 12 L28 7 M21 16 L29 16 M21 20 L28 25" />
+            </g>
+            <ellipse cx="16" cy="16" rx="6" ry="7" fill="currentColor" />
+            <circle cx="13.6" cy="14" r="1.3" fill="var(--panel)" /><circle cx="18.4" cy="14" r="1.3" fill="var(--panel)" />
+          </svg>
+          Spider <span class="env" *ngIf="isTest()">test</span>
+        </div>
         <span class="spacer"></span>
         <div class="userchip desktop" *ngIf="auth.user() as u">
           <span class="mail">{{ u.email }}</span>
@@ -88,7 +99,17 @@ import { PlatformService, SpiderApp } from '../core/platform.service';
       <!-- Drawer móvil -->
       <div class="scrim" *ngIf="menuOpen()" (click)="menuOpen.set(false)"></div>
       <div class="drawer" [class.open]="menuOpen()" *ngIf="auth.user() as u">
-        <div class="brand"><span class="logo">🕷️</span> Spider</div>
+        <div class="brand">
+          <svg class="blogo" viewBox="0 0 32 32" aria-hidden="true">
+            <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M11 12 L4 7 M11 16 L3 16 M11 20 L4 25" />
+              <path d="M21 12 L28 7 M21 16 L29 16 M21 20 L28 25" />
+            </g>
+            <ellipse cx="16" cy="16" rx="6" ry="7" fill="currentColor" />
+            <circle cx="13.6" cy="14" r="1.3" fill="var(--panel)" /><circle cx="18.4" cy="14" r="1.3" fill="var(--panel)" />
+          </svg>
+          Spider
+        </div>
         <div class="mail">{{ u.email }}</div>
         <p-tag *ngIf="u.admin" value="admin" severity="warn" />
         <a *ngIf="u.admin" routerLink="/accesos" (click)="menuOpen.set(false)"><p-button label="Gestionar accesos" icon="pi pi-users" [outlined]="true" /></a>
@@ -98,7 +119,14 @@ import { PlatformService, SpiderApp } from '../core/platform.service';
 
       <!-- LANDING (no autenticado) -->
       <div class="hero" *ngIf="auth.ready() && !auth.user()">
-        <div class="big">🕷️</div>
+        <svg class="hlogo" viewBox="0 0 32 32" aria-hidden="true">
+          <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M11 12 L4 7 M11 16 L3 16 M11 20 L4 25" />
+            <path d="M21 12 L28 7 M21 16 L29 16 M21 20 L28 25" />
+          </g>
+          <ellipse cx="16" cy="16" rx="6" ry="7" fill="currentColor" />
+          <circle cx="13.6" cy="14" r="1.3" fill="var(--bg)" /><circle cx="18.4" cy="14" r="1.3" fill="var(--bg)" />
+        </svg>
         <h2>Un solo lugar para todas tus apps</h2>
         <p class="muted">Inicia sesión para ver las aplicaciones que tienes habilitadas.</p>
         <div class="login-box">
@@ -119,7 +147,7 @@ import { PlatformService, SpiderApp } from '../core/platform.service';
           <a *ngFor="let app of apps()" [href]="'/' + app.slug + '/'">
             <div class="card">
               <div class="top" [style.background]="tint(app.color)">
-                <div class="badge" [style.color]="app.color">{{ app.icon }}</div>
+                <div class="badge" [style.color]="app.color"><i [class]="app.icon"></i></div>
               </div>
               <div class="body">
                 <div class="name">{{ app.name }}</div>

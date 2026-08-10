@@ -30,7 +30,7 @@ public final class Registry {
         String slug = Env.appName();
         String name = Env.get("APP_TITLE", "Gastos");
         String desc = Env.get("APP_DESCRIPTION", "Registra tus gastos del día a día con IA");
-        String icon = Env.get("APP_ICON", "💸");
+        String icon = Env.get("APP_ICON", "fa-solid fa-wallet");
         String color = Env.get("APP_COLOR", "#10b981");
         String url = adminUrl.replaceAll("/+$", "") + "/registry"
                 + "?slug=" + enc(slug) + "&name=" + enc(name) + "&description=" + enc(desc)

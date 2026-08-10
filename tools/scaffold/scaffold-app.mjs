@@ -519,7 +519,7 @@ public final class Registry {
         String slug = Env.appName();
         String name = Env.get("APP_TITLE", slug);
         String desc = Env.get("APP_DESCRIPTION", "");
-        String icon = Env.get("APP_ICON", "🧩");
+        String icon = Env.get("APP_ICON", "fa-solid fa-cube");
         String color = Env.get("APP_COLOR", "#6c8cff");
         String url = adminUrl.replaceAll("/+$", "") + "/registry"
                 + "?slug=" + enc(slug) + "&name=" + enc(name) + "&description=" + enc(desc)
@@ -566,6 +566,7 @@ pkgJson: `{
     "@angular/forms": "^18.2.0",
     "@angular/platform-browser": "^18.2.0",
     "@angular/router": "^18.2.0",
+    "@fortawesome/fontawesome-free": "^6.7.2",
     "@primeng/themes": "^18.0.0",
     "primeng": "^18.0.0",
     "primeicons": "^7.0.0",
@@ -609,6 +610,7 @@ angularJson: `{
             ],
             "styles": [
               "node_modules/primeicons/primeicons.css",
+              "node_modules/@fortawesome/fontawesome-free/css/all.min.css",
               "src/styles.scss"
             ],
             "baseHref": "./"

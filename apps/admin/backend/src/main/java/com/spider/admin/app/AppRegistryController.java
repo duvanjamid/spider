@@ -66,7 +66,7 @@ public final class AppRegistryController {
     private void upsertApp(String slug, String name, String description, String icon, String color) {
         String sql = """
                 INSERT INTO application (slug, name, description, icon, color, is_active)
-                VALUES (?, ?, ?, COALESCE(?, '🧩'), COALESCE(?, '#6c8cff'), TRUE)
+                VALUES (?, ?, ?, COALESCE(?, 'fa-solid fa-cube'), COALESCE(?, '#6c8cff'), TRUE)
                 ON CONFLICT (slug) DO UPDATE
                   SET name = EXCLUDED.name,
                       description = EXCLUDED.description,
@@ -104,7 +104,7 @@ public final class AppRegistryController {
                         "slug", rs.getString("slug"),
                         "name", rs.getString("name"),
                         "description", rs.getString("description") == null ? "" : rs.getString("description"),
-                        "icon", rs.getString("icon") == null ? "🧩" : rs.getString("icon"),
+                        "icon", rs.getString("icon") == null ? "fa-solid fa-cube" : rs.getString("icon"),
                         "color", rs.getString("color") == null ? "#6c8cff" : rs.getString("color"),
                         "active", rs.getBoolean("is_active")
                 ));

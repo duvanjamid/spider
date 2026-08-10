@@ -121,7 +121,7 @@ public class CategoryService {
             ps.setString(1, slug);
             ps.setString(2, name.trim());
             ps.setString(3, blank(color) ? "#6c8cff" : color);
-            ps.setString(4, blank(icon) ? "pi-wallet" : icon);
+            ps.setString(4, blank(icon) ? "fa-solid fa-wallet" : icon);
             ps.setString(5, email);
             try (ResultSet rs = ps.executeQuery()) { rs.next(); return rs.getLong(1); }
         } catch (Exception e) { throw new RuntimeException("Error creando categoría", e); }
