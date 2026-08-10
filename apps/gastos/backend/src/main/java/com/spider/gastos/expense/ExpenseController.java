@@ -33,6 +33,9 @@ public final class ExpenseController {
     /** Cuerpo para escanear una imagen. */
     public record ScanInput(String image, String mediaType) {}
 
+    /** Cuerpo para crear/editar una categoría. */
+    public record CategoryInput(String name, String color, String icon) {}
+
     private final ExpenseService svc;
     private final CategoryService categories;
     private final GeminiScanner scanner;
@@ -46,6 +49,29 @@ public final class ExpenseController {
 
     public void register(Ligero app) {
         app.get("/categories", ctx -> ctx.json(categories.ensureAndList(email(ctx.header("Cookie")))));
+
+        app.post("/categories", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            CategoryInput in = ctx.body(CategoryInput.class);
+            if (in == null || in.name() == null || in.name().isBlank()) {
+                ctx.status(400).json(Map.of("error", "nombre requerido")); return;
+            }
+            long id = categories.create(user, in.name(), in.color(), in.icon());
+            ctx.status(201).json(Map.of("id", id));
+        });
+
+        app.put("/categories/{id}", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            CategoryInput in = ctx.body(CategoryInput.class);
+            categories.update(user, Long.parseLong(ctx.pathParam("id")),
+                    in == null ? null : in.name(), in == null ? null : in.color(), in == null ? null : in.icon());
+            ctx.json(Map.of("status", "updated"));
+        });
+
+        app.delete("/categories/{id}", ctx -> {
+            categories.delete(email(ctx.header("Cookie")), Long.parseLong(ctx.pathParam("id")));
+            ctx.json(Map.of("status", "deleted"));
+        });
 
         app.get("/expenses", ctx ->
                 ctx.json(svc.listByMonth(email(ctx.header("Cookie")), ctx.queryParam("month"))));

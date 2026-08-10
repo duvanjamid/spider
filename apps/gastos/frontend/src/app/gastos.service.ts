@@ -10,7 +10,11 @@ export interface Expense {
   categorySlug: string; categoryName: string; categoryColor: string;
 }
 export interface CatTotal { slug: string; name: string; color: string; total: number; }
-export interface Summary { month: string; total: number; byCategory: CatTotal[]; }
+export interface Summary {
+  month: string; total: number; byCategory: CatTotal[];
+  count: number; daysInMonth: number; daysElapsed: number;
+  dailyAverage: number; projectedEndOfMonth: number; previousMonthTotal: number;
+}
 export interface TrendPoint { month: string; total: number; }
 export interface Trend { series: TrendPoint[]; forecastNext: number; average: number; }
 
@@ -37,6 +41,13 @@ export class GastosService {
   private opts = { withCredentials: true };
 
   categories(): Observable<Category[]> { return this.http.get<Category[]>(`${this.base}/categories`, this.opts); }
+  createCategory(name: string, color: string, icon: string): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(`${this.base}/categories`, { name, color, icon }, this.opts);
+  }
+  updateCategory(id: number, body: { name?: string; color?: string; icon?: string }): Observable<unknown> {
+    return this.http.put(`${this.base}/categories/${id}`, body, this.opts);
+  }
+  deleteCategory(id: number): Observable<unknown> { return this.http.delete(`${this.base}/categories/${id}`, this.opts); }
   expenses(month: string): Observable<Expense[]> { return this.http.get<Expense[]>(`${this.base}/expenses?month=${month}`, this.opts); }
   create(e: NewExpense): Observable<{ id: number }> { return this.http.post<{ id: number }>(`${this.base}/expenses`, e, this.opts); }
   remove(id: number): Observable<unknown> { return this.http.delete(`${this.base}/expenses/${id}`, this.opts); }

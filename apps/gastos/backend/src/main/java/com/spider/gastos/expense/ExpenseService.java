@@ -112,7 +112,45 @@ public class ExpenseService {
                 }
             }
         } catch (Exception e) { throw new RuntimeException("Error en resumen", e); }
-        return Map.of("month", ym, "total", total, "byCategory", byCat);
+
+        // ── Estadísticas y proyección ──
+        YearMonth month2 = YearMonth.parse(ym);
+        YearMonth current = YearMonth.now();
+        int daysInMonth = month2.lengthOfMonth();
+        int daysElapsed = month2.isBefore(current) ? daysInMonth
+                : month2.isAfter(current) ? 0 : LocalDate.now().getDayOfMonth();
+        double dailyAvg = daysElapsed > 0 ? total / daysElapsed : 0;
+        double projected = month2.equals(current) ? dailyAvg * daysInMonth : total;
+        int count = countExpenses(email, ym);
+        double prev = monthTotal(email, month2.minusMonths(1).toString());
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("month", ym);
+        out.put("total", total);
+        out.put("byCategory", byCat);
+        out.put("count", count);
+        out.put("daysInMonth", daysInMonth);
+        out.put("daysElapsed", daysElapsed);
+        out.put("dailyAverage", dailyAvg);
+        out.put("projectedEndOfMonth", projected);
+        out.put("previousMonthTotal", prev);
+        return out;
+    }
+
+    private int countExpenses(String email, String ym) {
+        String sql = "SELECT COUNT(*) FROM expense WHERE owner_email = ? AND to_char(spent_on,'YYYY-MM') = ?";
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, email); ps.setString(2, ym);
+            try (ResultSet rs = ps.executeQuery()) { rs.next(); return rs.getInt(1); }
+        } catch (Exception e) { return 0; }
+    }
+
+    private double monthTotal(String email, String ym) {
+        String sql = "SELECT COALESCE(SUM(amount),0) FROM expense WHERE owner_email = ? AND to_char(spent_on,'YYYY-MM') = ?";
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, email); ps.setString(2, ym);
+            try (ResultSet rs = ps.executeQuery()) { rs.next(); return rs.getBigDecimal(1).doubleValue(); }
+        } catch (Exception e) { return 0; }
     }
 
     public Map<String, Object> trend(String email, int months) {
