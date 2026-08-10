@@ -4,6 +4,7 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -21,9 +22,12 @@ public class CategoryService {
         this.ds = ds;
     }
 
-    /** Garantiza las categorías base del usuario y devuelve su lista. */
+    /**
+     * Lista las categorías del usuario. Ya NO auto-siembra: el usuario elige
+     * sus categorías en el onboarding (ver {@link #templates()} y
+     * {@link #adopt}). Los usuarios previos a V4 ya tienen las suyas.
+     */
     public List<Map<String, Object>> ensureAndList(String email) {
-        seedIfEmpty(email);
         String sql = "SELECT id, slug, name, color, icon FROM category WHERE owner_email = ? ORDER BY name";
         List<Map<String, Object>> out = new ArrayList<>();
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
@@ -39,28 +43,68 @@ public class CategoryService {
         return out;
     }
 
-    /** Copia las plantillas base a este usuario si aún no tiene categorías. */
-    private void seedIfEmpty(String email) {
-        String copy = """
+    /** Set base de categorías (plantillas, owner_email IS NULL) para elegir en el onboarding. */
+    public List<Map<String, Object>> templates() {
+        String sql = "SELECT slug, name, color, icon FROM category WHERE owner_email IS NULL ORDER BY name";
+        List<Map<String, Object>> out = new ArrayList<>();
+        try (Connection c = ds.getConnection(); Statement st = c.createStatement();
+             ResultSet rs = st.executeQuery(sql)) {
+            while (rs.next()) {
+                out.add(Map.of("slug", rs.getString("slug"), "name", rs.getString("name"),
+                        "color", rs.getString("color"), "icon", rs.getString("icon")));
+            }
+        } catch (Exception e) { throw new RuntimeException("Error listando plantillas", e); }
+        return out;
+    }
+
+    /** ¿El usuario ya completó el onboarding (o es previo a V4 con categorías/gastos)? */
+    public boolean isOnboarded(String email) {
+        String sql = """
+                SELECT EXISTS(SELECT 1 FROM user_setup WHERE owner_email = ?)
+                    OR EXISTS(SELECT 1 FROM category   WHERE owner_email = ?)
+                    OR EXISTS(SELECT 1 FROM expense    WHERE owner_email = ?)
+                """;
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, email); ps.setString(2, email); ps.setString(3, email);
+            try (ResultSet rs = ps.executeQuery()) { return rs.next() && rs.getBoolean(1); }
+        } catch (Exception e) { throw new RuntimeException("Error consultando onboarding", e); }
+    }
+
+    /** Marca el onboarding como completado (idempotente). */
+    public void markOnboarded(String email) {
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(
+                "INSERT INTO user_setup (owner_email) VALUES (?) ON CONFLICT (owner_email) DO NOTHING")) {
+            ps.setString(1, email);
+            ps.executeUpdate();
+        } catch (Exception e) { throw new RuntimeException("Error marcando onboarding", e); }
+    }
+
+    /**
+     * Adopta para el usuario las plantillas indicadas por slug y marca el
+     * onboarding como completado. Devuelve cuántas categorías tiene tras esto.
+     */
+    public int adopt(String email, List<String> slugs) {
+        String copyOne = """
                 INSERT INTO category (slug, name, color, icon, owner_email)
                 SELECT slug, name, color, icon, ?
-                FROM category WHERE owner_email IS NULL
+                FROM category WHERE owner_email IS NULL AND slug = ?
                 ON CONFLICT (owner_email, slug) DO NOTHING
                 """;
         try (Connection c = ds.getConnection()) {
-            boolean has;
-            try (PreparedStatement q = c.prepareStatement(
-                    "SELECT 1 FROM category WHERE owner_email = ? LIMIT 1")) {
-                q.setString(1, email);
-                try (ResultSet rs = q.executeQuery()) { has = rs.next(); }
-            }
-            if (!has) {
-                try (PreparedStatement ps = c.prepareStatement(copy)) {
-                    ps.setString(1, email);
-                    ps.executeUpdate();
+            if (slugs != null) {
+                try (PreparedStatement ps = c.prepareStatement(copyOne)) {
+                    for (String slug : slugs) {
+                        if (slug == null || slug.isBlank()) continue;
+                        ps.setString(1, email);
+                        ps.setString(2, slug.trim());
+                        ps.addBatch();
+                    }
+                    ps.executeBatch();
                 }
             }
-        } catch (Exception e) { throw new RuntimeException("Error sembrando categorías", e); }
+        } catch (Exception e) { throw new RuntimeException("Error adoptando categorías", e); }
+        markOnboarded(email);
+        return ensureAndList(email).size();
     }
 
     /** Crea una categoría para el usuario. Devuelve su id. */

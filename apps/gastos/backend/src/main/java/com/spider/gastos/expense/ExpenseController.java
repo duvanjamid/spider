@@ -5,6 +5,7 @@ import com.spider.gastos.ai.GeminiScanner;
 import com.spider.gastos.config.Env;
 import com.spider.gastos.session.Identity;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -33,6 +34,12 @@ public final class ExpenseController {
     /** Cuerpo para escanear una imagen. */
     public record ScanInput(String image, String mediaType) {}
 
+    /** Cuerpo para escanear texto pegado. */
+    public record TextScanInput(String text) {}
+
+    /** Cuerpo del onboarding: categorías (por slug) que el usuario adopta. */
+    public record OnboardingInput(List<String> slugs) {}
+
     /** Cuerpo para crear/editar una categoría. */
     public record CategoryInput(String name, String color, String icon) {}
 
@@ -59,7 +66,27 @@ public final class ExpenseController {
         this.scanner = scanner;
     }
 
+    private static final String GUEST = "invitado@spider";
+
     public void register(Ligero app) {
+        // Estado del usuario: si ya completó el onboarding y si es invitado.
+        app.get("/me", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            ctx.json(Map.of("email", user, "guest", GUEST.equals(user),
+                    "onboarded", categories.isOnboarded(user)));
+        });
+
+        // Set base de categorías para elegir en el onboarding.
+        app.get("/category-templates", ctx -> ctx.json(categories.templates()));
+
+        // Adopta las categorías elegidas y marca el onboarding como hecho.
+        app.post("/onboarding", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            OnboardingInput in = ctx.body(OnboardingInput.class);
+            int count = categories.adopt(user, in == null ? null : in.slugs());
+            ctx.json(Map.of("status", "ok", "count", count));
+        });
+
         app.get("/categories", ctx -> ctx.json(categories.ensureAndList(email(ctx.header("Cookie")))));
 
         app.post("/categories", ctx -> {
@@ -161,6 +188,25 @@ public final class ExpenseController {
                 ctx.json(scanner.scan(in.image(), or(in.mediaType(), "image/jpeg"), cats));
             } catch (Exception e) {
                 ctx.status(502).json(Map.of("error", "No se pudo leer la imagen: " + e.getMessage()));
+            }
+        });
+
+        app.post("/scan-text", ctx -> {
+            if (!Env.aiEnabled()) {
+                ctx.status(503).json(Map.of("error", "IA no configurada (falta GEMINI_API_KEY)"));
+                return;
+            }
+            String user = email(ctx.header("Cookie"));
+            TextScanInput in = ctx.body(TextScanInput.class);
+            if (in == null || in.text() == null || in.text().isBlank()) {
+                ctx.status(400).json(Map.of("error", "falta 'text'"));
+                return;
+            }
+            try {
+                var cats = categories.ensureAndList(user);
+                ctx.json(scanner.scanText(in.text(), cats));
+            } catch (Exception e) {
+                ctx.status(502).json(Map.of("error", "No se pudo leer el texto: " + e.getMessage()));
             }
         });
     }

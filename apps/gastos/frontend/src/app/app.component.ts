@@ -6,228 +6,366 @@ import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
 import { ChartModule } from 'primeng/chart';
 import { DialogModule } from 'primeng/dialog';
-import { ProgressSpinnerModule } from 'primeng/progressspinner';
-import { GastosService, Budget, Category, Expense, Monto, Recurring, Scan, Summary, Trend } from './gastos.service';
+import { TabViewModule } from 'primeng/tabview';
+import { TagModule } from 'primeng/tag';
+import {
+  Budget, Category, CategoryTemplate, Expense, GastosService, Me, Monto, Recurring, Region, Scan, Summary, Trend,
+} from './gastos.service';
 
 type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [NgFor, NgIf, FormsModule, ButtonModule, CardModule, ChartModule, DialogModule, ProgressSpinnerModule],
+  imports: [NgFor, NgIf, FormsModule, ButtonModule, CardModule, ChartModule, DialogModule, TabViewModule, TagModule],
   styles: [`
-    .wrap { max-width: 1100px; margin: 0 auto; padding: 22px 16px 72px; }
-    header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
-    h1 { font-size: 1.5rem; margin: 0; }
-    h3 { margin: 20px 0 10px; }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px 84px; }
+
+    /* App bar */
+    .bar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 10px;
+           padding: 14px 4px; background: color-mix(in srgb, var(--bg) 86%, transparent);
+           backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.2rem; }
+    .env { font-size: .66rem; font-weight: 800; letter-spacing: .5px; padding: 3px 7px; border-radius: 6px;
+           background: #f59e0b; color: #1a1200; text-transform: uppercase; }
     .spacer { flex: 1; }
-    .muted { color: var(--muted, #9aa3b2); }
-    .month { display: flex; align-items: center; gap: 6px; }
-    .month b { min-width: 150px; text-align: center; text-transform: capitalize; }
+    .month { display: flex; align-items: center; gap: 4px; }
+    .month b { min-width: 132px; text-align: center; text-transform: capitalize; font-size: .95rem; }
+    .muted { color: var(--muted); }
 
-    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 6px; }
-    @media (max-width: 820px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
-    .kpi { background: var(--panel,#1a1d24); border: 1px solid var(--border,#262a33); border-radius: 14px; padding: 16px; }
-    .kpi .lbl { font-size: .8rem; color: var(--muted,#9aa3b2); display: flex; align-items: center; gap: 6px; }
-    .kpi .val { font-size: 1.5rem; font-weight: 700; margin-top: 4px; }
+    /* Acciones primarias */
+    .actions { display: flex; gap: 10px; margin: 16px 0 8px; flex-wrap: wrap; align-items: center; }
+    .tools { display: flex; gap: 4px; flex-wrap: wrap; }
+
+    /* KPIs */
+    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    @media (max-width: 860px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
+    .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 16px; box-shadow: var(--shadow); }
+    .kpi .lbl { font-size: .78rem; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+    .kpi .val { font-size: 1.5rem; font-weight: 800; margin-top: 6px; letter-spacing: -.5px; }
     .kpi .sub { font-size: .8rem; margin-top: 4px; }
-    .up { color: #ef4444; } .down { color: #10b981; }
-    .accent { color: var(--accent,#6c8cff); }
+    .up { color: #ef4444; } .down { color: #10b981; } .accent { color: var(--accent); }
 
-    .charts { display: grid; grid-template-columns: 1.1fr 1.3fr; gap: 16px; margin-bottom: 8px; }
-    @media (max-width: 900px) { .charts { grid-template-columns: 1fr; } }
-    .chart-box { height: 250px; position: relative; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 820px) { .grid2 { grid-template-columns: 1fr; } }
+    .chart-box { height: 280px; position: relative; }
 
+    /* Presupuestos */
+    .bud { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
+    .bud .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+    .bud .bname { width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bud .bar { flex: 1; height: 8px; background: var(--panel-2); border-radius: 999px; overflow: hidden; }
+    .bud .bar .fill { height: 100%; border-radius: 999px; transition: width .4s ease; }
+    .bud .bfig { font-size: .8rem; white-space: nowrap; min-width: 140px; text-align: right; }
+
+    /* Movimientos */
+    .filters { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
     .list { display: flex; flex-direction: column; gap: 8px; }
-    .row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--border,#262a33);
-           border-radius: 12px; background: var(--panel,#1a1d24); }
-    .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
-    .row .grow { flex: 1; min-width: 0; } .row .grow small { color: var(--muted,#9aa3b2); }
-    .amt { font-weight: 700; white-space: nowrap; }
-    .actions { display: flex; gap: 10px; margin: 16px 0; flex-wrap: wrap; align-items: center; }
+    .row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--border);
+           border-radius: 14px; background: var(--panel); }
+    .row .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+    .row .grow { flex: 1; min-width: 0; } .row .grow small { color: var(--muted); }
+    .amt { font-weight: 800; white-space: nowrap; }
 
-    .sheet { display: flex; flex-direction: column; gap: 14px; padding: 4px 2px; }
-    .center { text-align: center; padding: 22px 8px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
-    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    /* Campos (theme-aware, legibles en claro y oscuro) */
+    .inp, .sel, .ta { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
+           background: var(--panel-2); color: var(--fg); font-size: 1rem; font-family: inherit; }
+    .inp:focus, .sel:focus, .ta:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+    .ta { min-height: 120px; resize: vertical; }
     .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label { font-size: .8rem; color: var(--muted); }
     .field.full { grid-column: 1 / -1; }
-    .field label { font-size: .82rem; color: var(--muted,#9aa3b2); }
-    .field input, .field select { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border,#262a33);
-           background: #0f1115; color: var(--fg,#e6e8ee); font-size: 1rem; }
-    .montos { display: flex; flex-wrap: wrap; gap: 8px; }
-    .chip { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border,#262a33);
-            padding: 8px 12px; border-radius: 999px; cursor: pointer; background: var(--panel,#1a1d24); }
-    .chip.sel { border-color: var(--accent,#6c8cff); background: rgba(108,140,255,.14); }
-    .chip small { color: var(--muted,#9aa3b2); }
-    .hint { font-size: .85rem; color: #f59e0b; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .hint { font-size: .82rem; color: #f59e0b; }
 
+    /* Montos como chips */
+    .montos { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border);
+            padding: 9px 12px; border-radius: 999px; cursor: pointer; background: var(--panel-2); }
+    .chip.sel { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+    .chip small { color: var(--muted); }
+
+    /* Categorías / recurrentes rows */
     .cat-add { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
-    .cat-add input[type=text] { flex: 1; min-width: 140px; padding: 9px 11px; border-radius: 8px;
-           border: 1px solid var(--border,#262a33); background: #0f1115; color: var(--fg,#e6e8ee); }
-    .cat-add input[type=color] { width: 42px; height: 38px; border: none; background: none; }
-    .cat-row { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--border,#262a33); }
-    .cat-row input[type=number] { width: 110px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border,#262a33); background:#0f1115; color:var(--fg,#e6e8ee); }
-    .bud { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
-    .bud .bname { width: 120px; }
-    .bud .bar { flex: 1; height: 8px; background: #0f1115; border-radius: 999px; overflow: hidden; }
-    .bud .bar .fill { height: 100%; border-radius: 999px; }
-    .bud .bfig { font-size: .82rem; white-space: nowrap; min-width: 140px; text-align: right; }
-    .filters { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
-    .filters input, .filters select { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border,#262a33); background:#0f1115; color:var(--fg,#e6e8ee); }
+    .cat-add input[type=color] { width: 44px; height: 40px; border: none; background: none; padding: 0; }
+    .cat-row { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--border); }
+
+    /* Segmented (sub-tabs de la hoja) */
+    .seg { display: inline-flex; background: var(--panel-2); border-radius: 10px; padding: 3px; gap: 3px; margin-bottom: 10px; }
+    .seg button { border: none; background: transparent; color: var(--muted); padding: 7px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+    .seg button.on { background: var(--panel); color: var(--fg); box-shadow: var(--shadow); }
+
+    /* ═══ Animación de análisis IA (elegante) ═══ */
+    .scan-anim { display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 20px 8px 8px; }
+    .doc { position: relative; width: 128px; height: 160px; border-radius: 12px; background: var(--panel-2);
+           border: 1px solid var(--border); overflow: hidden; box-shadow: var(--shadow); }
+    .doc .ln { height: 9px; margin: 14px 14px 0; border-radius: 4px; background: color-mix(in srgb, var(--fg) 14%, transparent); }
+    .doc .ln.s { width: 55%; } .doc .ln.m { width: 78%; } .doc .ln.l { width: 92%; }
+    .doc .laser { position: absolute; left: 0; right: 0; height: 26px; top: -26px;
+           background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--accent) 55%, transparent), transparent);
+           animation: sweep 1.8s ease-in-out infinite; }
+    .doc::after { content: ''; position: absolute; inset: 0; border-radius: 12px;
+           box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent); animation: pulseb 1.8s ease-in-out infinite; }
+    @keyframes sweep { 0% { top: -26px; } 55% { top: 160px; } 100% { top: 160px; } }
+    @keyframes pulseb { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
+    .scan-status { text-align: center; }
+    .scan-status .t { font-weight: 700; }
+    .scan-status .s { color: var(--muted); font-size: .88rem; margin-top: 3px; min-height: 20px; transition: opacity .3s; }
+    .beads { display: flex; gap: 6px; }
+    .beads i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); opacity: .3; animation: bead 1.2s infinite; }
+    .beads i:nth-child(2){ animation-delay: .2s } .beads i:nth-child(3){ animation-delay: .4s }
+    @keyframes bead { 0%,100%{ opacity:.3; transform: translateY(0) } 50%{ opacity:1; transform: translateY(-4px) } }
+
+    /* Imagen analizada con regiones */
+    .analyzed { position: relative; width: 100%; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+    .analyzed img { display: block; width: 100%; }
+    .region { position: absolute; border: 2px solid var(--accent); border-radius: 6px;
+              box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+    .region .rlbl { position: absolute; top: -20px; left: -2px; font-size: .66rem; font-weight: 700;
+              background: var(--accent); color: #08130c; padding: 1px 6px; border-radius: 5px; white-space: nowrap; }
+
     .cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    .cmp .col { text-align: center; } .cmp .big { font-size: 1.4rem; font-weight: 700; }
+    .cmp .col { text-align: center; } .cmp .big { font-size: 1.4rem; font-weight: 800; }
+
+    /* ═══ Onboarding ═══ */
+    .onb { max-width: 720px; margin: 0 auto; padding: 40px 18px 60px; }
+    .onb .head { text-align: center; margin-bottom: 22px; }
+    .onb .head .big { font-size: 2.6rem; }
+    .onb .head h2 { margin: 10px 0 6px; }
+    .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+    .tcard { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; cursor: pointer;
+             border: 2px solid var(--border); background: var(--panel); transition: border-color .15s, transform .1s; }
+    .tcard:hover { transform: translateY(-2px); }
+    .tcard.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
+    .tcard .ic { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; color: #fff; flex: none; }
+    .tcard .nm { font-weight: 600; }
+    .tcard .ck { margin-left: auto; color: var(--accent); }
+    .onb .foot { position: sticky; bottom: 0; margin-top: 24px; padding: 14px 0; display: flex; gap: 10px;
+                 align-items: center; justify-content: space-between; background: color-mix(in srgb, var(--bg) 88%, transparent); }
   `],
   template: `
-    <div class="wrap">
-      <header>
-        <h1>💸 Gastos</h1>
-        <p-button label="Categorías" icon="pi pi-tags" [text]="true" size="small" (onClick)="openCats()" />
+    <!-- ═══════════════ ONBOARDING (primera vez) ═══════════════ -->
+    <div class="onb" *ngIf="onboarding()">
+      <div class="head">
+        <div class="big">💸</div>
+        <h2>Elige tus categorías</h2>
+        <p class="muted">Selecciona las que uses. Podrás editarlas o añadir más cuando quieras.</p>
+      </div>
+      <div class="tgrid">
+        <div class="tcard" *ngFor="let t of templates()" [class.on]="isChosen(t.slug)" (click)="toggleChoice(t.slug)">
+          <span class="ic" [style.background]="t.color"><i class="pi {{ t.icon }}"></i></span>
+          <span class="nm">{{ t.name }}</span>
+          <i class="pi pi-check-circle ck" *ngIf="isChosen(t.slug)"></i>
+        </div>
+      </div>
+      <div class="foot">
+        <p-button label="Seleccionar todas" [text]="true" (onClick)="chooseAll()" />
+        <p-button label="Continuar" icon="pi pi-arrow-right" iconPos="right"
+                  (onClick)="finishOnboarding()" [loading]="saving()" [disabled]="!chosen().length" />
+      </div>
+    </div>
+
+    <!-- ═══════════════ APP ═══════════════ -->
+    <div class="wrap" *ngIf="!onboarding()">
+      <div class="bar">
+        <div class="brand">💸 Gastos <span class="env" *ngIf="isTest()">test</span></div>
         <span class="spacer"></span>
         <div class="month">
-          <p-button icon="pi pi-chevron-left" [text]="true" (onClick)="shiftMonth(-1)" />
+          <p-button icon="pi pi-chevron-left" [text]="true" (onClick)="shiftMonth(-1)" aria-label="Mes anterior" />
           <b>{{ monthLabel() }}</b>
-          <p-button icon="pi pi-chevron-right" [text]="true" (onClick)="shiftMonth(1)" />
-        </div>
-      </header>
-
-      <!-- KPIs -->
-      <div class="kpis" *ngIf="summary() as s">
-        <div class="kpi">
-          <div class="lbl"><i class="pi pi-wallet"></i> Total del mes</div>
-          <div class="val">{{ fmt(s.total) }}</div>
-          <div class="sub muted">{{ s.count }} movimiento(s)</div>
-        </div>
-        <div class="kpi">
-          <div class="lbl"><i class="pi pi-calendar"></i> Promedio diario</div>
-          <div class="val">{{ fmt(s.dailyAverage) }}</div>
-          <div class="sub muted">día {{ s.daysElapsed }} de {{ s.daysInMonth }}</div>
-        </div>
-        <div class="kpi">
-          <div class="lbl"><i class="pi pi-chart-line"></i> Proyección fin de mes</div>
-          <div class="val accent">{{ fmt(s.projectedEndOfMonth) }}</div>
-          <div class="sub muted">a este ritmo</div>
-        </div>
-        <div class="kpi">
-          <div class="lbl"><i class="pi pi-sync"></i> vs mes anterior</div>
-          <div class="val">{{ fmt(s.previousMonthTotal) }}</div>
-          <div class="sub" [class.up]="change() > 0" [class.down]="change() < 0" *ngIf="s.previousMonthTotal > 0">
-            {{ change() > 0 ? '▲' : change() < 0 ? '▼' : '' }} {{ absChange() }}%
-          </div>
-          <div class="sub muted" *ngIf="s.previousMonthTotal === 0">sin datos previos</div>
+          <p-button icon="pi pi-chevron-right" [text]="true" (onClick)="shiftMonth(1)" aria-label="Mes siguiente" />
         </div>
       </div>
 
       <div class="actions">
         <input #file type="file" accept="image/*" hidden (change)="onFile($event)" />
         <p-button label="Escanear recibo" icon="pi pi-camera" (onClick)="file.click()"
-                  [disabled]="!aiEnabled()" [loading]="sheetState() === 'loading'" />
-        <p-button label="Agregar manual" icon="pi pi-plus" [outlined]="true" (onClick)="openManual()" />
+                  [disabled]="!aiEnabled()" [loading]="sheetState() === 'loading' && !!lastImageUrl()" />
+        <p-button label="Pegar texto" icon="pi pi-align-left" [outlined]="true" (onClick)="openText()" [disabled]="!aiEnabled()" />
+        <p-button label="Manual" icon="pi pi-plus" [outlined]="true" (onClick)="openManual()" />
         <span class="spacer"></span>
-        <p-button label="Recurrentes" icon="pi pi-replay" [text]="true" size="small" (onClick)="openRecurring()" />
-        <p-button label="Comparar" icon="pi pi-sort-alt" [text]="true" size="small" (onClick)="openCompare()" />
-        <p-button label="CSV" icon="pi pi-download" [text]="true" size="small" (onClick)="exportCsv()" />
-      </div>
-      <div class="muted" *ngIf="!aiEnabled()" style="margin:-8px 0 8px"><i class="pi pi-info-circle"></i> Configura GEMINI_API_KEY para el escaneo.</div>
-
-      <!-- Presupuestos -->
-      <p-card header="Presupuestos" *ngIf="budgeted().length">
-        <div class="bud" *ngFor="let b of budgeted()">
-          <span class="dot" [style.background]="b.color"></span>
-          <span class="bname">{{ b.name }}</span>
-          <div class="bar"><div class="fill" [style.width.%]="b.pct" [style.background]="b.over ? '#ef4444' : b.color"></div></div>
-          <span class="bfig" [class.up]="b.over">{{ fmt(b.total) }} / {{ fmt(b.budget) }}</span>
-          <i class="pi pi-exclamation-circle up" *ngIf="b.over" title="Presupuesto superado"></i>
-        </div>
-      </p-card>
-
-      <!-- Gráficos -->
-      <div class="charts" *ngIf="(summary()?.byCategory?.length || 0) > 0 || (trend()?.series?.length || 0) > 0">
-        <p-card header="Distribución por categoría">
-          <div class="chart-box"><p-chart type="doughnut" [data]="pieData()" [options]="pieOptions" /></div>
-        </p-card>
-        <p-card header="Tendencia y estimación">
-          <div class="chart-box"><p-chart type="line" [data]="lineData()" [options]="lineOptions" /></div>
-        </p-card>
-      </div>
-      <p-card header="Gasto por categoría (mes)" *ngIf="(summary()?.byCategory?.length || 0) > 0">
-        <div class="chart-box"><p-chart type="bar" [data]="barData()" [options]="barOptions" /></div>
-      </p-card>
-
-      <h3>Movimientos</h3>
-      <div class="filters">
-        <input type="text" [(ngModel)]="query" placeholder="Buscar (comercio, descripción, NIT)…" style="flex:1;min-width:180px" />
-        <select [(ngModel)]="filterCat">
-          <option value="">Todas las categorías</option>
-          <option *ngFor="let c of categories()" [value]="c.slug">{{ c.name }}</option>
-        </select>
-        <span class="muted">{{ filtered().length }} de {{ expenses().length }}</span>
-      </div>
-      <div class="list">
-        <div class="row" *ngFor="let e of filtered()">
-          <span class="dot" [style.background]="e.categoryColor || '#9aa3b2'"></span>
-          <div class="grow">
-            <div>{{ e.merchant || e.description || e.categoryName || 'Gasto' }}</div>
-            <small>{{ e.categoryName || 'Otros' }} · {{ e.spentOn }}<span *ngIf="e.source === 'scan'"> · 🤖</span><span *ngIf="e.source === 'recurring'"> · 🔁</span></small>
-          </div>
-          <span class="amt">{{ fmt(e.amount, e.currency) }}</span>
-          <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="del(e.id)" />
-        </div>
-        <p class="muted" *ngIf="loaded() && filtered().length === 0">Sin movimientos que coincidan.</p>
-      </div>
-    </div>
-
-    <!-- Hoja inferior: escaneo / alta -->
-    <p-dialog [(visible)]="sheetVisible" [modal]="true" [position]="'bottom'" [dismissableMask]="true"
-              [style]="{ width: '100%', maxWidth: '560px' }" [header]="sheetTitle()">
-      <div class="center" *ngIf="sheetState() === 'loading'">
-        <p-progressSpinner strokeWidth="4" [style]="{ width: '48px', height: '48px' }" />
-        <span class="muted">Leyendo la factura con IA…</span>
-      </div>
-      <div class="center" *ngIf="sheetState() === 'error'">
-        <i class="pi pi-exclamation-triangle" style="font-size:2rem;color:#ef4444"></i>
-        <b>No se pudo leer la imagen.</b>
-        <span class="muted">Revisa tu conexión o intenta con otra foto.</span>
-        <div style="display:flex;gap:8px;margin-top:6px">
-          <p-button label="Reintentar" icon="pi pi-refresh" (onClick)="retry()" />
-          <p-button label="Tomar otra" icon="pi pi-camera" [outlined]="true" (onClick)="pickAgain()" />
+        <div class="tools">
+          <p-button label="Categorías" icon="pi pi-tags" [text]="true" size="small" (onClick)="openCats()" />
+          <p-button label="Recurrentes" icon="pi pi-replay" [text]="true" size="small" (onClick)="openRecurring()" />
+          <p-button label="Comparar" icon="pi pi-sort-alt" [text]="true" size="small" (onClick)="openCompare()" />
+          <p-button label="CSV" icon="pi pi-download" [text]="true" size="small" (onClick)="exportCsv()" />
         </div>
       </div>
-      <div class="center" *ngIf="sheetState() === 'unreadable'">
-        <i class="pi pi-image" style="font-size:2rem;color:#f59e0b"></i>
-        <b>No se pudo identificar la factura.</b>
-        <span class="muted">La imagen no parece un recibo legible. Carga o toma otra foto.</span>
-        <div style="display:flex;gap:8px;margin-top:6px">
-          <p-button label="Reintentar" icon="pi pi-refresh" (onClick)="retry()" />
-          <p-button label="Tomar otra" icon="pi pi-camera" [outlined]="true" (onClick)="pickAgain()" />
-          <p-button label="Ingresar manual" [text]="true" (onClick)="toManual()" />
-        </div>
-      </div>
-      <div class="sheet" *ngIf="sheetState() === 'form'">
-        <div class="form-grid">
-          <div class="field full" *ngIf="montos().length">
-            <label>¿Cuál total pagaste?</label>
-            <div class="montos">
-              <div class="chip" *ngFor="let m of montos()" [class.sel]="form.amount === m.valor" (click)="form.amount = m.valor">
-                <b>{{ fmt(m.valor) }}</b> <small>{{ m.etiqueta }}</small>
+      <div class="muted" *ngIf="!aiEnabled()" style="margin:-2px 0 8px"><i class="pi pi-info-circle"></i> Configura GEMINI_API_KEY para el escaneo con IA.</div>
+
+      <p-tabView>
+        <!-- Resumen -->
+        <p-tabPanel header="Resumen" leftIcon="pi pi-th-large">
+          <div class="kpis" *ngIf="summary() as s" style="margin-bottom:16px">
+            <div class="kpi">
+              <div class="lbl"><i class="pi pi-wallet"></i> Total del mes</div>
+              <div class="val">{{ fmt(s.total) }}</div>
+              <div class="sub muted">{{ s.count }} movimiento(s)</div>
+            </div>
+            <div class="kpi">
+              <div class="lbl"><i class="pi pi-calendar"></i> Promedio diario</div>
+              <div class="val">{{ fmt(s.dailyAverage) }}</div>
+              <div class="sub muted">día {{ s.daysElapsed }} de {{ s.daysInMonth }}</div>
+            </div>
+            <div class="kpi">
+              <div class="lbl"><i class="pi pi-chart-line"></i> Proyección fin de mes</div>
+              <div class="val accent">{{ fmt(s.projectedEndOfMonth) }}</div>
+              <div class="sub muted">a este ritmo</div>
+            </div>
+            <div class="kpi">
+              <div class="lbl"><i class="pi pi-sync"></i> vs mes anterior</div>
+              <div class="val">{{ fmt(s.previousMonthTotal) }}</div>
+              <div class="sub" [class.up]="change() > 0" [class.down]="change() < 0" *ngIf="s.previousMonthTotal > 0">
+                {{ change() > 0 ? '▲' : change() < 0 ? '▼' : '' }} {{ absChange() }}%
               </div>
+              <div class="sub muted" *ngIf="s.previousMonthTotal === 0">sin datos previos</div>
             </div>
           </div>
-          <div class="field"><label>Monto a pagar</label><input type="number" [(ngModel)]="form.amount" placeholder="0" /></div>
-          <div class="field"><label>Moneda</label><input type="text" [(ngModel)]="form.currency" placeholder="COP" /></div>
-          <div class="field">
-            <label>Categoría</label>
-            <select [(ngModel)]="form.categoryId">
-              <option [ngValue]="null" disabled>Elige…</option>
-              <option *ngFor="let c of categories()" [ngValue]="c.id">{{ c.name }}</option>
-            </select>
-            <span class="hint" *ngIf="suggested()">Sugerida por IA: “{{ suggested() }}” — créala en Categorías</span>
+
+          <div class="grid2">
+            <p-card header="Distribución por categoría">
+              <div class="chart-box" *ngIf="(summary()?.byCategory?.length || 0) > 0; else noData">
+                <p-chart type="doughnut" [data]="pieData()" [options]="pieOptions()" />
+              </div>
+            </p-card>
+            <p-card header="Presupuestos" *ngIf="budgeted().length; else noBudget">
+              <div class="bud" *ngFor="let b of budgeted()">
+                <span class="dot" [style.background]="b.color"></span>
+                <span class="bname">{{ b.name }}</span>
+                <div class="bar"><div class="fill" [style.width.%]="b.pct" [style.background]="b.over ? '#ef4444' : b.color"></div></div>
+                <span class="bfig" [class.up]="b.over">{{ fmt(b.total) }} / {{ fmt(b.budget) }}</span>
+              </div>
+            </p-card>
           </div>
-          <div class="field"><label>Fecha de compra</label><input type="date" [(ngModel)]="form.spentOn" /></div>
-          <div class="field"><label>Establecimiento</label><input type="text" [(ngModel)]="form.merchant" placeholder="Comercio" /></div>
-          <div class="field"><label>NIT</label><input type="text" [(ngModel)]="form.nit" placeholder="NIT / ID tributario" /></div>
-          <div class="field full"><label>Descripción</label><input type="text" [(ngModel)]="form.description" placeholder="Detalle" /></div>
+        </p-tabPanel>
+
+        <!-- Categorías -->
+        <p-tabPanel header="Categorías" leftIcon="pi pi-chart-pie">
+          <p-card header="Gasto por categoría (mes)">
+            <div class="chart-box" style="height:320px" *ngIf="(summary()?.byCategory?.length || 0) > 0; else noData">
+              <p-chart type="bar" [data]="barData()" [options]="barOptions()" />
+            </div>
+          </p-card>
+        </p-tabPanel>
+
+        <!-- Tendencia -->
+        <p-tabPanel header="Tendencia" leftIcon="pi pi-chart-line">
+          <p-card header="Tendencia y estimación">
+            <div class="chart-box" style="height:320px" *ngIf="(trend()?.series?.length || 0) > 0; else noData">
+              <p-chart type="line" [data]="lineData()" [options]="lineOptions()" />
+            </div>
+          </p-card>
+        </p-tabPanel>
+
+        <!-- Movimientos -->
+        <p-tabPanel header="Movimientos" leftIcon="pi pi-list">
+          <div class="filters">
+            <input class="inp" style="flex:1;min-width:180px" type="text" [(ngModel)]="query" placeholder="Buscar (comercio, descripción, NIT)…" />
+            <select class="sel" style="width:auto" [(ngModel)]="filterCat">
+              <option value="">Todas las categorías</option>
+              <option *ngFor="let c of categories()" [value]="c.slug">{{ c.name }}</option>
+            </select>
+            <span class="muted">{{ filtered().length }} de {{ expenses().length }}</span>
+          </div>
+          <div class="list">
+            <div class="row" *ngFor="let e of filtered()">
+              <span class="dot" [style.background]="e.categoryColor || '#9aa3b2'"></span>
+              <div class="grow">
+                <div>{{ e.merchant || e.description || e.categoryName || 'Gasto' }}</div>
+                <small>{{ e.categoryName || 'Otros' }} · {{ e.spentOn }}<span *ngIf="e.source === 'scan'"> · 🤖</span><span *ngIf="e.source === 'recurring'"> · 🔁</span></small>
+              </div>
+              <span class="amt">{{ fmt(e.amount, e.currency) }}</span>
+              <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="del(e.id)" />
+            </div>
+            <p class="muted" *ngIf="loaded() && filtered().length === 0" style="text-align:center;padding:24px">Sin movimientos que coincidan.</p>
+          </div>
+        </p-tabPanel>
+      </p-tabView>
+    </div>
+
+    <ng-template #noData><p class="muted" style="text-align:center;padding:40px 0">Aún no hay datos este mes.</p></ng-template>
+    <ng-template #noBudget><p class="muted" style="text-align:center;padding:16px 0">Sin presupuestos. Defínelos en «Categorías».</p></ng-template>
+
+    <!-- ═══ Hoja inferior: escaneo / alta ═══ -->
+    <p-dialog [(visible)]="sheetVisible" [modal]="true" [position]="'bottom'" [dismissableMask]="true"
+              [style]="{ width: '100%', maxWidth: '600px' }" [header]="sheetTitle()">
+      <!-- Cargando (animación IA) -->
+      <div class="scan-anim" *ngIf="sheetState() === 'loading'">
+        <div class="doc">
+          <div class="laser"></div>
+          <div class="ln l"></div><div class="ln m"></div><div class="ln s"></div>
+          <div class="ln m"></div><div class="ln l"></div><div class="ln s"></div>
+        </div>
+        <div class="scan-status">
+          <div class="t">Analizando con IA</div>
+          <div class="s">{{ scanPhase() }}</div>
+        </div>
+        <div class="beads"><i></i><i></i><i></i></div>
+      </div>
+
+      <!-- Error / no legible -->
+      <div class="scan-anim" *ngIf="sheetState() === 'error'">
+        <i class="pi pi-exclamation-triangle" style="font-size:2.4rem;color:#ef4444"></i>
+        <div class="scan-status"><div class="t">No se pudo leer</div><div class="s">Revisa tu conexión o intenta de nuevo.</div></div>
+        <div style="display:flex;gap:8px"><p-button label="Reintentar" icon="pi pi-refresh" (onClick)="retry()" />
+          <p-button label="Otra foto" icon="pi pi-camera" [outlined]="true" (onClick)="pickAgain()" /></div>
+      </div>
+      <div class="scan-anim" *ngIf="sheetState() === 'unreadable'">
+        <i class="pi pi-image" style="font-size:2.4rem;color:#f59e0b"></i>
+        <div class="scan-status"><div class="t">No se pudo identificar</div><div class="s">No parece un comprobante legible. Prueba otra imagen o texto.</div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+          <p-button label="Reintentar" icon="pi pi-refresh" (onClick)="retry()" />
+          <p-button label="Otra foto" icon="pi pi-camera" [outlined]="true" (onClick)="pickAgain()" />
+          <p-button label="Manual" [text]="true" (onClick)="toManual()" /></div>
+      </div>
+
+      <!-- Formulario + imagen analizada -->
+      <div *ngIf="sheetState() === 'form'">
+        <div class="seg" *ngIf="hasAnalyzedImage()">
+          <button [class.on]="sheetTab() === 'datos'" (click)="sheetTab.set('datos')">Datos</button>
+          <button [class.on]="sheetTab() === 'imagen'" (click)="sheetTab.set('imagen')"><i class="pi pi-sparkles"></i> Imagen analizada</button>
+        </div>
+
+        <div *ngIf="sheetTab() === 'datos'">
+          <div class="form-grid">
+            <div class="field full" *ngIf="montos().length">
+              <label>¿Cuál total pagaste?</label>
+              <div class="montos">
+                <div class="chip" *ngFor="let m of montos()" [class.sel]="form.amount === m.valor" (click)="form.amount = m.valor">
+                  <b>{{ fmt(m.valor) }}</b> <small>{{ m.etiqueta }}</small>
+                </div>
+              </div>
+            </div>
+            <div class="field"><label>Monto a pagar</label><input class="inp" type="number" [(ngModel)]="form.amount" placeholder="0" /></div>
+            <div class="field"><label>Moneda</label><input class="inp" type="text" [(ngModel)]="form.currency" placeholder="COP" /></div>
+            <div class="field">
+              <label>Categoría</label>
+              <select class="sel" [(ngModel)]="form.categoryId">
+                <option [ngValue]="null" disabled>Elige…</option>
+                <option *ngFor="let c of categories()" [ngValue]="c.id">{{ c.name }}</option>
+              </select>
+              <span class="hint" *ngIf="suggested()">Sugerida por IA: “{{ suggested() }}” — créala en Categorías</span>
+            </div>
+            <div class="field"><label>Fecha de compra</label><input class="inp" type="date" [(ngModel)]="form.spentOn" /></div>
+            <div class="field"><label>Establecimiento</label><input class="inp" type="text" [(ngModel)]="form.merchant" placeholder="Comercio" /></div>
+            <div class="field"><label>NIT</label><input class="inp" type="text" [(ngModel)]="form.nit" placeholder="NIT / ID tributario" /></div>
+            <div class="field full"><label>Descripción</label><input class="inp" type="text" [(ngModel)]="form.description" placeholder="Detalle" /></div>
+          </div>
+        </div>
+
+        <div *ngIf="sheetTab() === 'imagen' && hasAnalyzedImage()">
+          <p class="muted" style="margin:0 0 10px;font-size:.86rem">La IA resaltó de dónde tomó cada dato:</p>
+          <div class="analyzed">
+            <img [src]="lastImageUrl()" alt="Recibo analizado" />
+            <div class="region" *ngFor="let r of regiones()"
+                 [style.top.%]="r.box[0]/10" [style.left.%]="r.box[1]/10"
+                 [style.height.%]="(r.box[2]-r.box[0])/10" [style.width.%]="(r.box[3]-r.box[1])/10">
+              <span class="rlbl">{{ r.etiqueta || r.campo }}</span>
+            </div>
+          </div>
         </div>
       </div>
+
       <ng-template pTemplate="footer">
         <div *ngIf="sheetState() === 'form'" style="display:flex;gap:8px;justify-content:flex-end">
           <p-button label="Cancelar" [text]="true" (onClick)="sheetVisible = false" />
@@ -237,44 +375,52 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
       </ng-template>
     </p-dialog>
 
-    <!-- Gestión de categorías -->
-    <p-dialog [(visible)]="catDialog" [modal]="true" header="Mis categorías" [style]="{ width: '440px' }">
+    <!-- ═══ Pegar texto ═══ -->
+    <p-dialog [(visible)]="textDialog" [modal]="true" header="Pegar texto del comprobante" [style]="{ width: '92%', maxWidth: '520px' }">
+      <p class="muted" style="margin:0 0 10px;font-size:.9rem">Pega el mensaje/SMS/correo del gasto y la IA lo interpreta.</p>
+      <textarea class="ta" [(ngModel)]="pastedText" placeholder="Ej: Compra aprobada por $45.000 en EXITO NIT 890.900.608 el 09/08/2026…"></textarea>
+      <ng-template pTemplate="footer">
+        <p-button label="Cancelar" [text]="true" (onClick)="textDialog = false" />
+        <p-button label="Analizar" icon="pi pi-sparkles" (onClick)="runTextScan()" [disabled]="!pastedText.trim()" />
+      </ng-template>
+    </p-dialog>
+
+    <!-- ═══ Categorías ═══ -->
+    <p-dialog [(visible)]="catDialog" [modal]="true" header="Mis categorías" [style]="{ width: '92%', maxWidth: '460px' }">
       <div class="cat-add">
-        <input type="text" [(ngModel)]="catForm.name" placeholder="Nombre de categoría" />
+        <input class="inp" style="flex:1;min-width:140px" type="text" [(ngModel)]="catForm.name" placeholder="Nombre de categoría" />
         <input type="color" [(ngModel)]="catForm.color" />
-        <p-button [label]="catForm.id ? 'Guardar' : 'Añadir'" icon="pi pi-check" size="small"
-                  (onClick)="saveCat()" [disabled]="!catForm.name" />
+        <p-button [label]="catForm.id ? 'Guardar' : 'Añadir'" icon="pi pi-check" size="small" (onClick)="saveCat()" [disabled]="!catForm.name" />
         <p-button *ngIf="catForm.id" label="Cancelar" [text]="true" size="small" (onClick)="resetCatForm()" />
       </div>
       <div class="cat-row" *ngFor="let c of categories()">
-        <span class="dot" [style.background]="c.color"></span>
-        <span class="grow" style="flex:1">{{ c.name }}</span>
-        <input type="number" [value]="budgetFor(c.id)" (change)="setBudget(c.id, $any($event.target).value)"
+        <span class="dot" [style.background]="c.color" style="width:12px;height:12px;border-radius:50%"></span>
+        <span style="flex:1">{{ c.name }}</span>
+        <input class="inp" style="width:120px" type="number" [value]="budgetFor(c.id)" (change)="setBudget(c.id, $any($event.target).value)"
                placeholder="Presup." title="Presupuesto mensual" />
         <p-button icon="pi pi-pencil" [text]="true" size="small" (onClick)="editCat(c)" />
         <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="delCat(c)" />
       </div>
     </p-dialog>
 
-    <!-- Recurrentes -->
-    <p-dialog [(visible)]="recDialog" [modal]="true" header="Gastos recurrentes" [style]="{ width: '480px' }">
+    <!-- ═══ Recurrentes ═══ -->
+    <p-dialog [(visible)]="recDialog" [modal]="true" header="Gastos recurrentes" [style]="{ width: '92%', maxWidth: '500px' }">
       <div class="cat-add">
-        <input type="text" [(ngModel)]="recForm.merchant" placeholder="Nombre (p.ej. Netflix)" style="flex:1" />
-        <input type="number" [(ngModel)]="recForm.amount" placeholder="Monto" style="width:110px" />
+        <input class="inp" style="flex:1" type="text" [(ngModel)]="recForm.merchant" placeholder="Nombre (p.ej. Netflix)" />
+        <input class="inp" style="width:110px" type="number" [(ngModel)]="recForm.amount" placeholder="Monto" />
       </div>
       <div class="cat-add">
-        <select [(ngModel)]="recForm.categoryId" style="flex:1;padding:9px 11px;border-radius:8px;border:1px solid var(--border,#262a33);background:#0f1115;color:var(--fg,#e6e8ee)">
+        <select class="sel" style="flex:1" [(ngModel)]="recForm.categoryId">
           <option [ngValue]="null">Sin categoría</option>
           <option *ngFor="let c of categories()" [ngValue]="c.id">{{ c.name }}</option>
         </select>
         <span class="muted">día</span>
-        <input type="number" [(ngModel)]="recForm.dayOfMonth" min="1" max="28" style="width:70px" />
-        <p-button label="Añadir" icon="pi pi-plus" size="small" (onClick)="addRecurring()"
-                  [disabled]="!recForm.merchant || !recForm.amount" />
+        <input class="inp" style="width:70px" type="number" [(ngModel)]="recForm.dayOfMonth" min="1" max="28" />
+        <p-button label="Añadir" icon="pi pi-plus" size="small" (onClick)="addRecurring()" [disabled]="!recForm.merchant || !recForm.amount" />
       </div>
       <div class="cat-row" *ngFor="let r of recurring()">
-        <span class="dot" [style.background]="r.categoryColor || '#9aa3b2'"></span>
-        <span class="grow" style="flex:1">{{ r.merchant || r.description }} <small class="muted">· día {{ r.dayOfMonth }}</small></span>
+        <span class="dot" [style.background]="r.categoryColor || '#9aa3b2'" style="width:12px;height:12px;border-radius:50%"></span>
+        <span style="flex:1">{{ r.merchant || r.description }} <small class="muted">· día {{ r.dayOfMonth }}</small></span>
         <span>{{ fmt(r.amount, r.currency) }}</span>
         <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="delRecurring(r.id)" />
       </div>
@@ -283,19 +429,19 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
       </div>
     </p-dialog>
 
-    <!-- Comparar meses -->
-    <p-dialog [(visible)]="cmpDialog" [modal]="true" header="Comparar meses" [style]="{ width: '460px' }">
+    <!-- ═══ Comparar meses ═══ -->
+    <p-dialog [(visible)]="cmpDialog" [modal]="true" header="Comparar meses" [style]="{ width: '92%', maxWidth: '480px' }">
       <div class="cat-add">
-        <input type="month" [(ngModel)]="cmpA" (change)="loadCompare()" style="flex:1" />
+        <input class="inp" style="flex:1" type="month" [(ngModel)]="cmpA" (change)="loadCompare()" />
         <span class="muted">vs</span>
-        <input type="month" [(ngModel)]="cmpB" (change)="loadCompare()" style="flex:1" />
+        <input class="inp" style="flex:1" type="month" [(ngModel)]="cmpB" (change)="loadCompare()" />
       </div>
-      <div class="cmp" *ngIf="cmpSummA() && cmpSummB() as _">
+      <div class="cmp" *ngIf="cmpSummA() && cmpSummB()">
         <div class="col"><div class="muted">{{ cmpA }}</div><div class="big">{{ fmt(cmpSummA()!.total) }}</div></div>
         <div class="col"><div class="muted">{{ cmpB }}</div><div class="big">{{ fmt(cmpSummB()!.total) }}</div></div>
       </div>
       <div class="chart-box" style="height:220px;margin-top:12px" *ngIf="cmpSummA() && cmpSummB()">
-        <p-chart type="bar" [data]="cmpData()" [options]="barOptionsV" />
+        <p-chart type="bar" [data]="cmpData()" [options]="barOptionsV()" />
       </div>
     </p-dialog>
   `,
@@ -303,6 +449,10 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
 export class AppComponent implements OnInit {
   private api = inject(GastosService);
   @ViewChild('file') fileInput!: ElementRef<HTMLInputElement>;
+
+  readonly dark = signal<boolean>(typeof window !== 'undefined' && window.matchMedia
+    ? window.matchMedia('(prefers-color-scheme: dark)').matches : true);
+  readonly isTest = signal(false);
 
   readonly month = signal<string>(new Date().toISOString().slice(0, 7));
   readonly categories = signal<Category[]>([]);
@@ -312,14 +462,27 @@ export class AppComponent implements OnInit {
   readonly aiEnabled = signal<boolean>(false);
   readonly loaded = signal<boolean>(false);
 
+  // Onboarding
+  readonly onboarding = signal<boolean>(false);
+  readonly templates = signal<CategoryTemplate[]>([]);
+  readonly chosen = signal<string[]>([]);
+
   sheetVisible = false;
   readonly sheetState = signal<SheetState>('form');
+  readonly sheetTab = signal<'datos' | 'imagen'>('datos');
   readonly montos = signal<Monto[]>([]);
+  readonly regiones = signal<Region[]>([]);
   readonly suggested = signal<string | null>(null);
   readonly saving = signal<boolean>(false);
+  readonly scanPhase = signal<string>('Preparando imagen…');
+  private phaseTimer: ReturnType<typeof setInterval> | null = null;
   scanned = false;
   private lastImage: { base64: string; mediaType: string } | null = null;
+  readonly lastImageUrl = signal<string | null>(null);
   form = this.emptyForm();
+
+  textDialog = false;
+  pastedText = '';
 
   catDialog = false;
   catForm: { id: number | null; name: string; color: string } = { id: null, name: '', color: '#6c8cff' };
@@ -339,9 +502,31 @@ export class AppComponent implements OnInit {
   readonly cmpSummA = signal<Summary | null>(null);
   readonly cmpSummB = signal<Summary | null>(null);
 
-  readonly barOptionsV = { maintainAspectRatio: false, plugins: { legend: { display: false } },
-    scales: { x: { ticks: { color: '#e6e8ee' }, grid: { display: false } },
-              y: { ticks: { color: '#9aa3b2' }, grid: { color: '#262a33' } } } };
+  constructor() {
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      window.matchMedia('(prefers-color-scheme: dark)')
+        .addEventListener('change', (e) => this.dark.set(e.matches));
+    }
+  }
+
+  // ── Colores de gráficos según tema ──
+  private tick(): string { return this.dark() ? '#9aa3b2' : '#5b6472'; }
+  private gridc(): string { return this.dark() ? 'rgba(255,255,255,.07)' : 'rgba(20,26,40,.08)'; }
+  private legend(): string { return this.dark() ? '#e6e8ee' : '#1e2330'; }
+
+  readonly pieOptions = computed(() => ({ maintainAspectRatio: false, cutout: '62%',
+    plugins: { legend: { position: 'right', labels: { color: this.legend(), boxWidth: 12, padding: 12 } } } }));
+  readonly lineOptions = computed(() => ({ maintainAspectRatio: false,
+    plugins: { legend: { labels: { color: this.legend() } } },
+    scales: { x: { ticks: { color: this.tick() }, grid: { color: this.gridc() } },
+              y: { ticks: { color: this.tick() }, grid: { color: this.gridc() } } } }));
+  readonly barOptions = computed(() => ({ indexAxis: 'y', maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: { x: { ticks: { color: this.tick() }, grid: { color: this.gridc() } },
+              y: { ticks: { color: this.legend() }, grid: { display: false } } } }));
+  readonly barOptionsV = computed(() => ({ maintainAspectRatio: false, plugins: { legend: { display: false } },
+    scales: { x: { ticks: { color: this.legend() }, grid: { display: false } },
+              y: { ticks: { color: this.tick() }, grid: { color: this.gridc() } } } }));
 
   readonly budgeted = computed(() => {
     const bc = this.summary()?.byCategory ?? [];
@@ -361,10 +546,12 @@ export class AppComponent implements OnInit {
     });
   });
 
+  readonly hasAnalyzedImage = computed(() => !!this.lastImageUrl() && this.regiones().length > 0);
+
   readonly cmpData = computed(() => ({
     labels: [this.cmpA, this.cmpB],
     datasets: [{ data: [this.cmpSummA()?.total ?? 0, this.cmpSummB()?.total ?? 0],
-      backgroundColor: ['#6c8cff', '#10b981'], borderRadius: 6 }],
+      backgroundColor: ['#6c8cff', '#10b981'], borderRadius: 8 }],
   }));
 
   readonly change = computed(() => {
@@ -374,17 +561,6 @@ export class AppComponent implements OnInit {
   });
   absChange(): number { return Math.abs(Math.round(this.change())); }
 
-  readonly pieOptions = { maintainAspectRatio: false, cutout: '58%',
-    plugins: { legend: { position: 'right', labels: { color: '#e6e8ee', boxWidth: 12 } } } };
-  readonly lineOptions = { maintainAspectRatio: false,
-    plugins: { legend: { labels: { color: '#e6e8ee' } } },
-    scales: { x: { ticks: { color: '#9aa3b2' }, grid: { color: '#262a33' } },
-              y: { ticks: { color: '#9aa3b2' }, grid: { color: '#262a33' } } } };
-  readonly barOptions = { indexAxis: 'y', maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
-    scales: { x: { ticks: { color: '#9aa3b2' }, grid: { color: '#262a33' } },
-              y: { ticks: { color: '#e6e8ee' }, grid: { display: false } } } };
-
   readonly pieData = computed(() => {
     const bc = this.summary()?.byCategory ?? [];
     return { labels: bc.map((c) => c.name),
@@ -393,7 +569,7 @@ export class AppComponent implements OnInit {
   readonly barData = computed(() => {
     const bc = this.summary()?.byCategory ?? [];
     return { labels: bc.map((c) => c.name),
-      datasets: [{ data: bc.map((c) => c.total), backgroundColor: bc.map((c) => c.color), borderRadius: 6 }] };
+      datasets: [{ data: bc.map((c) => c.total), backgroundColor: bc.map((c) => c.color), borderRadius: 8 }] };
   });
   readonly lineData = computed(() => {
     const t = this.trend(); const s = t?.series ?? [];
@@ -408,18 +584,48 @@ export class AppComponent implements OnInit {
 
   sheetTitle(): string {
     switch (this.sheetState()) {
-      case 'loading': return 'Escaneando…';
+      case 'loading': return 'Analizando…';
       case 'error': return 'Error al leer';
       case 'unreadable': return 'No identificado';
-      default: return this.scanned ? 'Confirmar gasto escaneado' : 'Nuevo gasto';
+      default: return this.scanned ? 'Confirmar gasto' : 'Nuevo gasto';
     }
   }
 
   ngOnInit(): void {
-    this.loadCategories();
-    this.loadBudgets();
     this.api.aiStatus().subscribe({ next: (s) => this.aiEnabled.set(s.enabled), error: () => {} });
-    this.reload();
+    this.api.health().subscribe({ next: (h) => this.isTest.set(h.env === 'test'), error: () => {} });
+    // Decide onboarding vs dashboard.
+    this.api.me().subscribe({
+      next: (me: Me) => {
+        if (!me.onboarded) { this.startOnboarding(); }
+        else { this.loadCategories(); this.loadBudgets(); this.reload(); }
+      },
+      error: () => { this.loadCategories(); this.loadBudgets(); this.reload(); },
+    });
+  }
+
+  // ── Onboarding ──
+  private startOnboarding(): void {
+    this.onboarding.set(true);
+    this.api.categoryTemplates().subscribe({
+      next: (t) => { this.templates.set(t); this.chosen.set(t.map((x) => x.slug)); },
+      error: () => { this.onboarding.set(false); this.loadCategories(); this.reload(); },
+    });
+  }
+  isChosen(slug: string): boolean { return this.chosen().includes(slug); }
+  toggleChoice(slug: string): void {
+    const set = new Set(this.chosen());
+    set.has(slug) ? set.delete(slug) : set.add(slug);
+    this.chosen.set([...set]);
+  }
+  chooseAll(): void { this.chosen.set(this.templates().map((t) => t.slug)); }
+  finishOnboarding(): void {
+    this.saving.set(true);
+    this.api.onboarding(this.chosen()).subscribe({
+      next: () => { this.saving.set(false); this.onboarding.set(false);
+        this.loadCategories(); this.loadBudgets(); this.reload(); },
+      error: () => { this.saving.set(false); alert('No se pudo guardar. Intenta de nuevo.'); },
+    });
   }
 
   private loadCategories(): void { this.api.categories().subscribe((c) => this.categories.set(c)); }
@@ -514,15 +720,25 @@ export class AppComponent implements OnInit {
   }
 
   // ── Alta / escaneo ──
-  openManual(): void { this.scanned = false; this.montos.set([]); this.suggested.set(null); this.form = this.emptyForm(); this.sheetState.set('form'); this.sheetVisible = true; }
-  toManual(): void { this.scanned = false; this.montos.set([]); this.sheetState.set('form'); }
+  openManual(): void {
+    this.scanned = false; this.montos.set([]); this.regiones.set([]); this.lastImageUrl.set(null);
+    this.suggested.set(null); this.form = this.emptyForm(); this.sheetTab.set('datos');
+    this.sheetState.set('form'); this.sheetVisible = true;
+  }
+  toManual(): void { this.scanned = false; this.montos.set([]); this.sheetTab.set('datos'); this.sheetState.set('form'); }
+  openText(): void { this.pastedText = ''; this.textDialog = true; }
 
   onFile(ev: Event): void {
     const input = ev.target as HTMLInputElement;
     const f = input.files?.[0];
     if (!f) return;
-    this.sheetVisible = true; this.sheetState.set('loading');
-    this.downscale(f).then((img) => { this.lastImage = img; this.runScan(); }).catch(() => this.sheetState.set('error'));
+    this.sheetVisible = true; this.sheetState.set('loading'); this.startPhases();
+    this.regiones.set([]); this.lastImageUrl.set(null);
+    this.downscale(f).then((img) => {
+      this.lastImage = img;
+      this.lastImageUrl.set(`data:${img.mediaType};base64,${img.base64}`);
+      this.runScan();
+    }).catch(() => { this.stopPhases(); this.sheetState.set('error'); });
     input.value = '';
   }
 
@@ -548,27 +764,54 @@ export class AppComponent implements OnInit {
     });
   }
 
-  retry(): void { if (this.lastImage) this.runScan(); }
+  // Animación: fases del análisis (solo estética).
+  private startPhases(): void {
+    const phases = ['Preparando imagen…', 'Detectando establecimiento…', 'Leyendo montos…',
+      'Buscando NIT y fecha…', 'Clasificando la categoría…'];
+    let i = 0; this.scanPhase.set(phases[0]);
+    this.stopPhases();
+    this.phaseTimer = setInterval(() => { i = (i + 1) % phases.length; this.scanPhase.set(phases[i]); }, 1400);
+  }
+  private stopPhases(): void { if (this.phaseTimer) { clearInterval(this.phaseTimer); this.phaseTimer = null; } }
+
+  retry(): void {
+    if (this.lastImage) { this.sheetState.set('loading'); this.startPhases(); this.runScan(); }
+    else if (this.pastedText.trim()) { this.runTextScan(); }
+  }
   pickAgain(): void { this.fileInput?.nativeElement.click(); }
 
   private runScan(): void {
     if (!this.lastImage) return;
     this.sheetVisible = true; this.sheetState.set('loading');
     this.api.scan(this.lastImage.base64, this.lastImage.mediaType).pipe(timeout(70000)).subscribe({
-      next: (s) => this.applyScan(s), error: () => this.sheetState.set('error'),
+      next: (s) => this.applyScan(s), error: () => { this.stopPhases(); this.sheetState.set('error'); },
+    });
+  }
+
+  runTextScan(): void {
+    if (!this.pastedText.trim()) return;
+    this.lastImage = null; this.lastImageUrl.set(null); this.regiones.set([]);
+    this.textDialog = false; this.sheetVisible = true; this.sheetState.set('loading'); this.startPhases();
+    this.api.scanText(this.pastedText).pipe(timeout(70000)).subscribe({
+      next: (s) => this.applyScan(s), error: () => { this.stopPhases(); this.sheetState.set('error'); },
     });
   }
 
   private applyScan(s: Scan): void {
+    this.stopPhases();
     if (!s.identificado || !s.montos?.length) { this.sheetState.set('unreadable'); return; }
     this.scanned = true;
     this.montos.set(s.montos);
+    this.regiones.set(s.regiones ?? []);
     this.suggested.set(s.categoriaId ? null : s.categoriaSugerida);
+    const fecha = this.validDate(s.fecha) ? s.fecha! : new Date().toISOString().slice(0, 10);
     this.form = { amount: s.montos[0]?.valor ?? null, currency: 'COP', categoryId: s.categoriaId ?? null,
-      merchant: s.establecimiento ?? '', nit: s.nit ?? '', description: s.descripcion ?? '',
-      spentOn: new Date().toISOString().slice(0, 10) };
+      merchant: s.establecimiento ?? '', nit: s.nit ?? '', description: s.descripcion ?? '', spentOn: fecha };
+    this.sheetTab.set('datos');
     this.sheetState.set('form');
   }
+
+  private validDate(d: string | null): boolean { return !!d && /^\d{4}-\d{2}-\d{2}$/.test(d); }
 
   save(): void {
     if (!this.form.amount || this.form.amount <= 0) return;

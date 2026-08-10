@@ -24,16 +24,21 @@ export interface TrendPoint { month: string; total: number; }
 export interface Trend { series: TrendPoint[]; forecastNext: number; average: number; }
 
 export interface Monto { etiqueta: string; valor: number; }
+export interface Region { campo: string; etiqueta: string; box: number[]; }
 export interface Scan {
   identificado: boolean;
   nit: string | null;
   establecimiento: string | null;
   montos: Monto[];
   descripcion: string | null;
+  fecha: string | null;
   categoriaId: number | null;
   categoriaNombre: string | null;
   categoriaSugerida: string | null;
+  regiones: Region[];
 }
+export interface Me { email: string; guest: boolean; onboarded: boolean; }
+export interface CategoryTemplate { slug: string; name: string; color: string; icon: string; }
 export interface NewExpense {
   amount: number; currency?: string; categoryId?: number | null;
   merchant?: string; description?: string; spentOn?: string; nit?: string; source?: string;
@@ -45,6 +50,13 @@ export class GastosService {
   private base = environment.apiBase;
   private opts = { withCredentials: true };
 
+  me(): Observable<Me> { return this.http.get<Me>(`${this.base}/me`, this.opts); }
+  categoryTemplates(): Observable<CategoryTemplate[]> {
+    return this.http.get<CategoryTemplate[]>(`${this.base}/category-templates`, this.opts);
+  }
+  onboarding(slugs: string[]): Observable<{ count: number }> {
+    return this.http.post<{ count: number }>(`${this.base}/onboarding`, { slugs }, this.opts);
+  }
   categories(): Observable<Category[]> { return this.http.get<Category[]>(`${this.base}/categories`, this.opts); }
   createCategory(name: string, color: string, icon: string): Observable<{ id: number }> {
     return this.http.post<{ id: number }>(`${this.base}/categories`, { name, color, icon }, this.opts);
@@ -75,4 +87,8 @@ export class GastosService {
   scan(image: string, mediaType: string): Observable<Scan> {
     return this.http.post<Scan>(`${this.base}/scan`, { image, mediaType }, this.opts);
   }
+  scanText(text: string): Observable<Scan> {
+    return this.http.post<Scan>(`${this.base}/scan-text`, { text }, this.opts);
+  }
+  health(): Observable<{ env: string }> { return this.http.get<{ env: string }>(`${this.base}/health`, this.opts); }
 }
