@@ -284,14 +284,37 @@ export class AppComponent implements OnInit {
     const input = ev.target as HTMLInputElement;
     const f = input.files?.[0];
     if (!f) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = (reader.result as string).split(',')[1] ?? '';
-      this.lastImage = { base64, mediaType: f.type || 'image/jpeg' };
-      this.runScan();
-    };
-    reader.readAsDataURL(f);
+    this.sheetVisible = true; this.sheetState.set('loading');
+    this.downscale(f)
+      .then((img) => { this.lastImage = img; this.runScan(); })
+      .catch(() => this.sheetState.set('error'));
     input.value = '';
+  }
+
+  /** Reescala la foto (máx 1600px, JPEG 0.8) para enviar algo liviano y legible. */
+  private downscale(file: File): Promise<{ base64: string; mediaType: string }> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject();
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject();
+        img.onload = () => {
+          const max = 1600;
+          let w = img.width, h = img.height;
+          if (Math.max(w, h) > max) { const s = max / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          const cx = canvas.getContext('2d');
+          if (!cx) { reject(); return; }
+          cx.drawImage(img, 0, 0, w, h);
+          const url = canvas.toDataURL('image/jpeg', 0.8);
+          resolve({ base64: url.split(',')[1] ?? '', mediaType: 'image/jpeg' });
+        };
+        img.src = reader.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
   }
 
   retry(): void { if (this.lastImage) this.runScan(); }
