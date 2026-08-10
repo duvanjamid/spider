@@ -1,5 +1,6 @@
 import { Component, ElementRef, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { NgFor, NgIf } from '@angular/common';
+import { timeout } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
@@ -182,10 +183,12 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
         </div>
       </div>
 
-      <ng-template pTemplate="footer" *ngIf="sheetState() === 'form'">
-        <p-button label="Cancelar" [text]="true" (onClick)="sheetVisible = false" />
-        <p-button label="Guardar" icon="pi pi-check" (onClick)="save()" [loading]="saving()"
-                  [disabled]="!form.amount || form.amount <= 0" />
+      <ng-template pTemplate="footer">
+        <div *ngIf="sheetState() === 'form'" style="display:flex;gap:8px;justify-content:flex-end">
+          <p-button label="Cancelar" [text]="true" (onClick)="sheetVisible = false" />
+          <p-button label="Guardar" icon="pi pi-check" (onClick)="save()" [loading]="saving()"
+                    [disabled]="!form.amount || form.amount <= 0" />
+        </div>
       </ng-template>
     </p-dialog>
   `,
@@ -297,7 +300,7 @@ export class AppComponent implements OnInit {
   private runScan(): void {
     if (!this.lastImage) return;
     this.sheetVisible = true; this.sheetState.set('loading');
-    this.api.scan(this.lastImage.base64, this.lastImage.mediaType).subscribe({
+    this.api.scan(this.lastImage.base64, this.lastImage.mediaType).pipe(timeout(70000)).subscribe({
       next: (s) => this.applyScan(s),
       error: () => this.sheetState.set('error'),
     });
