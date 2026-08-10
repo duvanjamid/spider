@@ -214,7 +214,7 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
       </div>
       <div class="muted" *ngIf="!aiEnabled()" style="margin:-2px 0 8px"><i class="pi pi-info-circle"></i> Configura GEMINI_API_KEY para el escaneo con IA.</div>
 
-      <p-tabView>
+      <p-tabView [scrollable]="true">
         <!-- Resumen -->
         <p-tabPanel header="Resumen" leftIcon="fa-solid fa-gauge-high">
           <ng-template pTemplate="content">
