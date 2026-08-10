@@ -215,6 +215,8 @@ const GATEWAY_SNIPPET = `
       proxy_pass         http://__APP__-frontend:80/;
       proxy_set_header   Host \$host;
       proxy_set_header   X-Forwarded-Proto \$scheme;
+      proxy_intercept_errors on;                       # página de carga si el front está dormido
+      error_page 502 503 504 /__spider_loading.html;
     }
 `;
 
