@@ -36,14 +36,26 @@ public final class ExpenseController {
     /** Cuerpo para crear/editar una categoría. */
     public record CategoryInput(String name, String color, String icon) {}
 
+    /** Cuerpo para definir un presupuesto. */
+    public record BudgetInput(Long categoryId, Double amount) {}
+
+    /** Cuerpo para crear un gasto recurrente. */
+    public record RecurringInput(Double amount, String currency, Long categoryId, String merchant,
+                                 String description, Integer dayOfMonth) {}
+
     private final ExpenseService svc;
     private final CategoryService categories;
+    private final BudgetService budgets;
+    private final RecurringService recurring;
     private final GeminiScanner scanner;
     private final Identity identity = new Identity();
 
-    public ExpenseController(ExpenseService svc, CategoryService categories, GeminiScanner scanner) {
+    public ExpenseController(ExpenseService svc, CategoryService categories, BudgetService budgets,
+                             RecurringService recurring, GeminiScanner scanner) {
         this.svc = svc;
         this.categories = categories;
+        this.budgets = budgets;
+        this.recurring = recurring;
         this.scanner = scanner;
     }
 
@@ -99,6 +111,36 @@ public final class ExpenseController {
         app.get("/trend", ctx -> {
             String m = ctx.queryParam("months");
             ctx.json(svc.trend(email(ctx.header("Cookie")), m == null ? 6 : Integer.parseInt(m)));
+        });
+
+        // ── Presupuestos ──
+        app.get("/budgets", ctx -> ctx.json(budgets.list(email(ctx.header("Cookie")))));
+        app.put("/budgets", ctx -> {
+            BudgetInput in = ctx.body(BudgetInput.class);
+            if (in == null || in.categoryId() == null) { ctx.status(400).json(Map.of("error", "categoryId requerido")); return; }
+            budgets.set(email(ctx.header("Cookie")), in.categoryId(), in.amount() == null ? 0 : in.amount());
+            ctx.json(Map.of("status", "ok"));
+        });
+
+        // ── Recurrentes ──
+        app.get("/recurring", ctx -> ctx.json(recurring.list(email(ctx.header("Cookie")))));
+        app.post("/recurring", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            RecurringInput in = ctx.body(RecurringInput.class);
+            double amount = in == null || in.amount() == null ? 0 : in.amount();
+            if (amount <= 0) { ctx.status(400).json(Map.of("error", "amount inválido")); return; }
+            long id = recurring.create(user, amount, in.currency(),
+                    categories.resolveCategoryId(user, in.categoryId(), null),
+                    nz(in.merchant()), nz(in.description()), in.dayOfMonth() == null ? 1 : in.dayOfMonth());
+            ctx.status(201).json(Map.of("id", id));
+        });
+        app.delete("/recurring/{id}", ctx -> {
+            recurring.delete(email(ctx.header("Cookie")), Long.parseLong(ctx.pathParam("id")));
+            ctx.json(Map.of("status", "deleted"));
+        });
+        app.post("/recurring/apply", ctx -> {
+            int n = recurring.applyForMonth(email(ctx.header("Cookie")), ctx.queryParam("month"));
+            ctx.json(Map.of("created", n));
         });
 
         app.get("/ai-status", ctx -> ctx.json(Map.of("enabled", Env.aiEnabled())));

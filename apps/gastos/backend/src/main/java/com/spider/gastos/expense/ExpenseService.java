@@ -92,8 +92,11 @@ public class ExpenseService {
         String ym = month == null || month.isBlank() ? YearMonth.now().toString() : month;
         String sql = """
                 SELECT COALESCE(c.slug,'otros') AS slug, COALESCE(c.name,'Otros') AS name,
-                       COALESCE(c.color,'#9aa3b2') AS color, SUM(e.amount) AS total
-                FROM expense e LEFT JOIN category c ON c.id = e.category_id
+                       COALESCE(c.color,'#9aa3b2') AS color, SUM(e.amount) AS total,
+                       MAX(b.amount) AS budget
+                FROM expense e
+                LEFT JOIN category c ON c.id = e.category_id
+                LEFT JOIN budget b ON b.category_id = c.id AND b.owner_email = ?
                 WHERE e.owner_email = ? AND to_char(e.spent_on, 'YYYY-MM') = ?
                 GROUP BY c.slug, c.name, c.color
                 ORDER BY total DESC
@@ -102,13 +105,15 @@ public class ExpenseService {
         double total = 0;
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setString(1, email);
-            ps.setString(2, ym);
+            ps.setString(2, email);
+            ps.setString(3, ym);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     double t = rs.getBigDecimal("total").doubleValue();
                     total += t;
+                    double budget = rs.getBigDecimal("budget") == null ? 0 : rs.getBigDecimal("budget").doubleValue();
                     byCat.add(Map.of("slug", rs.getString("slug"), "name", rs.getString("name"),
-                            "color", rs.getString("color"), "total", t));
+                            "color", rs.getString("color"), "total", t, "budget", budget));
                 }
             }
         } catch (Exception e) { throw new RuntimeException("Error en resumen", e); }

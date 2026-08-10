@@ -5,9 +5,11 @@ import com.spider.gastos.ai.GeminiScanner;
 import com.spider.gastos.config.Env;
 import com.spider.gastos.db.DbConfig;
 import com.spider.gastos.db.Migrations;
+import com.spider.gastos.expense.BudgetService;
 import com.spider.gastos.expense.CategoryService;
 import com.spider.gastos.expense.ExpenseController;
 import com.spider.gastos.expense.ExpenseService;
+import com.spider.gastos.expense.RecurringService;
 import com.spider.gastos.health.HealthController;
 import com.spider.gastos.registry.Registry;
 import org.postgresql.ds.PGSimpleDataSource;
@@ -28,11 +30,13 @@ public final class App {
         DataSource ds = dataSource(db);
         var expenses = new ExpenseService(ds);
         var categories = new CategoryService(ds);
+        var budgets = new BudgetService(ds);
+        var recurring = new RecurringService(ds);
         var scanner = new GeminiScanner();
 
         Ligero app = Ligero.create(Env.port());
         HealthController.register(app);
-        new ExpenseController(expenses, categories, scanner).register(app);
+        new ExpenseController(expenses, categories, budgets, recurring, scanner).register(app);
 
         log.info("Backend '{}' escuchando en :{} (schema '{}', IA={})",
                 Env.appName(), Env.port(), db.schema(), Env.aiEnabled());

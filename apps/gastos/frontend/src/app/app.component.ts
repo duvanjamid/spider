@@ -7,7 +7,7 @@ import { CardModule } from 'primeng/card';
 import { ChartModule } from 'primeng/chart';
 import { DialogModule } from 'primeng/dialog';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
-import { GastosService, Category, Expense, Monto, Scan, Summary, Trend } from './gastos.service';
+import { GastosService, Budget, Category, Expense, Monto, Recurring, Scan, Summary, Trend } from './gastos.service';
 
 type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
 
@@ -66,6 +66,16 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
            border: 1px solid var(--border,#262a33); background: #0f1115; color: var(--fg,#e6e8ee); }
     .cat-add input[type=color] { width: 42px; height: 38px; border: none; background: none; }
     .cat-row { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--border,#262a33); }
+    .cat-row input[type=number] { width: 110px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border,#262a33); background:#0f1115; color:var(--fg,#e6e8ee); }
+    .bud { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+    .bud .bname { width: 120px; }
+    .bud .bar { flex: 1; height: 8px; background: #0f1115; border-radius: 999px; overflow: hidden; }
+    .bud .bar .fill { height: 100%; border-radius: 999px; }
+    .bud .bfig { font-size: .82rem; white-space: nowrap; min-width: 140px; text-align: right; }
+    .filters { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+    .filters input, .filters select { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border,#262a33); background:#0f1115; color:var(--fg,#e6e8ee); }
+    .cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .cmp .col { text-align: center; } .cmp .big { font-size: 1.4rem; font-weight: 700; }
   `],
   template: `
     <div class="wrap">
@@ -112,8 +122,23 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
         <p-button label="Escanear recibo" icon="pi pi-camera" (onClick)="file.click()"
                   [disabled]="!aiEnabled()" [loading]="sheetState() === 'loading'" />
         <p-button label="Agregar manual" icon="pi pi-plus" [outlined]="true" (onClick)="openManual()" />
-        <span class="muted" *ngIf="!aiEnabled()"><i class="pi pi-info-circle"></i> Configura GEMINI_API_KEY para el escaneo.</span>
+        <span class="spacer"></span>
+        <p-button label="Recurrentes" icon="pi pi-replay" [text]="true" size="small" (onClick)="openRecurring()" />
+        <p-button label="Comparar" icon="pi pi-sort-alt" [text]="true" size="small" (onClick)="openCompare()" />
+        <p-button label="CSV" icon="pi pi-download" [text]="true" size="small" (onClick)="exportCsv()" />
       </div>
+      <div class="muted" *ngIf="!aiEnabled()" style="margin:-8px 0 8px"><i class="pi pi-info-circle"></i> Configura GEMINI_API_KEY para el escaneo.</div>
+
+      <!-- Presupuestos -->
+      <p-card header="Presupuestos" *ngIf="budgeted().length">
+        <div class="bud" *ngFor="let b of budgeted()">
+          <span class="dot" [style.background]="b.color"></span>
+          <span class="bname">{{ b.name }}</span>
+          <div class="bar"><div class="fill" [style.width.%]="b.pct" [style.background]="b.over ? '#ef4444' : b.color"></div></div>
+          <span class="bfig" [class.up]="b.over">{{ fmt(b.total) }} / {{ fmt(b.budget) }}</span>
+          <i class="pi pi-exclamation-circle up" *ngIf="b.over" title="Presupuesto superado"></i>
+        </div>
+      </p-card>
 
       <!-- Gráficos -->
       <div class="charts" *ngIf="(summary()?.byCategory?.length || 0) > 0 || (trend()?.series?.length || 0) > 0">
@@ -129,17 +154,25 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
       </p-card>
 
       <h3>Movimientos</h3>
+      <div class="filters">
+        <input type="text" [(ngModel)]="query" placeholder="Buscar (comercio, descripción, NIT)…" style="flex:1;min-width:180px" />
+        <select [(ngModel)]="filterCat">
+          <option value="">Todas las categorías</option>
+          <option *ngFor="let c of categories()" [value]="c.slug">{{ c.name }}</option>
+        </select>
+        <span class="muted">{{ filtered().length }} de {{ expenses().length }}</span>
+      </div>
       <div class="list">
-        <div class="row" *ngFor="let e of expenses()">
+        <div class="row" *ngFor="let e of filtered()">
           <span class="dot" [style.background]="e.categoryColor || '#9aa3b2'"></span>
           <div class="grow">
             <div>{{ e.merchant || e.description || e.categoryName || 'Gasto' }}</div>
-            <small>{{ e.categoryName || 'Otros' }} · {{ e.spentOn }}<span *ngIf="e.source === 'scan'"> · 🤖</span></small>
+            <small>{{ e.categoryName || 'Otros' }} · {{ e.spentOn }}<span *ngIf="e.source === 'scan'"> · 🤖</span><span *ngIf="e.source === 'recurring'"> · 🔁</span></small>
           </div>
           <span class="amt">{{ fmt(e.amount, e.currency) }}</span>
           <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="del(e.id)" />
         </div>
-        <p class="muted" *ngIf="loaded() && expenses().length === 0">Sin gastos este mes. Agrega el primero 👆</p>
+        <p class="muted" *ngIf="loaded() && filtered().length === 0">Sin movimientos que coincidan.</p>
       </div>
     </div>
 
@@ -216,8 +249,53 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
       <div class="cat-row" *ngFor="let c of categories()">
         <span class="dot" [style.background]="c.color"></span>
         <span class="grow" style="flex:1">{{ c.name }}</span>
+        <input type="number" [value]="budgetFor(c.id)" (change)="setBudget(c.id, $any($event.target).value)"
+               placeholder="Presup." title="Presupuesto mensual" />
         <p-button icon="pi pi-pencil" [text]="true" size="small" (onClick)="editCat(c)" />
         <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="delCat(c)" />
+      </div>
+    </p-dialog>
+
+    <!-- Recurrentes -->
+    <p-dialog [(visible)]="recDialog" [modal]="true" header="Gastos recurrentes" [style]="{ width: '480px' }">
+      <div class="cat-add">
+        <input type="text" [(ngModel)]="recForm.merchant" placeholder="Nombre (p.ej. Netflix)" style="flex:1" />
+        <input type="number" [(ngModel)]="recForm.amount" placeholder="Monto" style="width:110px" />
+      </div>
+      <div class="cat-add">
+        <select [(ngModel)]="recForm.categoryId" style="flex:1;padding:9px 11px;border-radius:8px;border:1px solid var(--border,#262a33);background:#0f1115;color:var(--fg,#e6e8ee)">
+          <option [ngValue]="null">Sin categoría</option>
+          <option *ngFor="let c of categories()" [ngValue]="c.id">{{ c.name }}</option>
+        </select>
+        <span class="muted">día</span>
+        <input type="number" [(ngModel)]="recForm.dayOfMonth" min="1" max="28" style="width:70px" />
+        <p-button label="Añadir" icon="pi pi-plus" size="small" (onClick)="addRecurring()"
+                  [disabled]="!recForm.merchant || !recForm.amount" />
+      </div>
+      <div class="cat-row" *ngFor="let r of recurring()">
+        <span class="dot" [style.background]="r.categoryColor || '#9aa3b2'"></span>
+        <span class="grow" style="flex:1">{{ r.merchant || r.description }} <small class="muted">· día {{ r.dayOfMonth }}</small></span>
+        <span>{{ fmt(r.amount, r.currency) }}</span>
+        <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="delRecurring(r.id)" />
+      </div>
+      <div style="margin-top:12px;display:flex;justify-content:flex-end">
+        <p-button label="Aplicar al mes actual" icon="pi pi-check" size="small" (onClick)="applyRecurring()" [loading]="applying()" />
+      </div>
+    </p-dialog>
+
+    <!-- Comparar meses -->
+    <p-dialog [(visible)]="cmpDialog" [modal]="true" header="Comparar meses" [style]="{ width: '460px' }">
+      <div class="cat-add">
+        <input type="month" [(ngModel)]="cmpA" (change)="loadCompare()" style="flex:1" />
+        <span class="muted">vs</span>
+        <input type="month" [(ngModel)]="cmpB" (change)="loadCompare()" style="flex:1" />
+      </div>
+      <div class="cmp" *ngIf="cmpSummA() && cmpSummB() as _">
+        <div class="col"><div class="muted">{{ cmpA }}</div><div class="big">{{ fmt(cmpSummA()!.total) }}</div></div>
+        <div class="col"><div class="muted">{{ cmpB }}</div><div class="big">{{ fmt(cmpSummB()!.total) }}</div></div>
+      </div>
+      <div class="chart-box" style="height:220px;margin-top:12px" *ngIf="cmpSummA() && cmpSummB()">
+        <p-chart type="bar" [data]="cmpData()" [options]="barOptionsV" />
       </div>
     </p-dialog>
   `,
@@ -245,6 +323,49 @@ export class AppComponent implements OnInit {
 
   catDialog = false;
   catForm: { id: number | null; name: string; color: string } = { id: null, name: '', color: '#6c8cff' };
+
+  readonly budgets = signal<Budget[]>([]);
+  readonly recurring = signal<Recurring[]>([]);
+  readonly applying = signal<boolean>(false);
+  recDialog = false;
+  recForm: { merchant: string; amount: number | null; categoryId: number | null; dayOfMonth: number } =
+    { merchant: '', amount: null, categoryId: null, dayOfMonth: 1 };
+
+  query = '';
+  filterCat = '';
+  cmpDialog = false;
+  cmpA = new Date().toISOString().slice(0, 7);
+  cmpB = new Date().toISOString().slice(0, 7);
+  readonly cmpSummA = signal<Summary | null>(null);
+  readonly cmpSummB = signal<Summary | null>(null);
+
+  readonly barOptionsV = { maintainAspectRatio: false, plugins: { legend: { display: false } },
+    scales: { x: { ticks: { color: '#e6e8ee' }, grid: { display: false } },
+              y: { ticks: { color: '#9aa3b2' }, grid: { color: '#262a33' } } } };
+
+  readonly budgeted = computed(() => {
+    const bc = this.summary()?.byCategory ?? [];
+    return bc.filter((c) => c.budget > 0).map((c) => ({
+      name: c.name, color: c.color, total: c.total, budget: c.budget,
+      pct: Math.min(100, Math.round((c.total / c.budget) * 100)), over: c.total > c.budget,
+    }));
+  });
+
+  readonly filtered = computed(() => {
+    const q = this.query.trim().toLowerCase();
+    const cat = this.filterCat;
+    return this.expenses().filter((e) => {
+      if (cat && e.categorySlug !== cat) return false;
+      if (!q) return true;
+      return (e.merchant + ' ' + e.description + ' ' + e.nit + ' ' + e.categoryName).toLowerCase().includes(q);
+    });
+  });
+
+  readonly cmpData = computed(() => ({
+    labels: [this.cmpA, this.cmpB],
+    datasets: [{ data: [this.cmpSummA()?.total ?? 0, this.cmpSummB()?.total ?? 0],
+      backgroundColor: ['#6c8cff', '#10b981'], borderRadius: 6 }],
+  }));
 
   readonly change = computed(() => {
     const s = this.summary();
@@ -296,6 +417,7 @@ export class AppComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadCategories();
+    this.loadBudgets();
     this.api.aiStatus().subscribe({ next: (s) => this.aiEnabled.set(s.enabled), error: () => {} });
     this.reload();
   }
@@ -320,7 +442,7 @@ export class AppComponent implements OnInit {
   }
 
   // ── Categorías ──
-  openCats(): void { this.resetCatForm(); this.catDialog = true; }
+  openCats(): void { this.resetCatForm(); this.loadBudgets(); this.catDialog = true; }
   resetCatForm(): void { this.catForm = { id: null, name: '', color: '#6c8cff' }; }
   editCat(c: Category): void { this.catForm = { id: c.id, name: c.name, color: c.color }; }
   saveCat(): void {
@@ -335,6 +457,60 @@ export class AppComponent implements OnInit {
   delCat(c: Category): void {
     if (!confirm(`¿Borrar la categoría "${c.name}"? Los gastos quedarán sin categoría.`)) return;
     this.api.deleteCategory(c.id).subscribe(() => { this.loadCategories(); this.reload(); });
+  }
+
+  // ── Presupuestos ──
+  private loadBudgets(): void { this.api.budgets().subscribe((b) => this.budgets.set(b)); }
+  budgetFor(id: number): number | null { return this.budgets().find((b) => b.categoryId === id)?.amount ?? null; }
+  setBudget(id: number, value: string): void {
+    this.api.setBudget(id, Number(value) || 0).subscribe(() => { this.loadBudgets(); this.reload(); });
+  }
+
+  // ── Recurrentes ──
+  openRecurring(): void { this.loadRecurring(); this.recDialog = true; }
+  private loadRecurring(): void { this.api.recurring().subscribe((r) => this.recurring.set(r)); }
+  addRecurring(): void {
+    if (!this.recForm.merchant || !this.recForm.amount) return;
+    this.api.createRecurring({ merchant: this.recForm.merchant, amount: this.recForm.amount,
+      categoryId: this.recForm.categoryId, dayOfMonth: this.recForm.dayOfMonth }).subscribe(() => {
+      this.recForm = { merchant: '', amount: null, categoryId: null, dayOfMonth: 1 };
+      this.loadRecurring();
+    });
+  }
+  delRecurring(id: number): void { this.api.deleteRecurring(id).subscribe(() => this.loadRecurring()); }
+  applyRecurring(): void {
+    this.applying.set(true);
+    this.api.applyRecurring(this.month()).subscribe({
+      next: (r) => { this.applying.set(false); this.reload(); alert(`${r.created} gasto(s) recurrente(s) aplicado(s).`); },
+      error: () => this.applying.set(false),
+    });
+  }
+
+  // ── Comparar meses ──
+  openCompare(): void {
+    const [y, m] = this.month().split('-').map(Number);
+    this.cmpA = this.month();
+    this.cmpB = new Date(y, m - 2, 1).toISOString().slice(0, 7);
+    this.loadCompare();
+    this.cmpDialog = true;
+  }
+  loadCompare(): void {
+    this.api.summary(this.cmpA).subscribe((s) => this.cmpSummA.set(s));
+    this.api.summary(this.cmpB).subscribe((s) => this.cmpSummB.set(s));
+  }
+
+  // ── Exportar CSV ──
+  exportCsv(): void {
+    const rows = [['fecha_compra', 'monto', 'moneda', 'categoria', 'comercio', 'nit', 'descripcion', 'origen', 'registrado']];
+    for (const e of this.expenses()) {
+      rows.push([e.spentOn, String(e.amount), e.currency, e.categoryName, e.merchant, e.nit, e.description, e.source, e.registeredAt]);
+    }
+    const csv = rows.map((r) => r.map((c) => `"${(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `gastos-${this.month()}.csv`; a.click();
+    URL.revokeObjectURL(url);
   }
 
   // ── Alta / escaneo ──

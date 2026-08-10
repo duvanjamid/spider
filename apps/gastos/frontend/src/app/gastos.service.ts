@@ -9,7 +9,12 @@ export interface Expense {
   spentOn: string; registeredAt: string; source: string;
   categorySlug: string; categoryName: string; categoryColor: string;
 }
-export interface CatTotal { slug: string; name: string; color: string; total: number; }
+export interface CatTotal { slug: string; name: string; color: string; total: number; budget: number; }
+export interface Budget { categoryId: number; slug: string; name: string; color: string; amount: number; }
+export interface Recurring {
+  id: number; amount: number; currency: string; merchant: string; description: string;
+  dayOfMonth: number; active: boolean; categoryId: number | null; categoryName: string; categoryColor: string;
+}
 export interface Summary {
   month: string; total: number; byCategory: CatTotal[];
   count: number; daysInMonth: number; daysElapsed: number;
@@ -48,6 +53,19 @@ export class GastosService {
     return this.http.put(`${this.base}/categories/${id}`, body, this.opts);
   }
   deleteCategory(id: number): Observable<unknown> { return this.http.delete(`${this.base}/categories/${id}`, this.opts); }
+
+  budgets(): Observable<Budget[]> { return this.http.get<Budget[]>(`${this.base}/budgets`, this.opts); }
+  setBudget(categoryId: number, amount: number): Observable<unknown> {
+    return this.http.put(`${this.base}/budgets`, { categoryId, amount }, this.opts);
+  }
+  recurring(): Observable<Recurring[]> { return this.http.get<Recurring[]>(`${this.base}/recurring`, this.opts); }
+  createRecurring(body: Partial<Recurring>): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(`${this.base}/recurring`, body, this.opts);
+  }
+  deleteRecurring(id: number): Observable<unknown> { return this.http.delete(`${this.base}/recurring/${id}`, this.opts); }
+  applyRecurring(month: string): Observable<{ created: number }> {
+    return this.http.post<{ created: number }>(`${this.base}/recurring/apply?month=${month}`, {}, this.opts);
+  }
   expenses(month: string): Observable<Expense[]> { return this.http.get<Expense[]>(`${this.base}/expenses?month=${month}`, this.opts); }
   create(e: NewExpense): Observable<{ id: number }> { return this.http.post<{ id: number }>(`${this.base}/expenses`, e, this.opts); }
   remove(id: number): Observable<unknown> { return this.http.delete(`${this.base}/expenses/${id}`, this.opts); }
