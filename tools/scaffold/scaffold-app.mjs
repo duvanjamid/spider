@@ -657,6 +657,8 @@ frontNginx: `server {
   server_name _;
   root /usr/share/nginx/html;
   index index.html;
+  # PWA: tipo correcto para el manifest (nginx no mapea .webmanifest por defecto).
+  location = /manifest.webmanifest { default_type application/manifest+json; }
   location / { try_files $uri $uri/ /index.html; }
   location ~* \\.(js|css|woff2?|png|jpg|svg|ico)$ {
     expires 7d; add_header Cache-Control "public, immutable";
