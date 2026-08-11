@@ -78,7 +78,21 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
            border-radius: 14px; background: var(--panel); }
     .row .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
     .row .grow { flex: 1; min-width: 0; } .row .grow small { color: var(--muted); }
+    .row .grow div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .amt { font-weight: 800; white-space: nowrap; }
+    .row.clickable { cursor: pointer; transition: border-color .12s, transform .06s; }
+    .row.clickable:hover { border-color: var(--accent); }
+    .row.clickable:active { transform: scale(.995); }
+    /* Detalle de movimiento */
+    .det { display: flex; flex-direction: column; }
+    .det-amt { display: flex; align-items: center; gap: 10px; font-size: 1.4rem; font-weight: 800; padding: 2px 0 12px; }
+    .det-amt .dot { width: 14px; height: 14px; border-radius: 50%; }
+    .det-amt .muted { font-size: .9rem; font-weight: 500; margin-left: auto; }
+    .det-row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid var(--border); }
+    .det-row > span { color: var(--muted); flex: none; }
+    .det-row > b { text-align: right; }
+    .det-row.full { flex-direction: column; gap: 4px; }
+    .det-row.full p { margin: 0; line-height: 1.4; }
 
     /* Campos (theme-aware, legibles en claro y oscuro) */
     .inp, .sel, .ta { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
@@ -314,14 +328,14 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
               <span class="muted">{{ filtered().length }} de {{ expenses().length }}</span>
             </div>
             <div class="list">
-              <div class="row" *ngFor="let e of filtered()">
+              <div class="row clickable" *ngFor="let e of filtered()" (click)="openDetail(e)">
                 <span class="dot" [style.background]="e.categoryColor || '#9aa3b2'"></span>
                 <div class="grow">
                   <div>{{ e.merchant || e.description || e.categoryName || 'Gasto' }}</div>
                   <small>{{ e.categoryName || 'Otros' }} · {{ e.spentOn }}<span *ngIf="e.source === 'scan'"> · 🤖</span><span *ngIf="e.source === 'recurring'"> · 🔁</span></small>
                 </div>
                 <span class="amt">{{ fmt(e.amount, e.currency) }}</span>
-                <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="del(e.id)" />
+                <i class="fa-solid fa-chevron-right" style="color:var(--muted);font-size:.8rem"></i>
               </div>
               <p class="muted" *ngIf="loaded() && filtered().length === 0" style="text-align:center;padding:24px">Sin movimientos que coincidan.</p>
             </div>
@@ -394,6 +408,7 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
               <span class="hint" *ngIf="suggested()">Sugerida por IA: “{{ suggested() }}” — créala en Categorías</span>
             </div>
             <div class="field"><label>Fecha de compra</label><input class="inp" type="date" [(ngModel)]="form.spentOn" /></div>
+            <div class="field"><label>Hora de compra</label><input class="inp" type="time" [(ngModel)]="form.spentTime" /></div>
             <div class="field"><label>Establecimiento</label><input class="inp" type="text" [(ngModel)]="form.merchant" placeholder="Comercio" /></div>
             <div class="field"><label>NIT</label><input class="inp" type="text" [(ngModel)]="form.nit" placeholder="NIT / ID tributario" /></div>
             <div class="field full"><label>Descripción</label><input class="inp" type="text" [(ngModel)]="form.description" placeholder="Detalle" /></div>
@@ -419,6 +434,27 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
           <p-button label="Guardar" icon="pi pi-check" (onClick)="save()" [loading]="saving()"
                     [disabled]="!form.amount || form.amount <= 0" />
         </div>
+      </ng-template>
+    </p-dialog>
+
+    <!-- ═══ Detalle de movimiento ═══ -->
+    <p-dialog [(visible)]="detailDialog" [modal]="true" header="Detalle del gasto" [dismissableMask]="true" [style]="{ width: '92%', maxWidth: '460px' }">
+      <div class="det" *ngIf="detail() as d">
+        <div class="det-amt">
+          <span class="dot" [style.background]="d.categoryColor || '#9aa3b2'"></span>
+          {{ fmt(d.amount, d.currency) }}
+          <span class="muted">{{ d.categoryName || 'Sin categoría' }}</span>
+        </div>
+        <div class="det-row"><span>Establecimiento</span><b>{{ d.merchant || '—' }}</b></div>
+        <div class="det-row"><span>NIT</span><b>{{ d.nit || '—' }}</b></div>
+        <div class="det-row full"><span>Descripción</span><p>{{ d.description || '—' }}</p></div>
+        <div class="det-row"><span>Comprado</span><b>{{ fmtDateTime(d.spentAt) }}</b></div>
+        <div class="det-row"><span>Registrado</span><b>{{ fmtDateTime(d.registeredAt) }}</b></div>
+        <div class="det-row"><span>Origen</span><b>{{ sourceLabel(d.source) }}</b></div>
+      </div>
+      <ng-template pTemplate="footer">
+        <p-button label="Eliminar" icon="pi pi-trash" severity="danger" [text]="true" (onClick)="delFromDetail()" />
+        <p-button label="Cerrar" (onClick)="detailDialog = false" />
       </ng-template>
     </p-dialog>
 
@@ -530,6 +566,9 @@ export class AppComponent implements OnInit {
 
   textDialog = false;
   pastedText = '';
+
+  detailDialog = false;
+  readonly detail = signal<Expense | null>(null);
 
   catDialog = false;
   catForm: { id: number | null; name: string; color: string } = { id: null, name: '', color: '#6c8cff' };
@@ -880,8 +919,9 @@ export class AppComponent implements OnInit {
     this.regiones.set(s.regiones ?? []);
     this.suggested.set(s.categoriaId ? null : s.categoriaSugerida);
     const fecha = this.validDate(s.fecha) ? s.fecha! : new Date().toISOString().slice(0, 10);
+    const hora = this.validTime(s.hora) ? s.hora! : '';
     this.form = { amount: s.montos[0]?.valor ?? null, currency: 'COP', categoryId: s.categoriaId ?? null,
-      merchant: s.establecimiento ?? '', nit: s.nit ?? '', description: s.descripcion ?? '', spentOn: fecha };
+      merchant: s.establecimiento ?? '', nit: s.nit ?? '', description: s.descripcion ?? '', spentOn: fecha, spentTime: hora };
     this.sheetTab.set('datos');
     this.sheetState.set('form');
   }
@@ -891,9 +931,10 @@ export class AppComponent implements OnInit {
   save(): void {
     if (!this.form.amount || this.form.amount <= 0) return;
     this.saving.set(true);
+    const spentAt = this.form.spentTime ? `${this.form.spentOn}T${this.form.spentTime}` : undefined;
     this.api.create({ amount: this.form.amount, currency: this.form.currency, categoryId: this.form.categoryId,
       merchant: this.form.merchant, description: this.form.description, nit: this.form.nit,
-      spentOn: this.form.spentOn, source: this.scanned ? 'scan' : 'manual' }).subscribe({
+      spentOn: this.form.spentOn, spentAt, source: this.scanned ? 'scan' : 'manual' }).subscribe({
       next: () => { this.saving.set(false); this.sheetVisible = false; this.reload(); },
       error: () => { this.saving.set(false); alert('No se pudo guardar.'); },
     });
@@ -908,6 +949,25 @@ export class AppComponent implements OnInit {
 
   private emptyForm() {
     return { amount: null as number | null, currency: 'COP', categoryId: null as number | null,
-      merchant: '', nit: '', description: '', spentOn: new Date().toISOString().slice(0, 10) };
+      merchant: '', nit: '', description: '', spentOn: new Date().toISOString().slice(0, 10), spentTime: '' };
   }
+
+  // ── Detalle de movimiento ──
+  openDetail(e: Expense): void { this.detail.set(e); this.detailDialog = true; }
+  delFromDetail(): void {
+    const d = this.detail();
+    if (!d) return;
+    this.detailDialog = false;
+    this.api.remove(d.id).subscribe(() => this.reload());
+  }
+  sourceLabel(s: string): string {
+    return s === 'scan' ? 'Escaneado con IA' : s === 'recurring' ? 'Recurrente' : 'Manual';
+  }
+  fmtDateTime(s: string): string {
+    if (!s) return '—';
+    const d = new Date(s.replace(' ', 'T'));
+    if (isNaN(d.getTime())) return s;
+    return d.toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
+  }
+  private validTime(t: string | null): boolean { return !!t && /^\d{2}:\d{2}$/.test(t); }
 }

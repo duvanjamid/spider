@@ -25,11 +25,12 @@ public class ExpenseService {
         String ym = month == null || month.isBlank() ? YearMonth.now().toString() : month;
         String sql = """
                 SELECT e.id, e.amount, e.currency, e.merchant, e.description, e.nit,
-                       e.spent_on, e.created_at, e.source,
+                       e.spent_on, COALESCE(e.spent_at, e.spent_on::timestamptz) AS spent_at,
+                       e.created_at, e.source,
                        c.slug AS cat_slug, c.name AS cat_name, c.color AS cat_color
                 FROM expense e LEFT JOIN category c ON c.id = e.category_id
                 WHERE e.owner_email = ? AND to_char(e.spent_on, 'YYYY-MM') = ?
-                ORDER BY e.spent_on DESC, e.id DESC
+                ORDER BY COALESCE(e.spent_at, e.spent_on::timestamptz) DESC, e.id DESC
                 """;
         List<Map<String, Object>> out = new ArrayList<>();
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
@@ -45,6 +46,7 @@ public class ExpenseService {
                     m.put("description", nz(rs.getString("description")));
                     m.put("nit", nz(rs.getString("nit")));
                     m.put("spentOn", rs.getString("spent_on"));
+                    m.put("spentAt", String.valueOf(rs.getObject("spent_at")));
                     m.put("registeredAt", String.valueOf(rs.getObject("created_at")));
                     m.put("source", rs.getString("source"));
                     m.put("categorySlug", nz(rs.getString("cat_slug")));
@@ -58,11 +60,13 @@ public class ExpenseService {
     }
 
     public long create(String email, double amount, String currency, Long categoryId, String merchant,
-                       String description, String spentOn, String nit, String source) {
+                       String description, String spentOn, String spentAt, String nit, String source) {
+        LocalDate day = spentOn == null || spentOn.isBlank() ? LocalDate.now() : LocalDate.parse(spentOn);
+        java.time.LocalDateTime moment = parseMoment(spentAt, day);
         String sql = """
                 INSERT INTO expense (owner_email, amount, currency, category_id, merchant, description,
-                                     spent_on, nit, source)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                     spent_on, spent_at, nit, source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id
                 """;
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
@@ -72,11 +76,21 @@ public class ExpenseService {
             ps.setObject(4, categoryId);
             ps.setString(5, merchant);
             ps.setString(6, description);
-            ps.setObject(7, spentOn == null || spentOn.isBlank() ? LocalDate.now() : LocalDate.parse(spentOn));
-            ps.setString(8, nit);
-            ps.setString(9, source == null || source.isBlank() ? "manual" : source);
+            ps.setObject(7, day);
+            ps.setObject(8, moment);
+            ps.setString(9, nit);
+            ps.setString(10, source == null || source.isBlank() ? "manual" : source);
             try (ResultSet rs = ps.executeQuery()) { rs.next(); return rs.getLong(1); }
         } catch (Exception e) { throw new RuntimeException("Error creando gasto", e); }
+    }
+
+    /** Momento de compra: ISO "YYYY-MM-DDTHH:mm" si viene; si no, medianoche del día. */
+    private static java.time.LocalDateTime parseMoment(String spentAt, LocalDate day) {
+        if (spentAt != null && !spentAt.isBlank()) {
+            try { return java.time.LocalDateTime.parse(spentAt.trim().length() == 16 ? spentAt.trim() : spentAt.trim().substring(0, 16)); }
+            catch (Exception ignore) { /* cae a medianoche */ }
+        }
+        return day.atStartOfDay();
     }
 
     public void delete(String email, long id) {

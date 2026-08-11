@@ -6,7 +6,7 @@ import { environment } from '../environments/environment';
 export interface Category { id: number; slug: string; name: string; color: string; icon: string; }
 export interface Expense {
   id: number; amount: number; currency: string; merchant: string; description: string; nit: string;
-  spentOn: string; registeredAt: string; source: string;
+  spentOn: string; spentAt: string; registeredAt: string; source: string;
   categorySlug: string; categoryName: string; categoryColor: string;
 }
 export interface CatTotal { slug: string; name: string; color: string; total: number; budget: number; }
@@ -32,6 +32,7 @@ export interface Scan {
   montos: Monto[];
   descripcion: string | null;
   fecha: string | null;
+  hora: string | null;
   categoriaId: number | null;
   categoriaNombre: string | null;
   categoriaSugerida: string | null;
@@ -41,7 +42,7 @@ export interface Me { email: string; guest: boolean; onboarded: boolean; }
 export interface CategoryTemplate { slug: string; name: string; color: string; icon: string; }
 export interface NewExpense {
   amount: number; currency?: string; categoryId?: number | null;
-  merchant?: string; description?: string; spentOn?: string; nit?: string; source?: string;
+  merchant?: string; description?: string; spentOn?: string; spentAt?: string; nit?: string; source?: string;
 }
 
 @Injectable({ providedIn: 'root' })

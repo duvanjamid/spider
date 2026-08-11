@@ -26,10 +26,10 @@ import java.util.Map;
  */
 public final class ExpenseController {
 
-    /** Cuerpo para crear un gasto. */
+    /** Cuerpo para crear un gasto. spentAt = momento de compra ISO (opcional). */
     public record ExpenseInput(Double amount, String currency, Long categoryId,
                                String merchant, String description, String spentOn,
-                               String nit, String source) {}
+                               String spentAt, String nit, String source) {}
 
     /** Cuerpo para escanear una imagen. */
     public record ScanInput(String image, String mediaType) {}
@@ -122,7 +122,7 @@ public final class ExpenseController {
             if (amount <= 0) { ctx.status(400).json(Map.of("error", "amount inválido")); return; }
             Long catId = categories.resolveCategoryId(user, in.categoryId(), null);
             long id = svc.create(user, amount, or(in.currency(), "COP"), catId,
-                    nz(in.merchant()), nz(in.description()), in.spentOn(), nz(in.nit()),
+                    nz(in.merchant()), nz(in.description()), in.spentOn(), in.spentAt(), nz(in.nit()),
                     or(in.source(), "manual"));
             ctx.status(201).json(Map.of("id", id));
         });

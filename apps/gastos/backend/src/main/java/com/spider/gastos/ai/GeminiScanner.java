@@ -104,6 +104,7 @@ public class GeminiScanner {
                   "montos": [ { "etiqueta": string, "valor": number } ],
                   "descripcion": string|null,
                   "fecha": string|null,
+                  "hora": string|null,
                   "categoriaId": number|null,
                   "categoriaNombre": string|null,
                   "categoriaSugerida": string|null%s
@@ -112,7 +113,13 @@ public class GeminiScanner {
                 - "montos": lista TODOS los totales candidatos que veas (p. ej. "Subtotal/Neto",
                   "Total con IVA", "Total con propina/servicio", "Total a pagar"). Valores numéricos
                   sin separador de miles.
+                - "descripcion": un resumen NUTRIDO de la compra en 1-2 frases: qué se compró
+                  (menciona los ítems o productos principales que veas en el detalle), el
+                  establecimiento y el contexto (p. ej. "Almuerzo para 2: bandeja paisa y jugos
+                  en Restaurante La Fonda" o "Mercado semanal: frutas, lácteos y aseo en Éxito").
+                  Evita algo genérico como "compra" o solo el nombre del comercio.
                 - "fecha": fecha de la compra en formato YYYY-MM-DD si aparece, si no null.
+                - "hora": hora de la compra en formato HH:MM (24h) si aparece en el comprobante, si no null.
                 - "categoriaId"/"categoriaNombre": elige de esta lista del usuario (id: nombre): %s
                 - Si NINGUNA categoría aplica, deja categoriaId/categoriaNombre en null y propón un
                   nombre en "categoriaSugerida".
@@ -156,6 +163,7 @@ public class GeminiScanner {
         out.put("montos", montos);
         out.put("descripcion", asText(ex, "descripcion"));
         out.put("fecha", asText(ex, "fecha"));
+        out.put("hora", asText(ex, "hora"));
         out.put("categoriaId", ex.path("categoriaId").isNumber() ? ex.path("categoriaId").asLong() : null);
         out.put("categoriaNombre", asText(ex, "categoriaNombre"));
         out.put("categoriaSugerida", asText(ex, "categoriaSugerida"));
