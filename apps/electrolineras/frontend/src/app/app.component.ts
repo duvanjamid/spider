@@ -29,8 +29,8 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
     .muted { color: var(--muted); }
 
     /* Screen area */
-    .screen { flex: 1; position: relative; }
-    section.scr { position: absolute; inset: 0; display: flex; flex-direction: column; }
+    .screen { flex: 1; position: relative; isolation: isolate; }
+    section.scr { position: absolute; inset: 0; display: flex; flex-direction: column; z-index: 0; }
     .scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px 14px calc(var(--nav) + 20px); }
     .s-head { padding: 6px 2px 12px; } .s-head h1 { margin: 0; font-size: 1.5rem; letter-spacing: -.5px; } .s-head p { margin: 4px 0 0; color: var(--muted); }
 
@@ -41,7 +41,9 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
     .map-search input { flex: 1; border: none; background: none; color: var(--fg); font-size: 1rem; outline: none; }
     .map-search button { width: 34px; height: 34px; border-radius: 10px; border: none; background: var(--panel-2); color: var(--muted); cursor: pointer; }
     .map-search button.on { background: var(--accent); color: #08130c; }
-    .map { position: absolute; inset: 0; }
+    /* z-index:0 CONFINA los z-index internos de Leaflet (controles llegan a 1000)
+       para que no tapen el header, la nav ni el drawer. */
+    .map { position: absolute; inset: 0; z-index: 0; }
 
     /* Station cards */
     .cards { display: flex; flex-direction: column; gap: 10px; }
@@ -96,8 +98,8 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
     .bottomnav button.on i { transform: translateY(-1px); }
 
     /* Drawer */
-    .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 50; }
-    .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(86vw, 340px); z-index: 60; background: var(--panel); border-left: 1px solid var(--border);
+    .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1990; }
+    .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(86vw, 340px); z-index: 2000; background: var(--panel); border-left: 1px solid var(--border);
            box-shadow: var(--shadow); transform: translateX(100%); transition: transform .24s ease; display: flex; flex-direction: column; }
     .drawer.open { transform: translateX(0); }
     .drawer .dh { display: flex; align-items: center; padding: 16px; border-bottom: 1px solid var(--border); font-weight: 800; }
@@ -231,8 +233,8 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
 
       <!-- Bottom nav -->
       <nav class="bottomnav">
+        <button [class.on]="tab() === 'near'" (click)="setTab('near')"><i class="fa-solid fa-house"></i><span>Inicio</span></button>
         <button [class.on]="tab() === 'map'" (click)="setTab('map')"><i class="fa-solid fa-map-location-dot"></i><span>Mapa</span></button>
-        <button [class.on]="tab() === 'near'" (click)="setTab('near')"><i class="fa-solid fa-location-dot"></i><span>Cerca</span></button>
         <button [class.on]="tab() === 'trip'" (click)="setTab('trip')"><i class="fa-solid fa-route"></i><span>Viaje</span></button>
         <button [class.on]="tab() === 'info'" (click)="setTab('info')"><i class="fa-solid fa-circle-info"></i><span>Info</span></button>
       </nav>
@@ -338,7 +340,7 @@ export class AppComponent implements OnInit, AfterViewInit {
   @ViewChild('mapEl') mapEl!: ElementRef<HTMLDivElement>;
 
   readonly isTest = signal(false);
-  readonly tab = signal<Tab>('map');
+  readonly tab = signal<Tab>('near');
   readonly drawer = signal(false);
   readonly stations = signal<Station[]>([]);
   readonly filtered = signal<Station[]>([]);
