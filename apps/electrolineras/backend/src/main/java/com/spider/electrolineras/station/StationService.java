@@ -36,8 +36,16 @@ public class StationService {
 
     public StationService(DataSource ds) { this.ds = ds; }
 
-    // ── Sincronización desde datos.gov.co (idempotente) ──
+    // ── Sincronización de TODAS las fuentes (idempotente) ──
     public int sync() {
+        int n = syncDatosGov();
+        if (Env.openChargeMapEnabled()) n += syncOpenChargeMap();
+        else log.info("Open Charge Map omitido (define OPENCHARGEMAP_KEY para cobertura nacional)");
+        return n;
+    }
+
+    // ── datos.gov.co (EPM · Antioquia) ──
+    public int syncDatosGov() {
         String url = Env.datosGovBase().replaceAll("/+$", "") + "/" + Env.datosGovResource() + ".json?$limit=5000";
         String token = Env.datosGovAppToken();
         try {
@@ -135,6 +143,105 @@ public class StationService {
         return s;
     }
 
+    // ── Open Charge Map (cobertura nacional, crowdsourced) ──
+    public int syncOpenChargeMap() {
+        String key = Env.openChargeMapKey();
+        String url = "https://api.openchargemap.io/v3/poi?output=json&countrycode=" + Env.openChargeMapCountry()
+                + "&maxresults=" + Env.openChargeMapMax() + "&key=" + key;
+        try {
+            HttpRequest req = HttpRequest.newBuilder(URI.create(url))
+                    .header("accept", "application/json").header("X-API-Key", key)
+                    .timeout(Duration.ofSeconds(40)).GET().build();
+            HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() / 100 != 2) {
+                log.warn("Open Charge Map {} → {}", res.statusCode(), res.body());
+                return 0;
+            }
+            JsonNode pois = Json.MAPPER.readTree(res.body());
+            int n = 0;
+            for (JsonNode poi : pois) n += upsertFromOcm(poi) ? 1 : 0;
+            log.info("Sync Open Charge Map: {} estaciones procesadas", n);
+            return n;
+        } catch (Exception e) {
+            log.warn("Sync OCM falló (se continúa): {}", e.getMessage());
+            return 0;
+        }
+    }
+
+    private boolean upsertFromOcm(JsonNode poi) {
+        JsonNode ai = poi.path("AddressInfo");
+        if (ai.path("Latitude").isMissingNode() || ai.path("Longitude").isMissingNode()) return false;
+        double lat = ai.path("Latitude").asDouble();
+        double lon = ai.path("Longitude").asDouble();
+        if (lat == 0 && lon == 0) return false;
+        String extId = "ocm-" + poi.path("ID").asLong();
+        String name = firstNonBlank(text(ai, "Title"), "Estación de carga");
+        String city = firstNonBlank(text(ai, "Town"), text(ai, "StateOrProvince"), "");
+        String address = text(ai, "AddressLine1");
+        String operator = text(poi.path("OperatorInfo"), "Title");
+
+        StringBuilder conn = new StringBuilder();
+        double maxKw = 0;
+        for (JsonNode cn : poi.path("Connections")) {
+            String t = text(cn.path("ConnectionType"), "Title");
+            if (t != null && !t.isBlank()) { if (conn.length() > 0) conn.append(", "); conn.append(t); }
+            if (cn.path("PowerKW").isNumber()) maxKw = Math.max(maxKw, cn.path("PowerKW").asDouble());
+        }
+        String speed = maxKw >= 50 ? "Rápida" : maxKw >= 22 ? "Semi-rápida" : maxKw > 0 ? "Lenta" : null;
+        boolean operational = poi.path("StatusType").path("IsOperational").asBoolean(true);
+
+        String sql = """
+                INSERT INTO station (source, external_id, name, operator, city, address, lat, lon,
+                                     connectors, speed, hours, website, source_active, raw, updated_at)
+                VALUES ('openchargemap', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, now())
+                ON CONFLICT (source, external_id) DO UPDATE SET
+                    name = EXCLUDED.name, operator = EXCLUDED.operator, city = EXCLUDED.city,
+                    address = EXCLUDED.address, lat = EXCLUDED.lat, lon = EXCLUDED.lon,
+                    connectors = EXCLUDED.connectors, speed = EXCLUDED.speed,
+                    source_active = EXCLUDED.source_active, raw = EXCLUDED.raw, updated_at = now()
+                RETURNING id
+                """;
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, extId);
+            ps.setString(2, name);
+            ps.setString(3, operator);
+            ps.setString(4, city);
+            ps.setString(5, address);
+            ps.setDouble(6, lat);
+            ps.setDouble(7, lon);
+            ps.setString(8, conn.length() > 0 ? conn.toString() : null);
+            ps.setString(9, speed);
+            ps.setBoolean(10, operational);
+            ps.setString(11, poi.toString());
+            long stationId;
+            try (ResultSet rs = ps.executeQuery()) { rs.next(); stationId = rs.getLong(1); }
+            // cargadores con conector + potencia explícitos
+            int idx = 0;
+            for (JsonNode cn : poi.path("Connections")) {
+                idx++;
+                String t = firstNonBlank(text(cn.path("ConnectionType"), "Title"), "Conector " + idx);
+                Double kw = cn.path("PowerKW").isNumber() ? cn.path("PowerKW").asDouble() : null;
+                insertCharger(c, stationId, t + " #" + idx, normalizeConnector(t), kw);
+            }
+            return true;
+        } catch (Exception e) {
+            log.debug("POI OCM ignorado: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    private void insertCharger(Connection c, long stationId, String label, String connectorType, Double powerKw) throws Exception {
+        try (PreparedStatement ps = c.prepareStatement("""
+                INSERT INTO charger (station_id, label, connector_type, power_kw)
+                VALUES (?, ?, ?, ?) ON CONFLICT (station_id, label) DO NOTHING""")) {
+            ps.setLong(1, stationId);
+            ps.setString(2, label);
+            ps.setString(3, connectorType);
+            if (powerKw == null) ps.setNull(4, java.sql.Types.NUMERIC); else ps.setBigDecimal(4, java.math.BigDecimal.valueOf(powerKw));
+            ps.executeUpdate();
+        }
+    }
+
     // ── Listado para el mapa (ligero) ──
     public List<Map<String, Object>> list() {
         String sql = """
@@ -166,6 +273,24 @@ public class StationService {
                 out.add(m);
             }
         } catch (Exception e) { throw new RuntimeException("Error listando estaciones", e); }
+        return out;
+    }
+
+    // ── Totales del catálogo (para saber qué cargamos) ──
+    public Map<String, Object> stats() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Map<String, Object>> bySource = new ArrayList<>();
+        long total = 0;
+        try (Connection c = ds.getConnection(); Statement st = c.createStatement()) {
+            try (ResultSet rs = st.executeQuery("SELECT source, count(*) AS n FROM station GROUP BY source ORDER BY n DESC")) {
+                while (rs.next()) { bySource.add(Map.of("source", rs.getString("source"), "count", rs.getLong("n"))); total += rs.getLong("n"); }
+            }
+            long cities = 0;
+            try (ResultSet rs = st.executeQuery("SELECT count(DISTINCT city) AS n FROM station WHERE city <> ''")) { if (rs.next()) cities = rs.getLong("n"); }
+            out.put("total", total);
+            out.put("bySource", bySource);
+            out.put("cities", cities);
+        } catch (Exception e) { throw new RuntimeException("Error en stats", e); }
         return out;
     }
 

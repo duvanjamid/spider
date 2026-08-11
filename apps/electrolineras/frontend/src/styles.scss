@@ -46,3 +46,6 @@ h3 { margin: 18px 0 10px; }
 }
 .pin i { transform: rotate(45deg); color: #fff; font-size: .8rem; }
 .leaflet-container { background: var(--panel-2); font: inherit; }
+// Marcador de "mi ubicación"
+.me { width: 18px; height: 18px; border-radius: 50%; background: #3b82f6; border: 3px solid #fff;
+      box-shadow: 0 0 0 4px rgba(59,130,246,.35); }

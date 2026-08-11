@@ -62,6 +62,8 @@ type View = 'map' | 'list';
       <div class="brand"><i class="fa-solid fa-charging-station"></i> Electrolineras <span class="env" *ngIf="isTest()">test</span></div>
       <span class="spacer"></span>
       <span class="muted" style="font-size:.85rem">{{ filtered().length }} estaciones</span>
+      <p-button [label]="locating() ? 'Ubicando…' : 'Cerca de mí'" icon="fa-solid fa-location-crosshairs"
+                size="small" [text]="true" (onClick)="locate()" [loading]="locating()" />
       <div class="seg">
         <button [class.on]="view() === 'map'" (click)="setView('map')" title="Mapa"><i class="fa-solid fa-map-location-dot"></i></button>
         <button [class.on]="view() === 'list'" (click)="setView('list')" title="Lista"><i class="fa-solid fa-list"></i></button>
@@ -92,6 +94,7 @@ type View = 'map' | 'list';
           <div class="nm">{{ s.name }}</div>
           <div class="ds">{{ s.city }}<span *ngIf="s.connectors"> · {{ s.connectors }}</span></div>
         </div>
+        <span class="muted" *ngIf="dist(s) as d" style="font-size:.82rem;white-space:nowrap">{{ d }}</span>
         <p-tag [value]="statusLabel(s.communityStatus)" [severity]="statusSeverity(s.communityStatus)" />
         <i class="fa-solid fa-chevron-right muted" style="font-size:.8rem"></i>
       </div>
@@ -106,7 +109,7 @@ type View = 'map' | 'list';
           <span class="dot" [style.background]="statusColor(d.communityStatus)" style="width:16px;height:16px;border-radius:50%;margin-top:6px"></span>
           <div class="grow">
             <h2>{{ d.name }}</h2>
-            <div class="d-meta">{{ d.operator }}<span *ngIf="d.city"> · {{ d.city }}</span></div>
+            <div class="d-meta">{{ d.operator }}<span *ngIf="d.city"> · {{ d.city }}</span><span *ngIf="dist(d) as km"> · a {{ km }}</span></div>
             <div class="d-meta" *ngIf="d.address">{{ d.address }}</div>
           </div>
           <p-tag [value]="statusLabel(d.communityStatus)" [severity]="statusSeverity(d.communityStatus)" />
@@ -193,6 +196,9 @@ export class AppComponent implements OnInit, AfterViewInit {
 
   private map?: L.Map;
   private markers = L.layerGroup();
+  private userMarker?: L.Marker;
+  readonly userPos = signal<[number, number] | null>(null);
+  readonly locating = signal(false);
 
   readonly cities = computed(() => [...new Set(this.stations().map((s) => s.city).filter(Boolean))].sort());
 
@@ -212,6 +218,44 @@ export class AppComponent implements OnInit, AfterViewInit {
     }).addTo(this.map);
     this.markers.addTo(this.map);
     this.renderMarkers();
+    // Pide la ubicación al entrar (si el usuario la concede).
+    this.locate();
+  }
+
+  // ── Ubicación del dispositivo ──
+  locate(): void {
+    if (!navigator.geolocation) return;
+    this.locating.set(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        this.locating.set(false);
+        const p: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+        this.userPos.set(p);
+        if (this.map) {
+          this.map.setView(p, 12);
+          const icon = L.divIcon({ className: '', html: '<div class="me"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
+          if (this.userMarker) this.userMarker.setLatLng(p);
+          else this.userMarker = L.marker(p, { icon, zIndexOffset: 1000 }).addTo(this.map);
+        }
+        this.applyFilters(); // reordena por cercanía
+      },
+      () => { this.locating.set(false); },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  }
+
+  private distanceKm(a: [number, number], b: [number, number]): number {
+    const R = 6371, toRad = (x: number) => (x * Math.PI) / 180;
+    const dLat = toRad(b[0] - a[0]), dLon = toRad(b[1] - a[1]);
+    const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(s));
+  }
+  /** Distancia legible desde el usuario a una estación (o '' si no hay ubicación). */
+  dist(s: { lat: number; lon: number }): string {
+    const u = this.userPos();
+    if (!u || s.lat == null || s.lon == null) return '';
+    const km = this.distanceKm(u, [s.lat, s.lon]);
+    return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
   }
 
   setView(v: View): void {
@@ -222,11 +266,16 @@ export class AppComponent implements OnInit, AfterViewInit {
   applyFilters(): void {
     const q = this.query.trim().toLowerCase();
     const city = this.cityFilter;
-    this.filtered.set(this.stations().filter((s) => {
+    const u = this.userPos();
+    const list = this.stations().filter((s) => {
       if (city && s.city !== city) return false;
       if (!q) return true;
       return (s.name + ' ' + s.city + ' ' + s.address + ' ' + s.connectors).toLowerCase().includes(q);
-    }));
+    });
+    if (u) {
+      list.sort((a, b) => this.distanceKm(u, [a.lat, a.lon]) - this.distanceKm(u, [b.lat, b.lon]));
+    }
+    this.filtered.set(list);
     this.renderMarkers();
   }
 

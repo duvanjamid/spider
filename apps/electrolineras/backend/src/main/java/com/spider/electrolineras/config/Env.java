@@ -32,4 +32,11 @@ public final class Env {
     // Cada cuánto refrescar el catálogo desde el gobierno (minutos).
     public static int syncMinutes() { return getInt("SYNC_MINUTES", 360); }
     public static boolean syncOnStart() { return Boolean.parseBoolean(get("SYNC_ON_START", "true")); }
+
+    // ── Open Charge Map (cobertura NACIONAL, crowdsourced) ──
+    //   Requiere API key gratuita (openchargemap.org). Si falta, se omite.
+    public static String openChargeMapKey() { return get("OPENCHARGEMAP_KEY", ""); }
+    public static boolean openChargeMapEnabled() { return !openChargeMapKey().isBlank(); }
+    public static int openChargeMapMax() { return getInt("OPENCHARGEMAP_MAX", 5000); }
+    public static String openChargeMapCountry() { return get("OPENCHARGEMAP_COUNTRY", "CO"); }
 }

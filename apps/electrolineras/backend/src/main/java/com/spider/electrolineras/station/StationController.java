@@ -74,9 +74,13 @@ public final class StationController {
         app.get("/stations/{id}/reports", ctx ->
                 ctx.json(reports.recent(Long.parseLong(ctx.pathParam("id")), 20)));
 
-        app.get("/meta", ctx -> ctx.json(Map.of(
-                "source", "datos.gov.co (" + Env.datosGovResource() + ")",
-                "syncMinutes", Env.syncMinutes())));
+        app.get("/meta", ctx -> {
+            var m = new java.util.LinkedHashMap<String, Object>(stations.stats());
+            m.put("govResource", Env.datosGovResource());
+            m.put("openChargeMap", Env.openChargeMapEnabled());
+            m.put("syncMinutes", Env.syncMinutes());
+            ctx.json(m);
+        });
 
         app.post("/sync", ctx -> ctx.json(Map.of("synced", stations.sync())));
     }
