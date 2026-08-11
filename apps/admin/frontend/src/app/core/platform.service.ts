@@ -9,6 +9,16 @@ export interface SpiderApp {
   description: string;
   icon: string;
   color: string;
+  active?: boolean;
+}
+
+export interface AdminUser {
+  email: string;
+  displayName: string;
+  apps: string[];
+  appCount: number;
+  superAdmin: boolean;
+  lastLoginAt: string | null;
 }
 
 export interface HealthInfo {
@@ -47,6 +57,26 @@ export class PlatformService {
 
   grants(): Observable<Grant[]> {
     return this.http.get<Grant[]>(`${this.base}/admin/grants`, this.opts);
+  }
+
+  /** Todas las apps (incl. inactivas) con su estado. */
+  allAppsAdmin(): Observable<SpiderApp[]> {
+    return this.http.get<SpiderApp[]>(`${this.base}/admin/apps-all`, this.opts);
+  }
+  setAppActive(slug: string, active: boolean): Observable<unknown> {
+    return this.http.post(`${this.base}/admin/apps/active?slug=${encodeURIComponent(slug)}&active=${active}`, {}, this.opts);
+  }
+  users(): Observable<AdminUser[]> {
+    return this.http.get<AdminUser[]>(`${this.base}/admin/users`, this.opts);
+  }
+  userApps(email: string): Observable<SpiderApp[]> {
+    return this.http.get<SpiderApp[]>(`${this.base}/admin/users/apps?email=${encodeURIComponent(email)}`, this.opts);
+  }
+  appUsers(slug: string): Observable<{ email: string; role: string }[]> {
+    return this.http.get<{ email: string; role: string }[]>(`${this.base}/admin/apps/users?slug=${encodeURIComponent(slug)}`, this.opts);
+  }
+  removeUser(email: string): Observable<unknown> {
+    return this.http.post(`${this.base}/admin/users/revoke-all?email=${encodeURIComponent(email)}`, {}, this.opts);
   }
 
   grant(email: string, app: string, role: string): Observable<unknown> {

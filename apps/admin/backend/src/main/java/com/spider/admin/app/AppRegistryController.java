@@ -71,8 +71,7 @@ public final class AppRegistryController {
                   SET name = EXCLUDED.name,
                       description = EXCLUDED.description,
                       icon = COALESCE(?, application.icon),
-                      color = COALESCE(?, application.color),
-                      is_active = TRUE
+                      color = COALESCE(?, application.color)
                 """;
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setString(1, slug);

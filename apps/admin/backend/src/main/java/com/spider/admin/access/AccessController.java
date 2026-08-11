@@ -48,6 +48,49 @@ public final class AccessController {
             ctx.json(access.listGrants());
         });
 
+        // ── Gestión de apps (todas, incl. inactivas) ──
+        app.get("/admin/apps-all", ctx -> {
+            if (adminOrNull(ctx.header("Cookie")) == null) { ctx.status(403).json(FORBIDDEN); return; }
+            ctx.json(access.listAppsAdmin());
+        });
+
+        app.post("/admin/apps/active", ctx -> {
+            if (adminOrNull(ctx.header("Cookie")) == null) { ctx.status(403).json(FORBIDDEN); return; }
+            String slug = ctx.queryParam("slug");
+            String active = ctx.queryParam("active");
+            if (blank(slug) || blank(active)) { ctx.status(400).json(Map.of("error", "slug y active requeridos")); return; }
+            access.setAppActive(slug, Boolean.parseBoolean(active));
+            ctx.json(Map.of("status", "ok", "slug", slug, "active", Boolean.parseBoolean(active)));
+        });
+
+        // ── Usuarios ──
+        app.get("/admin/users", ctx -> {
+            if (adminOrNull(ctx.header("Cookie")) == null) { ctx.status(403).json(FORBIDDEN); return; }
+            ctx.json(access.listUsers());
+        });
+
+        app.get("/admin/users/apps", ctx -> {
+            if (adminOrNull(ctx.header("Cookie")) == null) { ctx.status(403).json(FORBIDDEN); return; }
+            String target = ctx.queryParam("email");
+            if (blank(target)) { ctx.status(400).json(Map.of("error", "email requerido")); return; }
+            ctx.json(access.appsForUser(target));
+        });
+
+        app.get("/admin/apps/users", ctx -> {
+            if (adminOrNull(ctx.header("Cookie")) == null) { ctx.status(403).json(FORBIDDEN); return; }
+            String slug = ctx.queryParam("slug");
+            if (blank(slug)) { ctx.status(400).json(Map.of("error", "slug requerido")); return; }
+            ctx.json(access.usersForApp(slug));
+        });
+
+        app.post("/admin/users/revoke-all", ctx -> {
+            if (adminOrNull(ctx.header("Cookie")) == null) { ctx.status(403).json(FORBIDDEN); return; }
+            String target = ctx.queryParam("email");
+            if (blank(target)) { ctx.status(400).json(Map.of("error", "email requerido")); return; }
+            access.revokeAll(target);
+            ctx.json(Map.of("status", "removed", "email", target));
+        });
+
         app.post("/admin/grant", ctx -> {
             String email = adminOrNull(ctx.header("Cookie"));
             if (email == null) { ctx.status(403).json(FORBIDDEN); return; }
