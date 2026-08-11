@@ -37,4 +37,5 @@ COPY --from=builder /app/build/libs/app.jar ./app.jar
 ENV PORT=8080
 EXPOSE 8080
 # Render inyecta PORT; la app lo respeta.
-ENTRYPOINT ["sh", "-c", "java -jar /app/app.jar"]
+# Banderas de arranque rápido (menos JIT/GC init): reducen el cold-start.
+ENTRYPOINT ["sh", "-c", "java -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -jar /app/app.jar"]

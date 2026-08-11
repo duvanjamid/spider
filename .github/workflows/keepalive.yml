@@ -1,0 +1,37 @@
+# ══════════════════════════════════════════════════════════════
+#  Keep-alive · evita el "spin-down" del free tier de Render.
+#
+#  En free, Render apaga el contenedor tras ~15 min sin tráfico y el
+#  siguiente acceso paga un arranque en frío (contenedor + JVM). Este
+#  workflow pinguea cada servicio cada ~10 min para mantenerlos calientes.
+#
+#  ⚠️ GitHub solo ejecuta 'schedule' desde la rama POR DEFECTO (main). En
+#  develop queda listo; empieza a correr cuando se promociona a main.
+#  Para calentar TEST desde ya, usa además un pinger externo (ver CLAUDE/README).
+# ══════════════════════════════════════════════════════════════
+name: keep-alive
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # cada 10 min (GitHub puede retrasarlo algo)
+  workflow_dispatch:          # permite dispararlo a mano
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping servicios (test y prod)
+        run: |
+          set +e
+          # Gateways por entorno. La ruta de cada app despierta su frontend y
+          # /<app>-api/health su backend. Errores no rompen el job (best-effort).
+          BASES="https://spider-gateway-test.onrender.com"
+          # Añade aquí la URL del gateway de producción cuando exista, p.ej.:
+          # BASES="$BASES https://spider-gateway.onrender.com"
+          for BASE in $BASES; do
+            for P in /healthz /admin/ /gastos/ /admin-api/health /gastos-api/health; do
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 90 "$BASE$P")
+              echo "$BASE$P -> $CODE"
+            done
+          done
+          exit 0
