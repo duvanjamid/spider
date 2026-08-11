@@ -217,8 +217,24 @@ services:
         value: electrolineras
       - key: DB_SCHEMA
         value: electrolineras
+      # BD, secreto de sesión y token: se heredan del admin (set once ahí).
       - key: DATABASE_URL
-        sync: false
+        fromService:
+          type: web
+          name: admin-backend
+          envVarKey: DATABASE_URL
+      - key: AUTH_JWT_SECRET
+        fromService:
+          type: web
+          name: admin-backend
+          envVarKey: AUTH_JWT_SECRET
+      - key: REGISTRY_TOKEN
+        fromService:
+          type: web
+          name: admin-backend
+          envVarKey: REGISTRY_TOKEN
+      - key: ADMIN_REGISTRY_URL
+        value: https://admin-backend-ejrr.onrender.com
 
   - type: web
     name: electrolineras-frontend
@@ -245,8 +261,24 @@ services:
         value: electrolineras
       - key: DB_SCHEMA
         value: test_electrolineras
+      # BD, secreto de sesión y token: se heredan del admin (set once ahí).
       - key: DATABASE_URL
-        sync: false
+        fromService:
+          type: web
+          name: admin-backend-test
+          envVarKey: DATABASE_URL
+      - key: AUTH_JWT_SECRET
+        fromService:
+          type: web
+          name: admin-backend-test
+          envVarKey: AUTH_JWT_SECRET
+      - key: REGISTRY_TOKEN
+        fromService:
+          type: web
+          name: admin-backend-test
+          envVarKey: REGISTRY_TOKEN
+      - key: ADMIN_REGISTRY_URL
+        value: https://admin-backend-test.onrender.com
 
   - type: web
     name: electrolineras-frontend-test

@@ -228,6 +228,12 @@ const KEEPALIVE_SNIPPET = `      mirror /__APP__/;
 
 // Bloques de servicios para render.yaml (prod + test en un solo archivo).
 function renderBackend(n, suffix, branch, schema) {
+  // La app NO redefine secretos: hereda BD, secreto de sesión y token del
+  // admin con fromService (set once en el admin y listo para todas).
+  const adminSvc = `admin-backend${suffix}`;
+  const adminUrl = suffix
+    ? 'https://admin-backend-test.onrender.com'
+    : 'https://admin-backend-ejrr.onrender.com';
   return `
   - type: web
     name: ${n}-backend${suffix}
@@ -245,7 +251,22 @@ function renderBackend(n, suffix, branch, schema) {
       - key: DB_SCHEMA
         value: ${schema}
       - key: DATABASE_URL
-        sync: false
+        fromService:
+          type: web
+          name: ${adminSvc}
+          envVarKey: DATABASE_URL
+      - key: AUTH_JWT_SECRET
+        fromService:
+          type: web
+          name: ${adminSvc}
+          envVarKey: AUTH_JWT_SECRET
+      - key: REGISTRY_TOKEN
+        fromService:
+          type: web
+          name: ${adminSvc}
+          envVarKey: REGISTRY_TOKEN
+      - key: ADMIN_REGISTRY_URL
+        value: ${adminUrl}
 `;
 }
 function renderFrontend(n, suffix, branch) {
