@@ -49,3 +49,7 @@ h3 { margin: 18px 0 10px; }
 // Marcador de "mi ubicación"
 .me { width: 18px; height: 18px; border-radius: 50%; background: #3b82f6; border: 3px solid #fff;
       box-shadow: 0 0 0 4px rgba(59,130,246,.35); }
+// Marcadores de origen/destino del viaje
+.od { width: 16px; height: 16px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+.od.o { background: #3b82f6; }
+.od.d { background: #22c55e; }

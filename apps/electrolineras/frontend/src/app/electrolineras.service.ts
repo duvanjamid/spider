@@ -20,6 +20,8 @@ export interface StationFull {
 }
 export interface Comment { by: string; body: string; at: string; }
 export interface Report { status: string; by: string; charger: string; at: string; }
+export interface Place { name: string; lat: number; lon: number; }
+export interface RouteResult { distanceKm: number; durationMin: number; coordinates: [number, number][]; }
 
 @Injectable({ providedIn: 'root' })
 export class ElectrolinerasService {
@@ -38,4 +40,9 @@ export class ElectrolinerasService {
   }
   reports(id: number): Observable<Report[]> { return this.http.get<Report[]>(`${this.base}/stations/${id}/reports`, this.opts); }
   health(): Observable<{ env: string }> { return this.http.get<{ env: string }>(`${this.base}/health`, this.opts); }
+  meta(): Observable<any> { return this.http.get<any>(`${this.base}/meta`, this.opts); }
+  geocode(q: string): Observable<Place[]> { return this.http.get<Place[]>(`${this.base}/geocode?q=${encodeURIComponent(q)}`, this.opts); }
+  route(from: [number, number], to: [number, number]): Observable<RouteResult> {
+    return this.http.get<RouteResult>(`${this.base}/route?from=${from[0]},${from[1]}&to=${to[0]},${to[1]}`, this.opts);
+  }
 }

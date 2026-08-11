@@ -56,12 +56,30 @@ type View = 'map' | 'list';
     .cmt-form textarea { flex: 1; min-height: 44px; padding: 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel-2); color: var(--fg); font-family: inherit; resize: vertical; }
     .act { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-top: 1px solid var(--border); font-size: .84rem; }
     .banner { background: color-mix(in srgb, #f59e0b 14%, var(--panel)); border: 1px solid color-mix(in srgb, #f59e0b 40%, var(--border)); border-radius: 12px; padding: 10px 12px; margin: 10px 14px; font-size: .86rem; }
+
+    /* Planeador de viajes */
+    .trip { margin: 8px 14px; padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); box-shadow: var(--shadow); }
+    .trip-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .trip-form .tf { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; }
+    .trip-form .tf .inp { flex: 1; }
+    .trip-kpis { display: flex; gap: 16px; flex-wrap: wrap; margin: 12px 0 8px; font-size: .9rem; }
+    .trip-kpis b { font-size: 1.05rem; }
+    .trip-list { max-height: 40vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+    .trow { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
+    .trow:hover { border-color: var(--accent); }
+    .trow.stop { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+    .trow .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+    .trow .grow { flex: 1; min-width: 0; } .trow .nm { font-weight: 600; }
+    .trow .ds { color: var(--muted); font-size: .82rem; }
+    .stopbadge { font-size: .72rem; font-weight: 700; color: #08130c; background: var(--accent); padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
   `],
   template: `
     <div class="bar">
       <div class="brand"><i class="fa-solid fa-charging-station"></i> Electrolineras <span class="env" *ngIf="isTest()">test</span></div>
       <span class="spacer"></span>
       <span class="muted" style="font-size:.85rem">{{ filtered().length }} estaciones</span>
+      <p-button [label]="tripOpen() ? 'Cerrar viaje' : 'Planear viaje'" icon="fa-solid fa-route" size="small"
+                [outlined]="!tripOpen()" (onClick)="toggleTrip()" />
       <p-button [label]="locating() ? 'Ubicando…' : 'Cerca de mí'" icon="fa-solid fa-location-crosshairs"
                 size="small" [text]="true" (onClick)="locate()" [loading]="locating()" />
       <div class="seg">
@@ -70,11 +88,54 @@ type View = 'map' | 'list';
       </div>
     </div>
 
+    <!-- Planeador de viajes -->
+    <div class="trip" *ngIf="tripOpen()">
+      <div class="trip-form">
+        <div class="tf"><i class="fa-solid fa-location-dot" style="color:#3b82f6"></i>
+          <input class="inp" [(ngModel)]="tripOrigin" placeholder="Origen (o «mi ubicación»)" /></div>
+        <div class="tf"><i class="fa-solid fa-flag-checkered" style="color:var(--accent)"></i>
+          <input class="inp" [(ngModel)]="tripDest" placeholder="Destino: ciudad o dirección" (keyup.enter)="plan()" /></div>
+        <div class="tf"><i class="fa-solid fa-battery-three-quarters muted"></i>
+          <input class="inp" type="number" [(ngModel)]="tripAutonomy" placeholder="Autonomía km" style="width:120px" /></div>
+        <p-button label="Planear" icon="fa-solid fa-route" (onClick)="plan()" [loading]="planning()" [disabled]="!tripDest.trim()" />
+        <p-button *ngIf="tripInfo()" label="Limpiar" [text]="true" size="small" (onClick)="clearTrip()" />
+      </div>
+      <div class="muted" *ngIf="tripMsg()" style="padding:0 2px 6px;font-size:.85rem">{{ tripMsg() }}</div>
+      <div class="trip-res" *ngIf="tripInfo() as t">
+        <div class="trip-kpis">
+          <span><i class="fa-solid fa-road"></i> <b>{{ t.distanceKm }}</b> km</span>
+          <span><i class="fa-solid fa-clock"></i> <b>{{ fmtDur(t.durationMin) }}</b></span>
+          <span><i class="fa-solid fa-charging-station"></i> <b>{{ tripStations().length }}</b> en ruta</span>
+          <span *ngIf="tripStopsCount()"><i class="fa-solid fa-bolt" style="color:var(--accent)"></i> <b>{{ tripStopsCount() }}</b> paradas</span>
+        </div>
+        <div class="trip-list">
+          <div class="trow" *ngFor="let s of tripStations()" (click)="openDetail(s)" [class.stop]="isStop(s)">
+            <span class="dot" [style.background]="statusColor(s.communityStatus)"></span>
+            <div class="grow"><div class="nm">{{ s.name }}</div><div class="ds">{{ s.city }} · km {{ routeKm(s) }}</div></div>
+            <span class="stopbadge" *ngIf="isStop(s)"><i class="fa-solid fa-bolt"></i> parada</span>
+            <p-tag [value]="statusLabel(s.communityStatus)" [severity]="statusSeverity(s.communityStatus)" />
+          </div>
+          <p class="muted" *ngIf="!tripStations().length" style="padding:10px">No hay estaciones cerca de esta ruta con los datos actuales. (Con Open Charge Map habrá cobertura nacional.)</p>
+        </div>
+      </div>
+    </div>
+
     <div class="filters">
       <input class="inp search" type="text" [(ngModel)]="query" (ngModelChange)="applyFilters()" placeholder="Buscar por nombre, ciudad, dirección…" />
       <select class="sel" [(ngModel)]="cityFilter" (ngModelChange)="applyFilters()">
         <option value="">Todas las ciudades</option>
         <option *ngFor="let c of cities()" [value]="c">{{ c }}</option>
+      </select>
+      <select class="sel" [(ngModel)]="connectorFilter" (ngModelChange)="applyFilters()">
+        <option value="">Todo conector</option>
+        <option value="CCS2">CCS2</option>
+        <option value="CHAdeMO">CHAdeMO</option>
+        <option value="Tipo 2">Tipo 2</option>
+        <option value="GB/T">GB/T</option>
+      </select>
+      <select class="sel" [(ngModel)]="speedFilter" (ngModelChange)="applyFilters()">
+        <option value="">Toda velocidad</option>
+        <option *ngFor="let s of speeds()" [value]="s">{{ s }}</option>
       </select>
     </div>
 
@@ -187,6 +248,20 @@ export class AppComponent implements OnInit, AfterViewInit {
   readonly showBanner = signal(true);
   query = '';
   cityFilter = '';
+  connectorFilter = '';
+  speedFilter = '';
+  readonly speeds = computed(() => [...new Set(this.stations().map((s) => s.speed).filter(Boolean))].sort());
+
+  // ── Planeador de viajes ──
+  readonly tripOpen = signal(false);
+  tripOrigin = ''; tripDest = ''; tripAutonomy: number | null = null;
+  readonly planning = signal(false);
+  readonly tripMsg = signal('');
+  readonly tripInfo = signal<{ distanceKm: number; durationMin: number } | null>(null);
+  readonly tripStations = signal<Station[]>([]);
+  readonly tripStops = signal<Set<number>>(new Set());
+  private routePos = new Map<number, number>();
+  private routeLayer = L.layerGroup();
 
   readonly detail = signal<StationFull | null>(null);
   detailVisible = false;
@@ -258,6 +333,112 @@ export class AppComponent implements OnInit, AfterViewInit {
     return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
   }
 
+  private matchConnector(connectors: string, type: string): boolean {
+    const u = (connectors || '').toUpperCase();
+    if (type === 'CCS2') return u.includes('CCS') || u.includes('COMBO');
+    if (type === 'CHAdeMO') return u.includes('CHADEMO');
+    if (type === 'Tipo 2') return u.includes('MENNEKES') || u.includes('TIPO 2') || u.includes('TYPE 2') || u.includes('EUROPEO');
+    if (type === 'GB/T') return u.includes('GBT') || u.includes('GB/T') || u.includes('GB T');
+    return true;
+  }
+
+  // ── Planeador de viajes ──
+  toggleTrip(): void { this.tripOpen.set(!this.tripOpen()); }
+  fmtDur(min: number): string { const h = Math.floor(min / 60), m = Math.round(min % 60); return h ? `${h}h ${m}m` : `${m} min`; }
+  isStop(s: Station): boolean { return this.tripStops().has(s.id); }
+  routeKm(s: Station): number { return Math.round(this.routePos.get(s.id) ?? 0); }
+  tripStopsCount(): number { return this.tripStops().size; }
+
+  clearTrip(): void {
+    this.routeLayer.clearLayers();
+    this.tripInfo.set(null); this.tripStations.set([]); this.tripStops.set(new Set()); this.tripMsg.set('');
+  }
+
+  plan(): void {
+    if (!this.tripDest.trim()) return;
+    this.planning.set(true); this.tripMsg.set('');
+    this.resolveOrigin().then((origin) => {
+      if (!origin) { this.planning.set(false); this.tripMsg.set('No pude ubicar el origen. Escríbelo o usa «Cerca de mí».'); return; }
+      this.api.geocode(this.tripDest).subscribe({
+        next: (places) => {
+          if (!places.length) { this.planning.set(false); this.tripMsg.set('No encontré ese destino en Colombia.'); return; }
+          const dest: [number, number] = [places[0].lat, places[0].lon];
+          this.api.route(origin, dest).subscribe({
+            next: (r) => { this.planning.set(false); this.drawRoute(origin, dest, r); },
+            error: () => { this.planning.set(false); this.tripMsg.set('No pude calcular la ruta (intenta de nuevo).'); },
+          });
+        },
+        error: () => { this.planning.set(false); this.tripMsg.set('No pude buscar el destino.'); },
+      });
+    });
+  }
+
+  private resolveOrigin(): Promise<[number, number] | null> {
+    const o = this.tripOrigin.trim().toLowerCase();
+    if (!o || o === 'mi ubicación' || o === 'mi ubicacion') {
+      const u = this.userPos();
+      if (u) return Promise.resolve(u);
+      return new Promise((res) => {
+        if (!navigator.geolocation) { res(null); return; }
+        navigator.geolocation.getCurrentPosition(
+          (p) => { const pt: [number, number] = [p.coords.latitude, p.coords.longitude]; this.userPos.set(pt); res(pt); },
+          () => res(null), { timeout: 8000 });
+      });
+    }
+    return new Promise((res) => {
+      this.api.geocode(this.tripOrigin).subscribe({
+        next: (pl) => res(pl.length ? [pl[0].lat, pl[0].lon] : null),
+        error: () => res(null),
+      });
+    });
+  }
+
+  private drawRoute(origin: [number, number], dest: [number, number], r: { distanceKm: number; durationMin: number; coordinates: [number, number][] }): void {
+    if (!r || !r.coordinates || !r.coordinates.length) { this.tripMsg.set('Ruta no disponible.'); return; }
+    this.tripInfo.set({ distanceKm: r.distanceKm, durationMin: r.durationMin });
+    this.setView('map');
+    this.routeLayer.clearLayers();
+    if (this.map && !this.map.hasLayer(this.routeLayer)) this.routeLayer.addTo(this.map);
+    L.polyline(r.coordinates as L.LatLngExpression[], { color: '#22c55e', weight: 5, opacity: 0.85 }).addTo(this.routeLayer);
+    const mk = (cls: string) => L.divIcon({ className: '', html: `<div class="od ${cls}"></div>`, iconSize: [16, 16], iconAnchor: [8, 8] });
+    L.marker(origin, { icon: mk('o') }).addTo(this.routeLayer);
+    L.marker(dest, { icon: mk('d') }).addTo(this.routeLayer);
+    if (this.map) { this.map.invalidateSize(); this.map.fitBounds(L.latLngBounds(r.coordinates as L.LatLngExpression[]).pad(0.15)); }
+    this.computeAlongRoute(r.coordinates);
+  }
+
+  private computeAlongRoute(coords: [number, number][]): void {
+    const cum: number[] = [0];
+    for (let i = 1; i < coords.length; i++) cum[i] = cum[i - 1] + this.distanceKm(coords[i - 1], coords[i]);
+    const THRESH = 8; // corredor de 8 km
+    const step = Math.max(1, Math.floor(coords.length / 400));
+    const near: { s: Station; pos: number }[] = [];
+    this.routePos.clear();
+    for (const s of this.stations()) {
+      if (s.lat == null || s.lon == null) continue;
+      let best = Infinity, bestIdx = 0;
+      for (let i = 0; i < coords.length; i += step) {
+        const d = this.distanceKm([s.lat, s.lon], coords[i]);
+        if (d < best) { best = d; bestIdx = i; }
+      }
+      if (best <= THRESH) { near.push({ s, pos: cum[bestIdx] }); this.routePos.set(s.id, cum[bestIdx]); }
+    }
+    near.sort((a, b) => a.pos - b.pos);
+    this.tripStations.set(near.map((n) => n.s));
+    // paradas sugeridas según autonomía (greedy)
+    const stops = new Set<number>();
+    const a = this.tripAutonomy;
+    if (a && a > 0 && near.length) {
+      const range = a * 0.9;
+      let lastPos = 0, candidate: { s: Station; pos: number } | null = null;
+      for (const n of near) {
+        if (n.pos - lastPos <= range) { candidate = n; }
+        else { if (candidate) { stops.add(candidate.s.id); lastPos = candidate.pos; } candidate = n; }
+      }
+    }
+    this.tripStops.set(stops);
+  }
+
   setView(v: View): void {
     this.view.set(v);
     if (v === 'map') setTimeout(() => { this.map?.invalidateSize(); this.fitToMarkers(); }, 60);
@@ -267,8 +448,12 @@ export class AppComponent implements OnInit, AfterViewInit {
     const q = this.query.trim().toLowerCase();
     const city = this.cityFilter;
     const u = this.userPos();
+    const conn = this.connectorFilter;
+    const speed = this.speedFilter;
     const list = this.stations().filter((s) => {
       if (city && s.city !== city) return false;
+      if (speed && s.speed !== speed) return false;
+      if (conn && !this.matchConnector(s.connectors, conn)) return false;
       if (!q) return true;
       return (s.name + ' ' + s.city + ' ' + s.address + ' ' + s.connectors).toLowerCase().includes(q);
     });

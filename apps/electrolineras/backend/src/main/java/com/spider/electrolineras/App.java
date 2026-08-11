@@ -6,6 +6,8 @@ import com.spider.electrolineras.db.DbConfig;
 import com.spider.electrolineras.db.Migrations;
 import com.spider.electrolineras.health.HealthController;
 import com.spider.electrolineras.registry.Registry;
+import com.spider.electrolineras.route.RouteController;
+import com.spider.electrolineras.route.RoutingService;
 import com.spider.electrolineras.station.CommentService;
 import com.spider.electrolineras.station.ReportService;
 import com.spider.electrolineras.station.StationController;
@@ -49,6 +51,7 @@ public final class App {
         Ligero app = Ligero.create(Env.port());
         HealthController.register(app);
         new StationController(stations, reports, comments).register(app);
+        new RouteController(new RoutingService()).register(app);
 
         log.info("Backend '{}' escuchando en :{} (schema '{}', sync cada {} min)",
                 Env.appName(), Env.port(), db.schema(), mins);
