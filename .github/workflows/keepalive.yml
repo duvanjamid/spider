@@ -20,18 +20,16 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping servicios (test y prod)
+      - name: Ping /keepalive (el gateway despierta a los demás)
         run: |
           set +e
-          # Gateways por entorno. La ruta de cada app despierta su frontend y
-          # /<app>-api/health su backend. Errores no rompen el job (best-effort).
+          # Un único ping por entorno: /keepalive replica (mirror) hacia el
+          # health de cada backend y el root de cada frontend. Best-effort.
           BASES="https://spider-gateway-test.onrender.com"
-          # Añade aquí la URL del gateway de producción cuando exista, p.ej.:
+          # Añade la URL del gateway de producción cuando exista, p.ej.:
           # BASES="$BASES https://spider-gateway.onrender.com"
           for BASE in $BASES; do
-            for P in /healthz /admin/ /gastos/ /admin-api/health /gastos-api/health; do
-              CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 90 "$BASE$P")
-              echo "$BASE$P -> $CODE"
-            done
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 120 "$BASE/keepalive")
+            echo "$BASE/keepalive -> $CODE"
           done
           exit 0

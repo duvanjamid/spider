@@ -165,6 +165,8 @@ function injectCompose(n) {
 }
 function injectGateway(n) {
   injectBeforeMarker('infra/gateway/nginx.conf', '# SCAFFOLD:LOCATIONS', T_(n, GATEWAY_SNIPPET));
+  // El keep-alive despierta también la app nueva (front + health del back).
+  injectBeforeMarker('infra/gateway/nginx.conf', '# SCAFFOLD:KEEPALIVE_END', T_(n, KEEPALIVE_SNIPPET));
 }
 function injectRenderServices(n) {
   injectBeforeMarker('render.yaml', '# SCAFFOLD:SERVICES', renderServices(n));
@@ -219,6 +221,10 @@ const GATEWAY_SNIPPET = `
       error_page 502 503 504 /__spider_loading.html;
     }
 `;
+
+// Mirrors del keep-alive: despiertan el frontend y el health del backend.
+const KEEPALIVE_SNIPPET = `      mirror /__APP__/;
+      mirror /__APP__-api/health;`;
 
 // Bloques de servicios para render.yaml (prod + test en un solo archivo).
 function renderBackend(n, suffix, branch, schema) {
