@@ -125,36 +125,45 @@
     // Pinguea el frontend de una app y de paso la despierta. Está "arriba"
     // solo si responde OK y NO es esta página de carga (cabecera X-Spider-Loading).
     function ping(a){
-      return fetchT('/' + a.slug + '/', 8000)
+      return fetchT('/' + a.slug + '/', 6000)
         .then(function(r){ a.up = r.ok && !r.headers.get('x-spider-loading'); })
         .catch(function(){ a.up = false; });
+    }
+
+    function enter(t){
+      done = true;
+      document.getElementById('title').textContent = '¡Listo! entrando a ' + t.name;
+      subEl.textContent = '';
+      setTimeout(function(){ location.replace('/' + t.slug + '/'); }, 400);
+    }
+
+    // Bucle de descubrimiento INDEPENDIENTE: no bloquea la detección del
+    // frontend (que es lo que decide la redirección). Reintenta suave.
+    function discoverLoop(){
+      if(done) return;
+      discover().finally(function(){ if(!done) setTimeout(discoverLoop, 15000); });
     }
 
     var running = false;
     function tick(){
       if(done || running) return;
       running = true;
-      discover().then(function(){
-        return Promise.all(apps.map(ping));
-      }).then(function(){
+      // Pinguea SOLO frontends, en paralelo. En cuanto el destino responde, entra.
+      Promise.all(apps.map(ping)).then(function(){
         running = false;
         if(done) return;
         render();
         var upN = apps.filter(function(a){return a.up;}).length;
         subEl.textContent = upN ? ('Listos ' + upN + ' de ' + apps.length + '…') : 'Despertando los servicios…';
         var t = apps.filter(function(a){return a.slug===TARGET;})[0];
-        if(t && t.up){
-          done = true;
-          document.getElementById('title').textContent = '¡Listo! entrando a ' + t.name;
-          subEl.textContent = '';
-          setTimeout(function(){ location.replace('/' + t.slug + '/'); }, 500);
-        }
+        if(t && t.up) enter(t);
       }).catch(function(){ running = false; });
     }
 
     render();
+    discoverLoop();
     tick();
-    var timer = setInterval(tick, 3000);
+    var timer = setInterval(tick, 2000);
     // Al volver de segundo plano (bfcache) reintenta ya, sin esperar al timer.
     window.addEventListener('pageshow', function(){ if(!done) tick(); });
     window.addEventListener('visibilitychange', function(){ if(!done && !document.hidden) tick(); });
