@@ -103,6 +103,33 @@ services:
       - gastos-backend
     restart: unless-stopped
 
+
+  # ═════════════════════ APP: electrolineras ═════════════════════════
+  electrolineras-backend:
+    build:
+      context: ./apps/electrolineras/backend
+    container_name: spider-electrolineras-backend
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-spider}
+      DB_USER: ${POSTGRES_USER:-spider_user}
+      DB_PASSWORD: ${BD_PASS:?define BD_PASS}
+      DB_SCHEMA: electrolineras
+      APP_NAME: electrolineras
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  electrolineras-frontend:
+    build:
+      context: ./apps/electrolineras/frontend
+    container_name: spider-electrolineras-frontend
+    depends_on:
+      - electrolineras-backend
+    restart: unless-stopped
+
   # SCAFFOLD:SERVICES  ← no borrar; el generador inyecta apps aquí
   # SCAFFOLD:END
 

@@ -9,6 +9,8 @@ set -e
 : "${ADMIN_BACKEND:=http://admin-backend:8080}"
 : "${GASTOS_FRONTEND:=http://gastos-frontend:80}"
 : "${GASTOS_BACKEND:=http://gastos-backend:8080}"
+: "${ELECTROLINERAS_FRONTEND:=http://electrolineras-frontend:80}"
+: "${ELECTROLINERAS_BACKEND:=http://electrolineras-backend:8080}"
 
 CONF=/etc/nginx/nginx.conf
 # '|' como separador de sed porque las URLs llevan '/'.
@@ -18,6 +20,8 @@ sed -i \
   -e "s|__ADMIN_BACKEND__|${ADMIN_BACKEND}|g" \
   -e "s|__GASTOS_FRONTEND__|${GASTOS_FRONTEND}|g" \
   -e "s|__GASTOS_BACKEND__|${GASTOS_BACKEND}|g" \
+  -e "s|__ELECTROLINERAS_FRONTEND__|${ELECTROLINERAS_FRONTEND}|g" \
+  -e "s|__ELECTROLINERAS_BACKEND__|${ELECTROLINERAS_BACKEND}|g" \
   "$CONF"
 
 exec nginx -g 'daemon off;'

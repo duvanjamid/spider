@@ -114,6 +114,11 @@ services:
         value: https://gastos-frontend-35qp.onrender.com
       - key: GASTOS_BACKEND
         value: https://gastos-backend-xfii.onrender.com
+      # ⚠️ prod: reemplaza por las URLs reales cuando se desplieguen los servicios.
+      - key: ELECTROLINERAS_FRONTEND
+        value: https://electrolineras-frontend.onrender.com
+      - key: ELECTROLINERAS_BACKEND
+        value: https://electrolineras-backend.onrender.com
 
   - type: web
     name: spider-gateway-test
@@ -134,6 +139,10 @@ services:
         value: https://gastos-frontend-test.onrender.com
       - key: GASTOS_BACKEND
         value: https://gastos-backend-test.onrender.com
+      - key: ELECTROLINERAS_FRONTEND
+        value: https://electrolineras-frontend-test.onrender.com
+      - key: ELECTROLINERAS_BACKEND
+        value: https://electrolineras-backend-test.onrender.com
   # ─────────────────────────────────────────────────────────
   # ═════════════════════ APP: gastos ═════════════════════════
   - type: web
@@ -188,6 +197,63 @@ services:
     branch: develop
     dockerfilePath: apps/gastos/frontend/Dockerfile
     dockerContext: apps/gastos/frontend
+    plan: free
+    region: oregon
+    autoDeploy: true
+
+  # ═════════════════════ APP: electrolineras ═════════════════════════
+  - type: web
+    name: electrolineras-backend
+    runtime: docker
+    branch: main
+    dockerfilePath: apps/electrolineras/backend/Dockerfile
+    dockerContext: apps/electrolineras/backend
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: electrolineras
+      - key: DB_SCHEMA
+        value: electrolineras
+      - key: DATABASE_URL
+        sync: false
+
+  - type: web
+    name: electrolineras-frontend
+    runtime: docker
+    branch: main
+    dockerfilePath: apps/electrolineras/frontend/Dockerfile
+    dockerContext: apps/electrolineras/frontend
+    plan: free
+    region: oregon
+    autoDeploy: true
+
+  - type: web
+    name: electrolineras-backend-test
+    runtime: docker
+    branch: develop
+    dockerfilePath: apps/electrolineras/backend/Dockerfile
+    dockerContext: apps/electrolineras/backend
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: electrolineras
+      - key: DB_SCHEMA
+        value: test_electrolineras
+      - key: DATABASE_URL
+        sync: false
+
+  - type: web
+    name: electrolineras-frontend-test
+    runtime: docker
+    branch: develop
+    dockerfilePath: apps/electrolineras/frontend/Dockerfile
+    dockerContext: apps/electrolineras/frontend
     plan: free
     region: oregon
     autoDeploy: true
