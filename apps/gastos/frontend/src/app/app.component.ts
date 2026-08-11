@@ -67,8 +67,8 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
     .bud2 { padding: 10px 0; border-top: 1px solid var(--border); }
     .bud2 .dot { width: 11px; height: 11px; border-radius: 50%; }
     .bud2-top { display: flex; align-items: center; gap: 8px; }
-    .bud2 .bar { height: 10px; background: var(--panel-2); border-radius: 999px; overflow: hidden; margin-top: 7px; }
-    .bud2 .bar .fill { height: 100%; border-radius: 999px; transition: width .4s ease; }
+    .bud2 .pbar { height: 10px; background: var(--panel-2); border-radius: 999px; overflow: hidden; margin-top: 7px; }
+    .bud2 .pbar .fill { height: 100%; border-radius: 999px; transition: width .4s ease; }
     .bud2-foot { font-size: .8rem; color: var(--muted); margin-top: 5px; }
 
     /* Movimientos */
@@ -284,7 +284,7 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
                 <div class="bud2" *ngFor="let b of budgeted()">
                   <div class="bud2-top"><span class="dot" [style.background]="b.color"></span> <b>{{ b.name }}</b>
                     <span class="spacer"></span><span class="muted">{{ fmt(b.total) }} / {{ fmt(b.budget) }}</span></div>
-                  <div class="bar"><div class="fill" [style.width.%]="b.pct" [style.background]="b.over ? '#ef4444' : b.color"></div></div>
+                  <div class="pbar"><div class="fill" [style.width.%]="b.pct" [style.background]="b.over ? '#ef4444' : b.color"></div></div>
                   <div class="bud2-foot" [class.up]="b.over">
                     {{ b.over ? ('Excedido ' + fmt(b.total - b.budget)) : ('Quedan ' + fmt(b.budget - b.total)) }} · {{ b.pct }}%
                   </div>
