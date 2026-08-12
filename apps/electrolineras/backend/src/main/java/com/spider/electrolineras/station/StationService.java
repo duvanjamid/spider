@@ -48,25 +48,43 @@ public class StationService {
     }
 
     // ── OpenStreetMap / Overpass (nacional, crowdsourced, SIN key) ──
+    private static final String OVERPASS_UA = "spider-electrolineras/1.0 (https://claude.ai/code)";
+
     public int syncOverpass() {
         String country = Env.overpassCountry();
         String query = "[out:json][timeout:90];area[\"ISO3166-1\"=\"" + country + "\"][admin_level=2]->.co;"
                 + "node[\"amenity\"=\"charging_station\"](area.co);out tags center;";
-        try {
-            String body = "data=" + URLEncoder.encode(query, StandardCharsets.UTF_8);
-            HttpRequest req = HttpRequest.newBuilder(URI.create(Env.overpassUrl()))
-                    .header("content-type", "application/x-www-form-urlencoded")
-                    .header("accept", "application/json")
-                    .timeout(Duration.ofSeconds(95))
-                    .POST(HttpRequest.BodyPublishers.ofString(body)).build();
-            HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
-            if (res.statusCode() / 100 != 2) { log.warn("Overpass {} → {}", res.statusCode(), res.body().substring(0, Math.min(200, res.body().length()))); return 0; }
-            JsonNode root = Json.MAPPER.readTree(res.body());
-            int n = 0;
-            for (JsonNode el : root.path("elements")) n += upsertFromOsm(el) ? 1 : 0;
-            log.info("Sync OpenStreetMap: {} estaciones procesadas", n);
-            return n;
-        } catch (Exception e) { log.warn("Sync Overpass falló (se continúa): {}", e.getMessage()); return 0; }
+        String body = "data=" + URLEncoder.encode(query, StandardCharsets.UTF_8);
+        String[] endpoints = {
+                Env.overpassUrl(),
+                "https://overpass.private.coffee/api/interpreter",
+                "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+                "https://overpass.kumi.systems/api/interpreter",
+        };
+        for (String url : endpoints) {
+            try {
+                HttpRequest req = HttpRequest.newBuilder(URI.create(url))
+                        .header("content-type", "application/x-www-form-urlencoded")
+                        .header("accept", "application/json")
+                        .header("User-Agent", OVERPASS_UA)
+                        .timeout(Duration.ofSeconds(95))
+                        .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+                HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+                if (res.statusCode() / 100 != 2 || !res.body().trim().startsWith("{")) {
+                    log.warn("Overpass {} en {} → {}", res.statusCode(), url, res.body().substring(0, Math.min(160, res.body().length())));
+                    continue;
+                }
+                JsonNode root = Json.MAPPER.readTree(res.body());
+                int n = 0;
+                for (JsonNode el : root.path("elements")) n += upsertFromOsm(el) ? 1 : 0;
+                log.info("Sync OpenStreetMap ({}): {} estaciones procesadas", url, n);
+                return n;
+            } catch (Exception e) {
+                log.warn("Overpass falló en {}: {}", url, e.getMessage());
+            }
+        }
+        log.warn("Overpass: ningún servidor respondió; se omite OSM esta vez");
+        return 0;
     }
 
     private boolean upsertFromOsm(JsonNode el) {
