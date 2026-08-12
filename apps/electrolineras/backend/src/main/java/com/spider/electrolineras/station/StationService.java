@@ -8,15 +8,18 @@ import org.slf4j.LoggerFactory;
 
 import javax.sql.DataSource;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -39,10 +42,118 @@ public class StationService {
     // ── Sincronización de TODAS las fuentes (idempotente) ──
     public int sync() {
         int n = syncDatosGov();
-        if (Env.openChargeMapEnabled()) n += syncOpenChargeMap();
-        else log.info("Open Charge Map omitido (define OPENCHARGEMAP_KEY para cobertura nacional)");
+        if (Env.overpassEnabled()) n += syncOverpass();           // OSM · nacional · sin key
+        if (Env.openChargeMapEnabled()) n += syncOpenChargeMap(); // OCM · nacional · con key
         return n;
     }
+
+    // ── OpenStreetMap / Overpass (nacional, crowdsourced, SIN key) ──
+    public int syncOverpass() {
+        String country = Env.overpassCountry();
+        String query = "[out:json][timeout:90];area[\"ISO3166-1\"=\"" + country + "\"][admin_level=2]->.co;"
+                + "node[\"amenity\"=\"charging_station\"](area.co);out tags center;";
+        try {
+            String body = "data=" + URLEncoder.encode(query, StandardCharsets.UTF_8);
+            HttpRequest req = HttpRequest.newBuilder(URI.create(Env.overpassUrl()))
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .header("accept", "application/json")
+                    .timeout(Duration.ofSeconds(95))
+                    .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+            HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() / 100 != 2) { log.warn("Overpass {} → {}", res.statusCode(), res.body().substring(0, Math.min(200, res.body().length()))); return 0; }
+            JsonNode root = Json.MAPPER.readTree(res.body());
+            int n = 0;
+            for (JsonNode el : root.path("elements")) n += upsertFromOsm(el) ? 1 : 0;
+            log.info("Sync OpenStreetMap: {} estaciones procesadas", n);
+            return n;
+        } catch (Exception e) { log.warn("Sync Overpass falló (se continúa): {}", e.getMessage()); return 0; }
+    }
+
+    private boolean upsertFromOsm(JsonNode el) {
+        double lat = el.has("lat") ? el.path("lat").asDouble() : el.path("center").path("lat").asDouble(Double.NaN);
+        double lon = el.has("lon") ? el.path("lon").asDouble() : el.path("center").path("lon").asDouble(Double.NaN);
+        if (Double.isNaN(lat) || Double.isNaN(lon) || (lat == 0 && lon == 0)) return false;
+        JsonNode t = el.path("tags");
+        String extId = "osm-" + el.path("type").asText("node") + "-" + el.path("id").asLong();
+        String operator = firstNonBlank(text(t, "operator"), text(t, "network"), text(t, "brand"));
+        String name = firstNonBlank(text(t, "name"), operator, "Estación de carga");
+        String city = firstNonBlank(text(t, "addr:city"), text(t, "addr:state"), "");
+        String address = (text(t, "addr:street") == null ? "" : text(t, "addr:street")
+                + (text(t, "addr:housenumber") == null ? "" : " " + text(t, "addr:housenumber"))).trim();
+
+        // Conectores desde tags socket:*
+        List<String[]> sockets = new ArrayList<>(); // [connectorType, powerKw|null]
+        double maxKw = 0;
+        StringBuilder conn = new StringBuilder();
+        for (Iterator<String> it = t.fieldNames(); it.hasNext(); ) {
+            String k = it.next();
+            if (!k.startsWith("socket:") || k.indexOf(':', 7) > 0) continue; // solo base socket:<tipo>
+            String base = k.substring(7);
+            String type = socketName(base);
+            Double kw = parsePower(text(t, "socket:" + base + ":output"));
+            if (kw == null) kw = parsePower(text(t, "maxpower"));
+            if (kw != null) maxKw = Math.max(maxKw, kw);
+            sockets.add(new String[]{ type, kw == null ? null : String.valueOf(kw) });
+            if (conn.length() > 0) conn.append(", ");
+            conn.append(type);
+        }
+        if (conn.length() == 0 && text(t, "socket") != null) conn.append(text(t, "socket"));
+        String speed = maxKw >= 50 ? "Rápida" : maxKw >= 22 ? "Semi-rápida" : maxKw > 0 ? "Lenta" : null;
+
+        String sql = """
+                INSERT INTO station (source, external_id, name, operator, city, address, lat, lon,
+                                     connectors, speed, hours, website, source_active, raw, updated_at)
+                VALUES ('openstreetmap', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, now())
+                ON CONFLICT (source, external_id) DO UPDATE SET
+                    name = EXCLUDED.name, operator = EXCLUDED.operator, city = EXCLUDED.city,
+                    address = EXCLUDED.address, lat = EXCLUDED.lat, lon = EXCLUDED.lon,
+                    connectors = EXCLUDED.connectors, speed = EXCLUDED.speed, hours = EXCLUDED.hours,
+                    website = EXCLUDED.website, raw = EXCLUDED.raw, updated_at = now()
+                RETURNING id
+                """;
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, extId);
+            ps.setString(2, name);
+            ps.setString(3, operator);
+            ps.setString(4, city);
+            ps.setString(5, address.isBlank() ? null : address);
+            ps.setDouble(6, lat);
+            ps.setDouble(7, lon);
+            ps.setString(8, conn.length() > 0 ? conn.toString() : null);
+            ps.setString(9, speed);
+            ps.setString(10, text(t, "opening_hours"));
+            ps.setString(11, firstBlankNull(text(t, "website"), text(t, "contact:website")));
+            ps.setString(12, el.toString());
+            long stationId;
+            try (ResultSet rs = ps.executeQuery()) { rs.next(); stationId = rs.getLong(1); }
+            int idx = 0;
+            for (String[] s : sockets) {
+                idx++;
+                Double kw = s[1] == null ? null : Double.parseDouble(s[1]);
+                insertCharger(c, stationId, s[0] + " #" + idx, s[0], kw);
+            }
+            return true;
+        } catch (Exception e) { log.debug("Nodo OSM ignorado: {}", e.getMessage()); return false; }
+    }
+
+    private static String socketName(String base) {
+        switch (base) {
+            case "type2": case "type2_cable": return "Tipo 2";
+            case "type2_combo": case "ccs": return "CCS2";
+            case "chademo": return "CHAdeMO";
+            case "type1": case "type1_cable": case "type1_combo": return "Tipo 1";
+            case "tesla_supercharger": case "tesla_supercharger_ccs": return "Tesla";
+            case "gb_dc": case "gb_ac": return "GB/T";
+            case "schuko": return "Schuko";
+            default: return base;
+        }
+    }
+    private static Double parsePower(String s) {
+        if (s == null) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("([0-9]+(?:[.,][0-9]+)?)").matcher(s);
+        try { return m.find() ? Double.parseDouble(m.group(1).replace(",", ".")) : null; } catch (Exception e) { return null; }
+    }
+    private static String firstBlankNull(String... xs) { for (String x : xs) if (x != null && !x.isBlank()) return x; return null; }
 
     // ── datos.gov.co (EPM · Antioquia) ──
     public int syncDatosGov() {

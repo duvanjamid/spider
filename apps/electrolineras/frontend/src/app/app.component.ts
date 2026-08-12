@@ -576,7 +576,13 @@ export class AppComponent implements OnInit, AfterViewInit {
   chargerLabel(s: string): string { return s === 'free' ? 'Libre' : s === 'busy' ? 'Ocupado' : s === 'broken' ? 'Dañado' : s; }
   anyColor(s: string): string { return s === 'active' || s === 'free' ? '#22c55e' : s === 'inactive' || s === 'broken' ? '#ef4444' : s === 'busy' ? '#f59e0b' : '#9aa3b2'; }
   anyLabel(s: string): string { const m: Record<string, string> = { active: 'activa', inactive: 'inactiva', free: 'libre', busy: 'ocupado', broken: 'dañado' }; return m[s] || s; }
-  sourceLabel(s: string): string { return s === 'datos_gov_epm' ? 'datos.gov.co (EPM)' : s === 'openchargemap' ? 'Open Charge Map' : s; }
-  sourceDesc(s: string): string { return s === 'datos_gov_epm' ? 'Datos abiertos del gobierno · Antioquia' : s === 'openchargemap' ? 'Comunidad · cobertura nacional' : 'Fuente de datos'; }
+  sourceLabel(s: string): string {
+    return s === 'datos_gov_epm' ? 'datos.gov.co (EPM)' : s === 'openstreetmap' ? 'OpenStreetMap' : s === 'openchargemap' ? 'Open Charge Map' : s;
+  }
+  sourceDesc(s: string): string {
+    return s === 'datos_gov_epm' ? 'Datos abiertos del gobierno · Antioquia'
+      : s === 'openstreetmap' ? 'Comunidad OSM · cobertura nacional'
+      : s === 'openchargemap' ? 'Comunidad · cobertura nacional' : 'Fuente de datos';
+  }
   fmtWhen(s: string): string { if (!s) return ''; const d = new Date(s.replace(' ', 'T')); return isNaN(d.getTime()) ? s : d.toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' }); }
 }

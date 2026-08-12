@@ -33,6 +33,11 @@ public final class Env {
     public static int syncMinutes() { return getInt("SYNC_MINUTES", 360); }
     public static boolean syncOnStart() { return Boolean.parseBoolean(get("SYNC_ON_START", "true")); }
 
+    // ── OpenStreetMap / Overpass (NACIONAL, crowdsourced, SIN key) ──
+    public static boolean overpassEnabled() { return Boolean.parseBoolean(get("OVERPASS_ENABLED", "true")); }
+    public static String overpassUrl() { return get("OVERPASS_URL", "https://overpass-api.de/api/interpreter"); }
+    public static String overpassCountry() { return get("OVERPASS_COUNTRY", "CO"); }
+
     // ── Open Charge Map (cobertura NACIONAL, crowdsourced) ──
     //   Requiere API key gratuita (openchargemap.org). Si falta, se omite.
     public static String openChargeMapKey() { return get("OPENCHARGEMAP_KEY", ""); }
