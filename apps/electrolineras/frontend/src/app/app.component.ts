@@ -29,8 +29,10 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
     .muted { color: var(--muted); }
 
     /* Screen area */
-    .screen { flex: 1; position: relative; isolation: isolate; }
-    section.scr { position: absolute; inset: 0; display: flex; flex-direction: column; z-index: 0; }
+    .screen { flex: 1; position: relative; isolation: isolate; background: var(--bg); }
+    section.scr { position: absolute; inset: 0; display: flex; flex-direction: column; z-index: 0; background: var(--bg); }
+    /* Que [hidden] realmente oculte el mapa (si no, tapa el resto de pantallas). */
+    section.scr[hidden] { display: none !important; }
     .scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px 14px calc(var(--nav) + 20px); }
     .s-head { padding: 6px 2px 12px; } .s-head h1 { margin: 0; font-size: 1.5rem; letter-spacing: -.5px; } .s-head p { margin: 4px 0 0; color: var(--muted); }
 
