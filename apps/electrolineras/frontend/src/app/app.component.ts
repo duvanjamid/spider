@@ -21,8 +21,22 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
     /* Header */
     .hdr { position: sticky; top: 0; z-index: 30; height: var(--hdr); display: flex; align-items: center; gap: 10px;
            padding: 0 14px; background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
-    .brand { display: flex; align-items: center; gap: 9px; font-weight: 800; font-size: 1.12rem; }
-    .brand > i { color: var(--accent); font-size: 1.2rem; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.12rem; }
+    .brand > i { font-size: .95rem; color: #fff; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; background: var(--grad); box-shadow: var(--glow); }
+    /* Hero */
+    .hero { position: relative; overflow: hidden; border-radius: 22px; padding: 22px 20px 18px; margin-bottom: 16px; background: var(--panel); border: 1px solid var(--border); box-shadow: var(--shadow); }
+    .hero::before { content: ''; position: absolute; inset: 0; background: var(--grad-soft); }
+    .hero-glow { position: absolute; top: -50px; right: -34px; width: 170px; height: 170px; border-radius: 50%; background: var(--grad); filter: blur(46px); opacity: .32; }
+    .hero > * { position: relative; }
+    .hero .hi { font-size: .72rem; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--accent); }
+    .hero h1 { margin: 7px 0 3px; font-size: 1.95rem; font-weight: 800; letter-spacing: -.6px; background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .hero p { margin: 0 0 14px; color: var(--muted); }
+    .hchips { display: flex; gap: 8px; flex-wrap: wrap; }
+    .hchip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 999px; font-size: .82rem; font-weight: 600; background: var(--glass); backdrop-filter: blur(8px); border: 1px solid var(--border); cursor: pointer; }
+    .hchip i { color: var(--accent); }
+    .hchip .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pdot 1.8s infinite; }
+    @keyframes pdot { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
     .env { font-size: .62rem; font-weight: 800; letter-spacing: .5px; padding: 2px 7px; border-radius: 6px; background: #f59e0b; color: #1a1200; text-transform: uppercase; }
     .spacer { flex: 1; }
     .icon-btn { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel); color: var(--fg); cursor: pointer; font-size: 1.05rem; }
@@ -37,8 +51,8 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
     .s-head { padding: 6px 2px 12px; } .s-head h1 { margin: 0; font-size: 1.5rem; letter-spacing: -.5px; } .s-head p { margin: 4px 0 0; color: var(--muted); }
 
     /* Map screen */
-    .map-search { position: absolute; top: 10px; left: 12px; right: 12px; z-index: 20; display: flex; align-items: center; gap: 8px;
-           background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 8px 12px; box-shadow: var(--shadow); }
+    .map-search { position: absolute; top: 12px; left: 12px; right: 12px; z-index: 20; display: flex; align-items: center; gap: 8px;
+           background: var(--glass); backdrop-filter: blur(14px); border: 1px solid var(--border); border-radius: 16px; padding: 10px 14px; box-shadow: var(--shadow); }
     .map-search i { color: var(--muted); }
     .map-search input { flex: 1; border: none; background: none; color: var(--fg); font-size: 1rem; outline: none; }
     .map-search button { width: 34px; height: 34px; border-radius: 10px; border: none; background: var(--panel-2); color: var(--muted); cursor: pointer; }
@@ -49,16 +63,20 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
 
     /* Station cards */
     .cards { display: flex; flex-direction: column; gap: 10px; }
-    .scard { display: flex; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 16px; background: var(--panel); box-shadow: var(--shadow); cursor: pointer; transition: transform .1s, border-color .12s; }
-    .scard:active { transform: scale(.99); } .scard:hover { border-color: var(--accent); }
-    .scard .ic { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-size: 1.25rem; flex: none; }
+    .scard { position: relative; overflow: hidden; display: flex; gap: 13px; padding: 15px 15px 15px 20px; border: 1px solid var(--border); border-radius: 18px; background: var(--panel); box-shadow: var(--shadow); cursor: pointer; transition: transform .14s ease, box-shadow .18s ease, border-color .18s ease; animation: fadeUp .34s ease both; }
+    .scard::before { content: ''; position: absolute; left: 0; top: 12px; bottom: 12px; width: 4px; border-radius: 0 4px 4px 0; background: var(--c); }
+    .scard:hover { transform: translateY(-3px); box-shadow: var(--glow); border-color: color-mix(in srgb, var(--c) 40%, var(--border)); }
+    .scard:active { transform: scale(.99); }
+    .scard .ic { position: relative; width: 48px; height: 48px; border-radius: 15px; display: grid; place-items: center; font-size: 1.3rem; flex: none; color: var(--c); background: color-mix(in srgb, var(--c) 15%, var(--panel)); }
+    .scard .ic .livedot { position: absolute; top: -2px; right: -2px; width: 12px; height: 12px; border-radius: 50%; background: var(--c); border: 2px solid var(--panel); animation: pdot 1.8s infinite; }
     .scard .grow { flex: 1; min-width: 0; }
     .scard .nm { font-weight: 700; }
     .scard .meta { color: var(--muted); font-size: .84rem; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .scard .chips { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
     .scard .right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex: none; }
     .scard .km { font-weight: 700; font-size: .9rem; white-space: nowrap; }
-    .chip { font-size: .72rem; padding: 3px 9px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); white-space: nowrap; }
+    .chip { display: inline-flex; align-items: center; gap: 5px; font-size: .72rem; padding: 4px 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); white-space: nowrap; color: var(--muted); }
+    .chip i { color: var(--accent); font-size: .68rem; }
 
     /* Progress bar */
     .pbar { height: 8px; border-radius: 999px; background: var(--panel-2); overflow: hidden; }
@@ -76,7 +94,7 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
     .field input { flex: 1; border: none; background: none; color: var(--fg); font-size: 1rem; outline: none; }
     .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0; }
     .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 12px; text-align: center; box-shadow: var(--shadow); }
-    .kpi .v { font-size: 1.3rem; font-weight: 800; } .kpi .l { color: var(--muted); font-size: .74rem; margin-top: 2px; }
+    .kpi .v { font-size: 1.45rem; font-weight: 800; background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; } .kpi .l { color: var(--muted); font-size: .74rem; margin-top: 2px; }
     .trow { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; cursor: pointer; background: var(--panel); }
     .trow.stop { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
     .trow .dot, .scard .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
@@ -85,7 +103,8 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
 
     /* Info screen */
     .stat { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 16px; background: var(--panel); margin-bottom: 10px; }
-    .stat .n { font-size: 1.6rem; font-weight: 800; min-width: 54px; text-align: center; color: var(--accent); }
+    .stat { animation: fadeUp .3s ease both; }
+    .stat .n { font-size: 1.7rem; font-weight: 800; min-width: 56px; text-align: center; background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
     .legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 8px 0; } .legend span { display: flex; align-items: center; gap: 6px; font-size: .85rem; }
     .legend .d { width: 12px; height: 12px; border-radius: 50%; }
     .note { background: color-mix(in srgb, var(--accent) 8%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-radius: 14px; padding: 14px; }
@@ -94,10 +113,13 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
     .bottomnav { position: fixed; bottom: 0; left: 0; right: 0; z-index: 40; height: calc(var(--nav) + env(safe-area-inset-bottom));
            padding-bottom: env(safe-area-inset-bottom); display: flex; background: color-mix(in srgb, var(--bg) 92%, transparent);
            backdrop-filter: blur(12px); border-top: 1px solid var(--border); }
-    .bottomnav button { flex: 1; border: none; background: none; color: var(--muted); cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: .68rem; }
-    .bottomnav button i { font-size: 1.15rem; }
+    .bottomnav button { position: relative; flex: 1; border: none; background: none; color: var(--muted); cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: .68rem; font-weight: 600; transition: color .2s; }
+    .bottomnav button i { font-size: 1.15rem; transition: transform .2s ease; z-index: 1; }
+    .bottomnav button span { z-index: 1; }
     .bottomnav button.on { color: var(--accent); }
-    .bottomnav button.on i { transform: translateY(-1px); }
+    .bottomnav button.on i { transform: translateY(-2px) scale(1.1); }
+    .bottomnav button::before { content: ''; position: absolute; top: 7px; left: 50%; transform: translateX(-50%) scale(.6); width: 48px; height: 30px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 15%, transparent); opacity: 0; transition: opacity .2s, transform .2s; }
+    .bottomnav button.on::before { opacity: 1; transform: translateX(-50%) scale(1); }
 
     /* Drawer */
     .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1990; }
@@ -149,21 +171,31 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
         <!-- CERCA -->
         <section class="scr" *ngIf="tab() === 'near'">
           <div class="scroll">
-            <div class="s-head"><h1>Cerca de ti</h1><p>{{ userPos() ? filtered().length + ' estaciones ordenadas por cercanía' : 'Activa tu ubicación para ver las más cercanas' }}</p></div>
+            <div class="hero">
+              <div class="hero-glow"></div>
+              <div class="hi">⚡ Energía para tu ruta</div>
+              <h1>Electrolineras</h1>
+              <p>{{ userPos() ? filtered().length + ' cerca de ti' : (meta()?.total ?? '—') + ' estaciones en Colombia' }}</p>
+              <div class="hchips">
+                <span class="hchip"><span class="pulse"></span> {{ activeCount() }} activas</span>
+                <span class="hchip"><i class="fa-solid fa-city"></i> {{ meta()?.cities ?? 0 }} ciudades</span>
+                <span class="hchip" (click)="locate()"><i class="fa-solid fa-location-crosshairs"></i> {{ userPos() ? 'Ubicado' : 'Ubicarme' }}</span>
+              </div>
+            </div>
             <div class="prompt" *ngIf="!userPos()">
               <div class="big">📍</div><h2>¿Dónde estás?</h2>
               <p class="muted">Comparte tu ubicación para ver las electrolineras más cercanas primero.</p>
               <p-button label="Usar mi ubicación" icon="fa-solid fa-location-crosshairs" (onClick)="locate()" [loading]="locating()" styleClass="mt" />
             </div>
             <div class="cards">
-              <div class="scard" *ngFor="let s of filtered()" (click)="openDetail(s)">
-                <span class="ic" [style.background]="tint(s.communityStatus)" [style.color]="statusColor(s.communityStatus)"><i class="fa-solid fa-bolt"></i></span>
+              <div class="scard" *ngFor="let s of filtered()" (click)="openDetail(s)" [style.--c]="statusColor(s.communityStatus)">
+                <span class="ic"><i class="fa-solid fa-bolt"></i><span class="livedot" *ngIf="s.communityStatus === 'active'"></span></span>
                 <div class="grow">
                   <div class="nm">{{ s.name }}</div>
                   <div class="meta">{{ s.operator || 'Operador' }} · {{ s.city }}</div>
                   <div class="chips">
-                    <span class="chip" *ngIf="s.speed">{{ s.speed }}</span>
-                    <span class="chip" *ngIf="s.connectors">{{ s.connectors.length > 22 ? (s.connectors | slice:0:22) + '…' : s.connectors }}</span>
+                    <span class="chip" *ngIf="s.speed"><i class="fa-solid fa-gauge-high"></i> {{ s.speed }}</span>
+                    <span class="chip" *ngIf="s.connectors"><i class="fa-solid fa-plug"></i> {{ s.connectors.length > 18 ? (s.connectors | slice:0:18) + '…' : s.connectors }}</span>
                   </div>
                 </div>
                 <div class="right">
@@ -351,6 +383,7 @@ export class AppComponent implements OnInit, AfterViewInit {
   query = ''; cityFilter = ''; connectorFilter = ''; speedFilter = '';
   readonly cities = computed(() => [...new Set(this.stations().map((s) => s.city).filter(Boolean))].sort());
   readonly speeds = computed(() => [...new Set(this.stations().map((s) => s.speed).filter(Boolean))].sort());
+  readonly activeCount = computed(() => this.stations().filter((s) => s.communityStatus === 'active').length);
 
   readonly detail = signal<StationFull | null>(null);
   detailVisible = false;
@@ -385,10 +418,19 @@ export class AppComponent implements OnInit, AfterViewInit {
     });
   }
 
+  private tiles?: L.TileLayer;
+  private isDark(): boolean { return typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)').matches : false; }
+  private tileUrl(): string {
+    return this.isDark()
+      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+      : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+  }
+
   ngAfterViewInit(): void {
     this.map = L.map(this.mapEl.nativeElement, { zoomControl: false, attributionControl: true }).setView([4.65, -74.1], 6);
     L.control.zoom({ position: 'bottomright' }).addTo(this.map);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(this.map);
+    this.tiles = L.tileLayer(this.tileUrl(), { maxZoom: 20, subdomains: 'abcd', detectRetina: true, attribution: '© OpenStreetMap · © CARTO' }).addTo(this.map);
+    window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', () => this.tiles?.setUrl(this.tileUrl()));
     this.markers.addTo(this.map);
     this.routeLayer.addTo(this.map);
     this.renderMarkers();
@@ -463,7 +505,8 @@ export class AppComponent implements OnInit, AfterViewInit {
     for (const s of this.filtered()) {
       if (s.lat == null || s.lon == null) continue;
       const color = this.statusColor(s.communityStatus);
-      const icon = L.divIcon({ className: '', html: `<div class="pin" style="background:${color}"><i class="fa-solid fa-bolt"></i></div>`, iconSize: [30, 30], iconAnchor: [15, 30] });
+      const live = s.communityStatus === 'active' ? ' live' : '';
+      const icon = L.divIcon({ className: '', html: `<div class="pin${live}" style="background:${color};color:${color}"><i class="fa-solid fa-bolt"></i></div>`, iconSize: [30, 30], iconAnchor: [15, 30] });
       L.marker([s.lat, s.lon], { icon }).addTo(this.markers).on('click', () => this.openDetail(s));
     }
     this.fitVisible();
