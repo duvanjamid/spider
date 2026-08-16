@@ -130,6 +130,33 @@ services:
       - electrolineras-backend
     restart: unless-stopped
 
+
+  # ═════════════════════ APP: alertas ═════════════════════════
+  alertas-backend:
+    build:
+      context: ./apps/alertas/backend
+    container_name: spider-alertas-backend
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-spider}
+      DB_USER: ${POSTGRES_USER:-spider_user}
+      DB_PASSWORD: ${BD_PASS:?define BD_PASS}
+      DB_SCHEMA: alertas
+      APP_NAME: alertas
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  alertas-frontend:
+    build:
+      context: ./apps/alertas/frontend
+    container_name: spider-alertas-frontend
+    depends_on:
+      - alertas-backend
+    restart: unless-stopped
+
   # SCAFFOLD:SERVICES  ← no borrar; el generador inyecta apps aquí
   # SCAFFOLD:END
 

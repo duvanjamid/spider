@@ -119,6 +119,10 @@ services:
         value: https://electrolineras-frontend.onrender.com
       - key: ELECTROLINERAS_BACKEND
         value: https://electrolineras-backend.onrender.com
+      - key: ALERTAS_FRONTEND
+        value: https://alertas-frontend.onrender.com
+      - key: ALERTAS_BACKEND
+        value: https://alertas-backend.onrender.com
 
   - type: web
     name: spider-gateway-test
@@ -143,6 +147,10 @@ services:
         value: https://electrolineras-frontend-test.onrender.com
       - key: ELECTROLINERAS_BACKEND
         value: https://electrolineras-backend-test.onrender.com
+      - key: ALERTAS_FRONTEND
+        value: https://alertas-frontend-test.onrender.com
+      - key: ALERTAS_BACKEND
+        value: https://alertas-backend-test.onrender.com
   # ─────────────────────────────────────────────────────────
   # ═════════════════════ APP: gastos ═════════════════════════
   - type: web
@@ -286,6 +294,93 @@ services:
     branch: develop
     dockerfilePath: apps/electrolineras/frontend/Dockerfile
     dockerContext: apps/electrolineras/frontend
+    plan: free
+    region: oregon
+    autoDeploy: true
+
+  # ═════════════════════ APP: alertas ═════════════════════════
+  - type: web
+    name: alertas-backend
+    runtime: docker
+    branch: main
+    dockerfilePath: apps/alertas/backend/Dockerfile
+    dockerContext: apps/alertas/backend
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: alertas
+      - key: DB_SCHEMA
+        value: alertas
+      - key: DATABASE_URL
+        fromService:
+          type: web
+          name: admin-backend
+          envVarKey: DATABASE_URL
+      - key: AUTH_JWT_SECRET
+        fromService:
+          type: web
+          name: admin-backend
+          envVarKey: AUTH_JWT_SECRET
+      - key: REGISTRY_TOKEN
+        fromService:
+          type: web
+          name: admin-backend
+          envVarKey: REGISTRY_TOKEN
+      - key: ADMIN_REGISTRY_URL
+        value: https://admin-backend-ejrr.onrender.com
+
+  - type: web
+    name: alertas-frontend
+    runtime: docker
+    branch: main
+    dockerfilePath: apps/alertas/frontend/Dockerfile
+    dockerContext: apps/alertas/frontend
+    plan: free
+    region: oregon
+    autoDeploy: true
+
+  - type: web
+    name: alertas-backend-test
+    runtime: docker
+    branch: develop
+    dockerfilePath: apps/alertas/backend/Dockerfile
+    dockerContext: apps/alertas/backend
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: alertas
+      - key: DB_SCHEMA
+        value: test_alertas
+      - key: DATABASE_URL
+        fromService:
+          type: web
+          name: admin-backend-test
+          envVarKey: DATABASE_URL
+      - key: AUTH_JWT_SECRET
+        fromService:
+          type: web
+          name: admin-backend-test
+          envVarKey: AUTH_JWT_SECRET
+      - key: REGISTRY_TOKEN
+        fromService:
+          type: web
+          name: admin-backend-test
+          envVarKey: REGISTRY_TOKEN
+      - key: ADMIN_REGISTRY_URL
+        value: https://admin-backend-test.onrender.com
+
+  - type: web
+    name: alertas-frontend-test
+    runtime: docker
+    branch: develop
+    dockerfilePath: apps/alertas/frontend/Dockerfile
+    dockerContext: apps/alertas/frontend
     plan: free
     region: oregon
     autoDeploy: true
