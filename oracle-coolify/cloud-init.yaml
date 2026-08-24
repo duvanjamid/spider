@@ -1,0 +1,59 @@
+#cloud-config
+# Cloud-init para una instancia Ubuntu en Oracle Cloud (OCI) que instala Coolify.
+#
+# Este script se ejecuta UNA sola vez, en el primer arranque de la VM, como root.
+# Hace tres cosas:
+#   1. Actualiza el sistema y prepara dependencias.
+#   2. Abre en el firewall del sistema operativo los puertos que Coolify necesita
+#      (las imagenes Ubuntu de Oracle traen reglas iptables que bloquean casi todo).
+#   3. Instala Coolify con el instalador oficial.
+#
+# El progreso queda registrado en /var/log/coolify-install.log dentro de la VM.
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - curl
+  - jq
+  - netfilter-persistent
+  - iptables-persistent
+
+write_files:
+  - path: /opt/setup-coolify.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      exec > >(tee -a /var/log/coolify-install.log) 2>&1
+      echo "==> [$(date -u)] Iniciando configuracion de Coolify"
+
+      # --- 1. Firewall del sistema operativo -------------------------------
+      # Las imagenes Ubuntu de OCI incluyen reglas iptables que solo permiten
+      # SSH. Insertamos reglas ACCEPT para los puertos de Coolify ANTES de la
+      # regla REJECT por defecto de la cadena INPUT, y las persistimos.
+      open_port() {
+        local port="$1" proto="${2:-tcp}"
+        if ! iptables -C INPUT -p "$proto" --dport "$port" -j ACCEPT 2>/dev/null; then
+          iptables -I INPUT 5 -p "$proto" --dport "$port" -j ACCEPT || \
+            iptables -I INPUT -p "$proto" --dport "$port" -j ACCEPT
+        fi
+      }
+      for p in 80 443 8000 6001 6002; do open_port "$p" tcp; done
+      # Persistir para que sobrevivan a reinicios.
+      mkdir -p /etc/iptables
+      iptables-save > /etc/iptables/rules.v4 || true
+      netfilter-persistent save || true
+      echo "==> Firewall del SO configurado"
+
+      # --- 2. Instalar Coolify --------------------------------------------
+      echo "==> Ejecutando instalador oficial de Coolify"
+      curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
+
+      echo "==> [$(date -u)] Coolify instalado. Panel: http://<IP_PUBLICA>:8000"
+
+runcmd:
+  - [ bash, /opt/setup-coolify.sh ]
+
+final_message: "Coolify listo tras $UPTIME s. Abre http://<IP_PUBLICA>:8000 para crear tu usuario admin."
