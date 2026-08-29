@@ -1,0 +1,133 @@
+# ══════════════════════════════════════════════════════════════
+#  Spider · despliegue en COOLIFY (Docker Compose, un solo recurso)
+#
+#  Equivalente a render.yaml pero para Coolify. Levanta el gateway +
+#  TODAS las apps (backend y frontend) como un único recurso.
+#
+#  Diferencias con docker-compose.yml (local):
+#    · SIN servicio `db`: la Postgres es un recurso GESTIONADO de Coolify
+#      (backups/UI aparte). Los backends la alcanzan por DB_HOST/DB_*.
+#    · SIN puertos publicados al host: Coolify + Traefik hacen el ingress.
+#      Solo el `gateway` se expone públicamente (dominio spider.muvatec.com).
+#    · Los secretos y la conexión a BD llegan por variables de entorno
+#      definidas en Coolify (ver .env.coolify.example).
+#
+#  Entrada única: https://spider.muvatec.com  → gateway → /admin, /gastos, …
+#
+#  Ver infra/coolify/README.md para la guía de migración paso a paso.
+# ══════════════════════════════════════════════════════════════
+services:
+  # ── Gateway: ÚNICO servicio expuesto. Enruta /<app> y /<app>-api. ──
+  gateway:
+    build: ../../infra/gateway
+    # SERVICE_FQDN_GATEWAY_80 le dice a Coolify que exponga este servicio
+    # (puerto 80) con un dominio y genere las labels de Traefik. Tras el
+    # primer deploy, edita el dominio en la UI de Coolify a:
+    #   https://spider.muvatec.com
+    environment:
+      - SERVICE_FQDN_GATEWAY_80
+      - PORT=80
+      # Upstreams internos: por defecto el entrypoint del gateway ya apunta
+      # a los nombres de servicio de este compose (admin-frontend:80,
+      # admin-backend:8080, …). No hace falta sobreescribir.
+    depends_on:
+      - admin-backend
+      - admin-frontend
+    restart: unless-stopped
+
+  # ═════════════════════ APP: admin (plataforma) ═════════════════════
+  admin-backend:
+    build: ../../apps/admin/backend
+    environment:
+      APP_NAME: admin
+      DB_SCHEMA: admin
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-spider}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET}
+      REGISTRY_TOKEN: ${REGISTRY_TOKEN}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://spider.muvatec.com}
+    restart: unless-stopped
+
+  admin-frontend:
+    build: ../../apps/admin/frontend
+    environment:
+      PORT: 80
+    depends_on:
+      - admin-backend
+    restart: unless-stopped
+
+  # ═════════════════════ APP: gastos ═════════════════════════
+  gastos-backend:
+    build: ../../apps/gastos/backend
+    environment:
+      APP_NAME: gastos
+      DB_SCHEMA: gastos
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-spider}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+    restart: unless-stopped
+
+  gastos-frontend:
+    build: ../../apps/gastos/frontend
+    environment:
+      PORT: 80
+    depends_on:
+      - gastos-backend
+    restart: unless-stopped
+
+  # ═════════════════════ APP: electrolineras ═════════════════════════
+  electrolineras-backend:
+    build: ../../apps/electrolineras/backend
+    environment:
+      APP_NAME: electrolineras
+      DB_SCHEMA: electrolineras
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-spider}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      # Sesión y registro heredan del admin (mismo secreto/token).
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET}
+      REGISTRY_TOKEN: ${REGISTRY_TOKEN}
+      ADMIN_REGISTRY_URL: http://admin-backend:8080
+    restart: unless-stopped
+
+  electrolineras-frontend:
+    build: ../../apps/electrolineras/frontend
+    environment:
+      PORT: 80
+    depends_on:
+      - electrolineras-backend
+    restart: unless-stopped
+
+  # ═════════════════════ APP: alertas ═════════════════════════
+  alertas-backend:
+    build: ../../apps/alertas/backend
+    environment:
+      APP_NAME: alertas
+      DB_SCHEMA: alertas
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-spider}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET}
+      REGISTRY_TOKEN: ${REGISTRY_TOKEN}
+      ADMIN_REGISTRY_URL: http://admin-backend:8080
+    restart: unless-stopped
+
+  alertas-frontend:
+    build: ../../apps/alertas/frontend
+    environment:
+      PORT: 80
+    depends_on:
+      - alertas-backend
+    restart: unless-stopped
