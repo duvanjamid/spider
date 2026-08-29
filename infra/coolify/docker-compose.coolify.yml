@@ -15,11 +15,16 @@
 #  Entrada única: https://spider.muvatec.com  → gateway → /admin, /gastos, …
 #
 #  Ver infra/coolify/README.md para la guía de migración paso a paso.
+#
+#  NOTA build contexts: relativos a la RAÍZ del repo (apps/…, infra/…), no a
+#  esta carpeta. Coolify despliega con --project-directory = raíz del repo.
+#  DB_SCHEMA usa ${SCHEMA_PREFIX}: vacío = prod (schema <app>), "test_" =
+#  entorno de test (schema test_<app>). Se fija por variable de entorno.
 # ══════════════════════════════════════════════════════════════
 services:
   # ── Gateway: ÚNICO servicio expuesto. Enruta /<app> y /<app>-api. ──
   gateway:
-    build: ../../infra/gateway
+    build: infra/gateway
     # SERVICE_FQDN_GATEWAY_80 le dice a Coolify que exponga este servicio
     # (puerto 80) con un dominio y genere las labels de Traefik. Tras el
     # primer deploy, edita el dominio en la UI de Coolify a:
@@ -37,10 +42,10 @@ services:
 
   # ═════════════════════ APP: admin (plataforma) ═════════════════════
   admin-backend:
-    build: ../../apps/admin/backend
+    build: apps/admin/backend
     environment:
       APP_NAME: admin
-      DB_SCHEMA: admin
+      DB_SCHEMA: ${SCHEMA_PREFIX:-}admin
       DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT:-5432}
       DB_NAME: ${DB_NAME:-spider}
@@ -55,7 +60,7 @@ services:
     restart: unless-stopped
 
   admin-frontend:
-    build: ../../apps/admin/frontend
+    build: apps/admin/frontend
     environment:
       PORT: 80
     depends_on:
@@ -64,10 +69,10 @@ services:
 
   # ═════════════════════ APP: gastos ═════════════════════════
   gastos-backend:
-    build: ../../apps/gastos/backend
+    build: apps/gastos/backend
     environment:
       APP_NAME: gastos
-      DB_SCHEMA: gastos
+      DB_SCHEMA: ${SCHEMA_PREFIX:-}gastos
       DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT:-5432}
       DB_NAME: ${DB_NAME:-spider}
@@ -76,7 +81,7 @@ services:
     restart: unless-stopped
 
   gastos-frontend:
-    build: ../../apps/gastos/frontend
+    build: apps/gastos/frontend
     environment:
       PORT: 80
     depends_on:
@@ -85,10 +90,10 @@ services:
 
   # ═════════════════════ APP: electrolineras ═════════════════════════
   electrolineras-backend:
-    build: ../../apps/electrolineras/backend
+    build: apps/electrolineras/backend
     environment:
       APP_NAME: electrolineras
-      DB_SCHEMA: electrolineras
+      DB_SCHEMA: ${SCHEMA_PREFIX:-}electrolineras
       DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT:-5432}
       DB_NAME: ${DB_NAME:-spider}
@@ -101,7 +106,7 @@ services:
     restart: unless-stopped
 
   electrolineras-frontend:
-    build: ../../apps/electrolineras/frontend
+    build: apps/electrolineras/frontend
     environment:
       PORT: 80
     depends_on:
@@ -110,10 +115,10 @@ services:
 
   # ═════════════════════ APP: alertas ═════════════════════════
   alertas-backend:
-    build: ../../apps/alertas/backend
+    build: apps/alertas/backend
     environment:
       APP_NAME: alertas
-      DB_SCHEMA: alertas
+      DB_SCHEMA: ${SCHEMA_PREFIX:-}alertas
       DB_HOST: ${DB_HOST}
       DB_PORT: ${DB_PORT:-5432}
       DB_NAME: ${DB_NAME:-spider}
@@ -125,7 +130,7 @@ services:
     restart: unless-stopped
 
   alertas-frontend:
-    build: ../../apps/alertas/frontend
+    build: apps/alertas/frontend
     environment:
       PORT: 80
     depends_on:
