@@ -41,6 +41,7 @@ services:
       - admin-frontend
     restart: unless-stopped
     mem_limit: 96m
+    networks: [coolify, default]
 
   # ═════════════════════ APP: admin (plataforma) ═════════════════════
   admin-backend:
@@ -62,6 +63,7 @@ services:
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
     restart: unless-stopped
     mem_limit: 640m
+    networks: [coolify, default]
 
   admin-frontend:
     build: apps/admin/frontend
@@ -71,6 +73,7 @@ services:
       - admin-backend
     restart: unless-stopped
     mem_limit: 96m
+    networks: [coolify, default]
 
   # ═════════════════════ APP: gastos ═════════════════════════
   gastos-backend:
@@ -86,6 +89,7 @@ services:
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
     restart: unless-stopped
     mem_limit: 640m
+    networks: [coolify, default]
 
   gastos-frontend:
     build: apps/gastos/frontend
@@ -95,6 +99,7 @@ services:
       - gastos-backend
     restart: unless-stopped
     mem_limit: 96m
+    networks: [coolify, default]
 
   # ═════════════════════ APP: electrolineras ═════════════════════════
   electrolineras-backend:
@@ -114,6 +119,7 @@ services:
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
     restart: unless-stopped
     mem_limit: 640m
+    networks: [coolify, default]
 
   electrolineras-frontend:
     build: apps/electrolineras/frontend
@@ -123,6 +129,7 @@ services:
       - electrolineras-backend
     restart: unless-stopped
     mem_limit: 96m
+    networks: [coolify, default]
 
   # ═════════════════════ APP: alertas ═════════════════════════
   alertas-backend:
@@ -141,6 +148,7 @@ services:
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
     restart: unless-stopped
     mem_limit: 640m
+    networks: [coolify, default]
 
   alertas-frontend:
     build: apps/alertas/frontend
@@ -150,3 +158,11 @@ services:
       - alertas-backend
     restart: unless-stopped
     mem_limit: 96m
+    networks: [coolify, default]
+
+networks:
+  # Red compartida de Coolify: permite alcanzar la BD gestionada
+  # (spider-db-test / spider-db-prod) por su hostname interno.
+  coolify:
+    external: true
+  default: {}
