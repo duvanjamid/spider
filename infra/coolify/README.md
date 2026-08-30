@@ -108,3 +108,5 @@ curl -I https://spider.muvatec.com/admin-api/health # backend admin → 200
 
 El despliegue en Render sigue intacto (`render.yaml` sin tocar). Para volver,
 apunta el DNS de vuelta y reactiva los servicios en Render.
+
+# auto-deploy test 010000
