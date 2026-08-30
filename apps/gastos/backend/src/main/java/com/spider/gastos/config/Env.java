@@ -24,8 +24,10 @@ public final class Env {
     }
 
     // ── IA (Gemini · Google AI Studio) para leer gastos desde una captura. ──
-    public static String geminiApiKey() { return get("GEMINI_API_KEY", ""); }
-    public static String geminiModel() { return get("GEMINI_MODEL", "gemini-flash-latest"); }
+    // trim(): un espacio o salto de línea al pegar la key/modelo en el panel
+    // rompe la URL/auth de Gemini (p.ej. modelo con "\n" → 404 model not found).
+    public static String geminiApiKey() { return get("GEMINI_API_KEY", "").trim(); }
+    public static String geminiModel() { return get("GEMINI_MODEL", "gemini-flash-latest").trim(); }
     public static boolean aiEnabled() { return !geminiApiKey().isBlank(); }
 
     // Presupuesto de "pensamiento" de Gemini (tokens). Con 0 el modelo no razona
