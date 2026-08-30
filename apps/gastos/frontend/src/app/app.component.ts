@@ -257,7 +257,6 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
           <b>{{ monthLabel() }}</b>
           <p-button icon="pi pi-chevron-right" [text]="true" (onClick)="shiftMonth(1)" aria-label="Mes siguiente" />
         </div>
-        <p-button icon="pi pi-ellipsis-v" [text]="true" (onClick)="moreVisible = true" aria-label="Más opciones" />
       </div>
 
       <!-- Inputs ocultos: cámara y galería (se disparan desde la hoja «Registrar gasto») -->
@@ -326,15 +325,14 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
                 </div>
               </p-card>
             </div>
-      </section>
 
-      <!-- ═══ Página: Categorías ═══ -->
-      <section class="page" *ngIf="tab() === 1">
-            <p-card header="Gasto por categoría (mes)">
-              <div class="chart-box" style="height:320px" *ngIf="(summary()?.byCategory?.length || 0) > 0; else noData">
-                <p-chart type="bar" [data]="barData()" [options]="barOptions()" />
-              </div>
-            </p-card>
+            <div style="margin-top:16px">
+              <p-card header="Gasto por categoría (mes)">
+                <div class="chart-box" style="height:320px" *ngIf="(summary()?.byCategory?.length || 0) > 0; else noData">
+                  <p-chart type="bar" [data]="barData()" [options]="barOptions()" />
+                </div>
+              </p-card>
+            </div>
       </section>
 
       <!-- ═══ Página: Tendencia ═══ -->
@@ -374,14 +372,14 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
       <nav class="bnav">
         <button class="bnav-item" [class.on]="tab() === 0" (click)="tab.set(0)">
           <i class="fa-solid fa-gauge-high"></i><span>Resumen</span></button>
-        <button class="bnav-item" [class.on]="tab() === 1" (click)="tab.set(1)">
-          <i class="fa-solid fa-chart-pie"></i><span>Categorías</span></button>
-        <button class="bnav-fab" (click)="openRegister()" aria-label="Registrar gasto">
-          <i class="fa-solid fa-plus"></i></button>
         <button class="bnav-item" [class.on]="tab() === 2" (click)="tab.set(2)">
           <i class="fa-solid fa-chart-line"></i><span>Tendencia</span></button>
+        <button class="bnav-fab" (click)="openRegister()" aria-label="Registrar gasto">
+          <i class="fa-solid fa-plus"></i></button>
         <button class="bnav-item" [class.on]="tab() === 3" (click)="tab.set(3)">
           <i class="fa-solid fa-list-ul"></i><span>Movimientos</span></button>
+        <button class="bnav-item" (click)="moreVisible = true">
+          <i class="fa-solid fa-ellipsis"></i><span>Más</span></button>
       </nav>
     </div>
 
