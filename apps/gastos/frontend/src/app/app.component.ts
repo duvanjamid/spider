@@ -169,6 +169,38 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
     .tcard .ck { margin-left: auto; color: var(--accent); }
     .onb .foot { position: sticky; bottom: 0; margin-top: 24px; padding: 14px 0; display: flex; gap: 10px;
                  align-items: center; justify-content: space-between; background: color-mix(in srgb, var(--bg) 88%, transparent); }
+
+    /* ═══ Navegación inferior (móvil-first) con FAB central de escaneo ═══ */
+    /* Las pestañas de PrimeNG se controlan desde aquí; ocultamos su barra propia. */
+    :host ::ng-deep .p-tabview .p-tabview-nav-container { display: none; }
+    .bnav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; height: 64px;
+            display: grid; grid-template-columns: repeat(5, 1fr); align-items: center;
+            background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(12px);
+            border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom, 0); }
+    .bnav-item { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0;
+                 background: none; border: none; color: var(--muted); font: inherit; font-size: .68rem;
+                 cursor: pointer; transition: color .15s; }
+    .bnav-item i { font-size: 1.15rem; }
+    .bnav-item.on { color: var(--accent); }
+    .bnav-fab { justify-self: center; width: 58px; height: 58px; margin-top: -26px; border-radius: 50%;
+                border: 4px solid var(--bg); background: var(--accent); color: #fff; font-size: 1.4rem;
+                cursor: pointer; display: grid; place-items: center; transition: transform .08s;
+                box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 45%, transparent); }
+    .bnav-fab:active { transform: scale(.94); }
+    .bnav-fab:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
+    @media (min-width: 900px) { .bnav { max-width: 520px; left: 50%; transform: translateX(-50%);
+                border-radius: 18px 18px 0 0; } }
+
+    /* Hoja de elección: tomar foto / subir imagen */
+    .picker { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 4px 2px 8px; }
+    .picker button { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 22px 12px;
+                     border: 1px solid var(--border); border-radius: 16px; background: var(--panel-2);
+                     color: var(--fg); font: inherit; cursor: pointer; transition: border-color .15s, transform .06s; }
+    .picker button:hover { border-color: var(--accent); }
+    .picker button:active { transform: scale(.97); }
+    .picker button i { font-size: 1.8rem; color: var(--accent); }
+    .picker button b { font-weight: 700; }
+    .picker button small { color: var(--muted); }
   `],
   template: `
     <!-- ═══════════════ ONBOARDING (primera vez) ═══════════════ -->
@@ -214,8 +246,7 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
 
       <div class="actions">
         <input #file type="file" accept="image/*" hidden (change)="onFile($event)" />
-        <p-button label="Escanear recibo" icon="pi pi-camera" (onClick)="file.click()"
-                  [disabled]="!aiEnabled()" [loading]="sheetState() === 'loading' && !!lastImageUrl()" />
+        <input #camera type="file" accept="image/*" capture="environment" hidden (change)="onFile($event)" />
         <p-button label="Pegar texto" icon="pi pi-align-left" [outlined]="true" (onClick)="openText()" [disabled]="!aiEnabled()" />
         <p-button label="Manual" icon="pi pi-plus" [outlined]="true" (onClick)="openManual()" />
         <span class="spacer"></span>
@@ -228,7 +259,7 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
       </div>
       <div class="muted" *ngIf="!aiEnabled()" style="margin:-2px 0 8px"><i class="pi pi-info-circle"></i> Configura GEMINI_API_KEY para el escaneo con IA.</div>
 
-      <p-tabView [scrollable]="true">
+      <p-tabView [scrollable]="true" [activeIndex]="tab()" (activeIndexChange)="tab.set($event)">
         <!-- Resumen -->
         <p-tabPanel header="Resumen" leftIcon="fa-solid fa-gauge-high">
           <ng-template pTemplate="content">
@@ -342,7 +373,32 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
           </ng-template>
         </p-tabPanel>
       </p-tabView>
+
+      <!-- ═══ Navegación inferior + botón central de escaneo ═══ -->
+      <nav class="bnav">
+        <button class="bnav-item" [class.on]="tab() === 0" (click)="tab.set(0)">
+          <i class="fa-solid fa-gauge-high"></i><span>Resumen</span></button>
+        <button class="bnav-item" [class.on]="tab() === 1" (click)="tab.set(1)">
+          <i class="fa-solid fa-chart-pie"></i><span>Categorías</span></button>
+        <button class="bnav-fab" (click)="openScan()" [disabled]="!aiEnabled()" aria-label="Escanear recibo">
+          <i class="fa-solid fa-camera"></i></button>
+        <button class="bnav-item" [class.on]="tab() === 2" (click)="tab.set(2)">
+          <i class="fa-solid fa-chart-line"></i><span>Tendencia</span></button>
+        <button class="bnav-item" [class.on]="tab() === 3" (click)="tab.set(3)">
+          <i class="fa-solid fa-list-ul"></i><span>Movimientos</span></button>
+      </nav>
     </div>
+
+    <!-- ═══ Hoja de elección: tomar foto / subir imagen ═══ -->
+    <p-dialog [(visible)]="pickerVisible" [modal]="true" [position]="'bottom'" [dismissableMask]="true"
+              [style]="{ width: '100%', maxWidth: '600px' }" header="Escanear recibo">
+      <div class="picker">
+        <button (click)="takePhoto()">
+          <i class="fa-solid fa-camera"></i><b>Tomar foto</b><small>Usa la cámara</small></button>
+        <button (click)="uploadImage()">
+          <i class="fa-solid fa-image"></i><b>Subir imagen</b><small>Desde tu galería</small></button>
+      </div>
+    </p-dialog>
 
     <ng-template #noData><p class="muted" style="text-align:center;padding:40px 0">Aún no hay datos este mes.</p></ng-template>
     <ng-template #noBudget><p class="muted" style="text-align:center;padding:16px 0">Sin presupuestos. Defínelos en «Categorías».</p></ng-template>
@@ -532,6 +588,7 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
 export class AppComponent implements OnInit {
   private api = inject(GastosService);
   @ViewChild('file') fileInput!: ElementRef<HTMLInputElement>;
+  @ViewChild('camera') cameraInput!: ElementRef<HTMLInputElement>;
 
   readonly dark = signal<boolean>(typeof window !== 'undefined' && window.matchMedia
     ? window.matchMedia('(prefers-color-scheme: dark)').matches : true);
@@ -549,6 +606,12 @@ export class AppComponent implements OnInit {
   readonly onboarding = signal<boolean>(false);
   readonly templates = signal<CategoryTemplate[]>([]);
   readonly chosen = signal<string[]>([]);
+
+  // Navegación inferior (0=Resumen, 1=Categorías, 2=Tendencia, 3=Movimientos)
+  readonly tab = signal(0);
+  // Hoja de elección de fuente de imagen (tomar foto / subir imagen).
+  // Campo plano para el two-way [(visible)] del p-dialog (como el resto de diálogos).
+  pickerVisible = false;
 
   sheetVisible = false;
   readonly sheetState = signal<SheetState>('form');
@@ -892,7 +955,12 @@ export class AppComponent implements OnInit {
     if (this.lastImage) { this.sheetState.set('loading'); this.startPhases(); this.runScan(); }
     else if (this.pastedText.trim()) { this.runTextScan(); }
   }
-  pickAgain(): void { this.fileInput?.nativeElement.click(); }
+  // Abre la hoja para elegir cómo aportar la imagen del recibo.
+  openScan(): void { if (this.aiEnabled()) this.pickerVisible = true; }
+  takePhoto(): void { this.pickerVisible = false; this.cameraInput?.nativeElement.click(); }
+  uploadImage(): void { this.pickerVisible = false; this.fileInput?.nativeElement.click(); }
+  // "Otra foto": cierra la hoja de resultado y vuelve a ofrecer foto/galería.
+  pickAgain(): void { this.sheetVisible = false; this.openScan(); }
 
   private runScan(): void {
     if (!this.lastImage) return;
