@@ -109,6 +109,35 @@ curl -I https://spider.muvatec.com/admin-api/health # backend admin → 200
 El despliegue en Render sigue intacto (`render.yaml` sin tocar). Para volver,
 apunta el DNS de vuelta y reactiva los servicios en Render.
 
-# auto-deploy test 010000
+## Operación / troubleshooting
 
-<!-- autodeploy probe 014600 -->
+### Panel Coolify da 502 (Bad Gateway) al recargar
+El programa del panel corre bien; Traefik (`coolify-proxy`) se salió de la red
+interna `coolify` y no lo alcanza. Las apps (spider-test) siguen sirviendo.
+Fix SIN la UI (justo con 502 no carga):
+
+```bash
+ssh -i ~/.ssh/oci_coolify ubuntu@129.153.222.97 \
+  'sudo docker network connect coolify coolify-proxy 2>/dev/null; echo ok'
+```
+
+No reinicies el proxy con `docker restart` crudo (pierde redes). Si hace falta
+reiniciarlo, hazlo desde Coolify → *Server → Proxy → Restart*.
+
+### Un `/<app>-api` da 502 tras reiniciar un backend
+El nginx del gateway cachea la IP del upstream al arrancar. Reinicia el gateway
+para que re-resuelva:
+
+```bash
+ssh -i ~/.ssh/oci_coolify ubuntu@129.153.222.97 \
+  'sudo docker restart $(sudo docker ps --format "{{.Names}}" | grep gateway- | head -1)'
+```
+
+### Deploy manual
+```bash
+curl -X POST -H "Authorization: Bearer <TOKEN_COOLIFY>" \
+  "https://master.muvatec.com/api/v1/deploy?uuid=<APP_UUID>&force=false"
+```
+(o el botón *Deploy* del recurso). La URL `/api/v1/deploy` necesita bearer, así
+que NO sirve como webhook de GitHub: para auto-deploy usa la URL de la pestaña
+*Webhooks* del recurso.
