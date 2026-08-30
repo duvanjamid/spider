@@ -56,18 +56,22 @@ public class GeminiScanner {
     }
 
     private Map<String, Object> call(ObjectNode root) throws Exception {
+        String model = Env.geminiModel();
         ObjectNode gen = root.putObject("generationConfig");
         gen.put("temperature", 0.1);
         gen.put("responseMimeType", "application/json");
-        // "Thinking" de los modelos Flash 2.5 (gemini-flash-latest): con 0 el modelo
-        // no razona y falla al leer la imagen del recibo; sin límite se dispara a
-        // 20-40s y se cae por timeout. Le damos un presupuesto ACOTADO (unos segundos
-        // de pensamiento, configurable por GEMINI_THINKING_BUDGET) para que analice
-        // bien la foto sin tardar de más.
-        gen.putObject("thinkingConfig").put("thinkingBudget", Env.geminiThinkingBudget());
+        // "Thinking" es EXCLUSIVO de los modelos Gemini 2.5: enviar thinkingConfig a
+        // un 2.0/1.5 devuelve 400 (por eso "fallaba de la nada" con gemini-2.0-flash).
+        // Solo cuando el modelo lo soporta le damos un presupuesto ACOTADO de
+        // pensamiento (unos segundos, GEMINI_THINKING_BUDGET) para que lea bien la
+        // imagen sin dispararse a 20-40s. Con GEMINI_THINKING_BUDGET<0 se omite.
+        int budget = Env.geminiThinkingBudget();
+        if (budget >= 0 && supportsThinking(model)) {
+            gen.putObject("thinkingConfig").put("thinkingBudget", budget);
+        }
 
         String url = "https://generativelanguage.googleapis.com/v1beta/models/"
-                + Env.geminiModel() + ":generateContent?key=" + Env.geminiApiKey();
+                + model + ":generateContent?key=" + Env.geminiApiKey();
         HttpRequest req = HttpRequest.newBuilder(URI.create(url))
                 .header("content-type", "application/json")
                 .timeout(Duration.ofSeconds(Env.geminiTimeoutSeconds()))
@@ -175,6 +179,15 @@ public class GeminiScanner {
         out.put("categoriaSugerida", asText(ex, "categoriaSugerida"));
         out.put("regiones", regiones);
         return out;
+    }
+
+    /**
+     * ¿El modelo soporta "thinking"? Solo la familia Gemini 2.5 (incluidos los
+     * alias *-latest, que apuntan a 2.5). Los 2.0/1.5 rechazan thinkingConfig.
+     */
+    private static boolean supportsThinking(String model) {
+        String m = model == null ? "" : model.toLowerCase();
+        return m.contains("2.5") || m.contains("-latest");
     }
 
     private static int clamp(int v) { return v < 0 ? 0 : (v > 1000 ? 1000 : v); }
