@@ -59,6 +59,8 @@ services:
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # Login de desarrollo (sin Google). Solo test: AUTH_DEV_LOGIN=true.
+      AUTH_DEV_LOGIN: ${AUTH_DEV_LOGIN:-false}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://spider.muvatec.com}
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
     restart: unless-stopped
