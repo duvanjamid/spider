@@ -173,7 +173,7 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
     /* Las pestañas de PrimeNG se controlan desde aquí; ocultamos su barra propia. */
     :host ::ng-deep .p-tabview .p-tabview-nav-container { display: none; }
     .bnav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; height: 64px;
-            display: grid; grid-template-columns: repeat(5, 1fr); align-items: center;
+            display: grid; grid-template-columns: repeat(4, 1fr); align-items: center;
             background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(12px);
             border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom, 0); }
     .bnav-item { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0;
@@ -333,15 +333,14 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
                 </div>
               </p-card>
             </div>
-      </section>
 
-      <!-- ═══ Página: Tendencia ═══ -->
-      <section class="page" *ngIf="tab() === 2">
-            <p-card header="Tendencia y estimación">
-              <div class="chart-box" style="height:320px" *ngIf="(trend()?.series?.length || 0) > 0; else noData">
-                <p-chart type="line" [data]="lineData()" [options]="lineOptions()" />
-              </div>
-            </p-card>
+            <div style="margin-top:16px">
+              <p-card header="¿Cómo va el mes?">
+                <div class="chart-box" style="height:300px" *ngIf="(summary()?.count || 0) > 0; else noData">
+                  <p-chart type="line" [data]="lineData()" [options]="lineOptions()" />
+                </div>
+              </p-card>
+            </div>
       </section>
 
       <!-- ═══ Página: Movimientos ═══ -->
@@ -371,13 +370,11 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
       <!-- ═══ Navegación inferior + botón central de escaneo ═══ -->
       <nav class="bnav">
         <button class="bnav-item" [class.on]="tab() === 0" (click)="tab.set(0)">
-          <i class="fa-solid fa-gauge-high"></i><span>Resumen</span></button>
-        <button class="bnav-item" [class.on]="tab() === 2" (click)="tab.set(2)">
-          <i class="fa-solid fa-chart-line"></i><span>Tendencia</span></button>
-        <button class="bnav-fab" (click)="openRegister()" aria-label="Registrar gasto">
-          <i class="fa-solid fa-plus"></i></button>
+          <i class="fa-solid fa-gauge-high"></i><span>Estatus</span></button>
         <button class="bnav-item" [class.on]="tab() === 3" (click)="tab.set(3)">
           <i class="fa-solid fa-list-ul"></i><span>Movimientos</span></button>
+        <button class="bnav-fab" (click)="openRegister()" aria-label="Registrar gasto">
+          <i class="fa-solid fa-plus"></i></button>
         <button class="bnav-item" (click)="moreVisible = true">
           <i class="fa-solid fa-ellipsis"></i><span>Más</span></button>
       </nav>
@@ -752,15 +749,41 @@ export class AppComponent implements OnInit {
     return { labels: bc.map((c) => c.name),
       datasets: [{ data: bc.map((c) => c.total), backgroundColor: bc.map((c) => c.color), borderRadius: 8 }] };
   });
+  // Evolución del MES EN CURSO: acumulado real por día + proyección a fin de mes.
   readonly lineData = computed(() => {
-    const t = this.trend(); const s = t?.series ?? [];
-    const labels = s.map((p) => p.month.slice(5)).concat(['est.']);
-    const real = s.map((p) => p.total).concat([null as unknown as number]);
-    const last = s.length ? s[s.length - 1].total : 0;
-    const est = Array(Math.max(s.length - 1, 0)).fill(null).concat([last, t?.forecastNext ?? 0]);
-    return { labels, datasets: [
-      { label: 'Real', data: real, borderColor: '#6c8cff', backgroundColor: 'rgba(108,140,255,.15)', fill: true, tension: 0.35 },
-      { label: 'Estimación', data: est, borderColor: '#10b981', borderDash: [6, 6], tension: 0.35 } ] };
+    const s = this.summary();
+    const days = s?.daysInMonth ?? 30;
+    const elapsed = Math.min(s?.daysElapsed ?? days, days);
+    // Gasto por día del mes seleccionado.
+    const perDay = new Array(days + 1).fill(0);
+    for (const e of this.expenses()) {
+      const d = parseInt((e.spentOn || '').slice(8, 10), 10);
+      if (d >= 1 && d <= days) perDay[d] += e.amount;
+    }
+    const labels = Array.from({ length: days }, (_, i) => String(i + 1));
+    // Acumulado real solo hasta hoy; después null (la línea se corta).
+    const real: (number | null)[] = [];
+    let acc = 0;
+    for (let d = 1; d <= days; d++) { if (d <= elapsed) { acc += perDay[d]; real.push(acc); } else real.push(null); }
+    const realToday = acc;
+    const projected = s?.projectedEndOfMonth ?? realToday;
+    // Proyección: recta de (hoy, gastado) → (fin de mes, proyectado).
+    const proj: (number | null)[] = new Array(days).fill(null);
+    if (elapsed >= 1) {
+      for (let d = elapsed; d <= days; d++) {
+        const f = days > elapsed ? (d - elapsed) / (days - elapsed) : 0;
+        proj[d - 1] = realToday + (projected - realToday) * f;
+      }
+    }
+    const datasets: Record<string, unknown>[] = [
+      { label: 'Gastado', data: real, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,.15)',
+        fill: true, tension: 0.3, pointRadius: 0 },
+      { label: 'Proyección', data: proj, borderColor: '#10b981', borderDash: [6, 6], tension: 0.3, pointRadius: 0 },
+    ];
+    const budget = this.budgetTotals().budget;
+    if (budget > 0) datasets.push({ label: 'Presupuesto', data: new Array(days).fill(budget),
+      borderColor: '#ef4444', borderDash: [2, 4], pointRadius: 0, fill: false });
+    return { labels, datasets };
   });
 
   sheetTitle(): string {
