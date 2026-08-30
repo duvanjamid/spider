@@ -72,6 +72,7 @@ services:
     build: apps/admin/frontend
     environment:
       PORT: 80
+      PWA_PREFIX: ${PWA_PREFIX:-}
     depends_on:
       - admin-backend
     restart: unless-stopped
@@ -93,6 +94,7 @@ services:
     build: apps/gastos/frontend
     environment:
       PORT: 80
+      PWA_PREFIX: ${PWA_PREFIX:-}
     depends_on:
       - gastos-backend
     restart: unless-stopped
@@ -114,6 +116,7 @@ services:
     build: apps/electrolineras/frontend
     environment:
       PORT: 80
+      PWA_PREFIX: ${PWA_PREFIX:-}
     depends_on:
       - electrolineras-backend
     restart: unless-stopped
@@ -135,6 +138,7 @@ services:
     build: apps/alertas/frontend
     environment:
       PORT: 80
+      PWA_PREFIX: ${PWA_PREFIX:-}
     depends_on:
       - alertas-backend
     restart: unless-stopped

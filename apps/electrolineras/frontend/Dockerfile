@@ -8,6 +8,7 @@ RUN npm run build
 FROM nginx:1.27-alpine AS runtime
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/dist/browser /usr/share/nginx/html
-ENV PORT=80
+ENV PORT=80 \
+    PWA_PREFIX=""
 EXPOSE 80
-CMD ["/bin/sh", "-c", "sed -i \"s/__PORT__/${PORT}/\" /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"]
+CMD ["/bin/sh", "-c", "sed -i \"s/__PORT__/${PORT}/\" /etc/nginx/conf.d/default.conf && sed -i \"s|__PWA_PREFIX__|${PWA_PREFIX}|g\" /usr/share/nginx/html/manifest.webmanifest /usr/share/nginx/html/index.html && exec nginx -g 'daemon off;'"]

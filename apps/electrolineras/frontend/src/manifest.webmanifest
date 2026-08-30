@@ -1,6 +1,6 @@
 {
-  "name": "Electrolineras",
-  "short_name": "Electrolineras",
+  "name": "__PWA_PREFIX__Electrolineras",
+  "short_name": "__PWA_PREFIX__Electrolineras",
   "description": "Mapa de estaciones de carga en Colombia con estado de la comunidad",
   "start_url": ".",
   "scope": ".",
