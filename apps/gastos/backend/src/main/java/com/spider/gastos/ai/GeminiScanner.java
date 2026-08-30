@@ -59,16 +59,18 @@ public class GeminiScanner {
         ObjectNode gen = root.putObject("generationConfig");
         gen.put("temperature", 0.1);
         gen.put("responseMimeType", "application/json");
-        // Desactiva el "thinking" de los modelos Flash 2.5 (gemini-flash-latest):
-        // con thinking el escaneo tarda 20-40s y se cae por timeout; sin él
-        // responde en ~1-2s. thinkingBudget=0 = sin pensamiento previo.
-        gen.putObject("thinkingConfig").put("thinkingBudget", 0);
+        // "Thinking" de los modelos Flash 2.5 (gemini-flash-latest): con 0 el modelo
+        // no razona y falla al leer la imagen del recibo; sin límite se dispara a
+        // 20-40s y se cae por timeout. Le damos un presupuesto ACOTADO (unos segundos
+        // de pensamiento, configurable por GEMINI_THINKING_BUDGET) para que analice
+        // bien la foto sin tardar de más.
+        gen.putObject("thinkingConfig").put("thinkingBudget", Env.geminiThinkingBudget());
 
         String url = "https://generativelanguage.googleapis.com/v1beta/models/"
                 + Env.geminiModel() + ":generateContent?key=" + Env.geminiApiKey();
         HttpRequest req = HttpRequest.newBuilder(URI.create(url))
                 .header("content-type", "application/json")
-                .timeout(Duration.ofSeconds(45))
+                .timeout(Duration.ofSeconds(Env.geminiTimeoutSeconds()))
                 .POST(HttpRequest.BodyPublishers.ofString(Json.MAPPER.writeValueAsString(root)))
                 .build();
         HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
