@@ -110,3 +110,5 @@ El despliegue en Render sigue intacto (`render.yaml` sin tocar). Para volver,
 apunta el DNS de vuelta y reactiva los servicios en Render.
 
 # auto-deploy test 010000
+
+<!-- autodeploy probe 014600 -->
