@@ -6,7 +6,6 @@ import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
 import { ChartModule } from 'primeng/chart';
 import { DialogModule } from 'primeng/dialog';
-import { TabViewModule } from 'primeng/tabview';
 import { TagModule } from 'primeng/tag';
 import {
   Budget, Category, CategoryTemplate, Expense, GastosService, Me, Monto, Recurring, Region, Scan, Summary, Trend,
@@ -17,7 +16,7 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [NgFor, NgIf, FormsModule, ButtonModule, CardModule, ChartModule, DialogModule, TabViewModule, TagModule],
+  imports: [NgFor, NgIf, FormsModule, ButtonModule, CardModule, ChartModule, DialogModule, TagModule],
   styles: [`
     .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px 84px; }
 
@@ -201,6 +200,22 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
     .picker button i { font-size: 1.8rem; color: var(--accent); }
     .picker button b { font-weight: 700; }
     .picker button small { color: var(--muted); }
+    .picker button:disabled { opacity: .45; cursor: not-allowed; }
+    .picker button:disabled:hover { border-color: var(--border); }
+
+    /* Cada pestaña es su propia página */
+    .page { padding-top: 16px; }
+
+    /* Menú «Más» (lista de acciones) */
+    .menu { display: flex; flex-direction: column; }
+    .menu button { display: flex; align-items: center; gap: 14px; padding: 15px 6px; background: none;
+                   border: none; border-bottom: 1px solid var(--border); color: var(--fg); font: inherit;
+                   font-size: 1rem; cursor: pointer; text-align: left; }
+    .menu button:last-child { border-bottom: none; }
+    .menu button:active { background: var(--panel-2); }
+    .menu button > i:first-child { width: 22px; text-align: center; color: var(--accent); font-size: 1.05rem; }
+    .menu button > span { flex: 1; }
+    .menu button .go { color: var(--muted); font-size: .8rem; }
   `],
   template: `
     <!-- ═══════════════ ONBOARDING (primera vez) ═══════════════ -->
@@ -242,27 +257,16 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
           <b>{{ monthLabel() }}</b>
           <p-button icon="pi pi-chevron-right" [text]="true" (onClick)="shiftMonth(1)" aria-label="Mes siguiente" />
         </div>
+        <p-button icon="pi pi-ellipsis-v" [text]="true" (onClick)="moreVisible = true" aria-label="Más opciones" />
       </div>
 
-      <div class="actions">
-        <input #file type="file" accept="image/*" hidden (change)="onFile($event)" />
-        <input #camera type="file" accept="image/*" capture="environment" hidden (change)="onFile($event)" />
-        <p-button label="Pegar texto" icon="pi pi-align-left" [outlined]="true" (onClick)="openText()" [disabled]="!aiEnabled()" />
-        <p-button label="Manual" icon="pi pi-plus" [outlined]="true" (onClick)="openManual()" />
-        <span class="spacer"></span>
-        <div class="tools">
-          <p-button label="Categorías" icon="pi pi-tags" [text]="true" size="small" (onClick)="openCats()" />
-          <p-button label="Recurrentes" icon="pi pi-replay" [text]="true" size="small" (onClick)="openRecurring()" />
-          <p-button label="Comparar" icon="pi pi-sort-alt" [text]="true" size="small" (onClick)="openCompare()" />
-          <p-button label="CSV" icon="pi pi-download" [text]="true" size="small" (onClick)="exportCsv()" />
-        </div>
-      </div>
-      <div class="muted" *ngIf="!aiEnabled()" style="margin:-2px 0 8px"><i class="pi pi-info-circle"></i> Configura GEMINI_API_KEY para el escaneo con IA.</div>
+      <!-- Inputs ocultos: cámara y galería (se disparan desde la hoja «Registrar gasto») -->
+      <input #file type="file" accept="image/*" hidden (change)="onFile($event)" />
+      <input #camera type="file" accept="image/*" capture="environment" hidden (change)="onFile($event)" />
+      <div class="muted" *ngIf="!aiEnabled()" style="margin:10px 0 0"><i class="pi pi-info-circle"></i> Configura GEMINI_API_KEY para el escaneo con IA.</div>
 
-      <p-tabView [scrollable]="true" [activeIndex]="tab()" (activeIndexChange)="tab.set($event)">
-        <!-- Resumen -->
-        <p-tabPanel header="Resumen" leftIcon="fa-solid fa-gauge-high">
-          <ng-template pTemplate="content">
+      <!-- ═══ Página: Resumen ═══ -->
+      <section class="page" *ngIf="tab() === 0">
             <div class="kpis" *ngIf="summary() as s" style="margin-bottom:16px">
               <div class="kpi">
                 <div class="lbl"><i class="fa-solid fa-wallet"></i> Total del mes</div>
@@ -322,34 +326,28 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
                 </div>
               </p-card>
             </div>
-          </ng-template>
-        </p-tabPanel>
+      </section>
 
-        <!-- Categorías -->
-        <p-tabPanel header="Categorías" leftIcon="fa-solid fa-chart-pie">
-          <ng-template pTemplate="content">
+      <!-- ═══ Página: Categorías ═══ -->
+      <section class="page" *ngIf="tab() === 1">
             <p-card header="Gasto por categoría (mes)">
               <div class="chart-box" style="height:320px" *ngIf="(summary()?.byCategory?.length || 0) > 0; else noData">
                 <p-chart type="bar" [data]="barData()" [options]="barOptions()" />
               </div>
             </p-card>
-          </ng-template>
-        </p-tabPanel>
+      </section>
 
-        <!-- Tendencia -->
-        <p-tabPanel header="Tendencia" leftIcon="fa-solid fa-chart-line">
-          <ng-template pTemplate="content">
+      <!-- ═══ Página: Tendencia ═══ -->
+      <section class="page" *ngIf="tab() === 2">
             <p-card header="Tendencia y estimación">
               <div class="chart-box" style="height:320px" *ngIf="(trend()?.series?.length || 0) > 0; else noData">
                 <p-chart type="line" [data]="lineData()" [options]="lineOptions()" />
               </div>
             </p-card>
-          </ng-template>
-        </p-tabPanel>
+      </section>
 
-        <!-- Movimientos -->
-        <p-tabPanel header="Movimientos" leftIcon="fa-solid fa-list-ul">
-          <ng-template pTemplate="content">
+      <!-- ═══ Página: Movimientos ═══ -->
+      <section class="page" *ngIf="tab() === 3">
             <div class="filters">
               <input class="inp" style="flex:1;min-width:180px" type="text" [(ngModel)]="query" placeholder="Buscar (comercio, descripción, NIT)…" />
               <select class="sel" style="width:auto" [(ngModel)]="filterCat">
@@ -370,9 +368,7 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
               </div>
               <p class="muted" *ngIf="loaded() && filtered().length === 0" style="text-align:center;padding:24px">Sin movimientos que coincidan.</p>
             </div>
-          </ng-template>
-        </p-tabPanel>
-      </p-tabView>
+      </section>
 
       <!-- ═══ Navegación inferior + botón central de escaneo ═══ -->
       <nav class="bnav">
@@ -380,8 +376,8 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
           <i class="fa-solid fa-gauge-high"></i><span>Resumen</span></button>
         <button class="bnav-item" [class.on]="tab() === 1" (click)="tab.set(1)">
           <i class="fa-solid fa-chart-pie"></i><span>Categorías</span></button>
-        <button class="bnav-fab" (click)="openScan()" [disabled]="!aiEnabled()" aria-label="Escanear recibo">
-          <i class="fa-solid fa-camera"></i></button>
+        <button class="bnav-fab" (click)="openRegister()" aria-label="Registrar gasto">
+          <i class="fa-solid fa-plus"></i></button>
         <button class="bnav-item" [class.on]="tab() === 2" (click)="tab.set(2)">
           <i class="fa-solid fa-chart-line"></i><span>Tendencia</span></button>
         <button class="bnav-item" [class.on]="tab() === 3" (click)="tab.set(3)">
@@ -389,14 +385,29 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
       </nav>
     </div>
 
-    <!-- ═══ Hoja de elección: tomar foto / subir imagen ═══ -->
+    <!-- ═══ Hoja «Registrar gasto»: manual / texto / cámara / galería ═══ -->
     <p-dialog [(visible)]="pickerVisible" [modal]="true" [position]="'bottom'" [dismissableMask]="true"
-              [style]="{ width: '100%', maxWidth: '600px' }" header="Escanear recibo">
+              [style]="{ width: '100%', maxWidth: '600px' }" header="Registrar gasto">
       <div class="picker">
-        <button (click)="takePhoto()">
-          <i class="fa-solid fa-camera"></i><b>Tomar foto</b><small>Usa la cámara</small></button>
-        <button (click)="uploadImage()">
-          <i class="fa-solid fa-image"></i><b>Subir imagen</b><small>Desde tu galería</small></button>
+        <button (click)="chooseManual()">
+          <i class="fa-solid fa-pen"></i><b>Manual</b><small>Escríbelo tú</small></button>
+        <button (click)="chooseText()" [disabled]="!aiEnabled()">
+          <i class="fa-solid fa-align-left"></i><b>Pegar texto</b><small>SMS o correo</small></button>
+        <button (click)="takePhoto()" [disabled]="!aiEnabled()">
+          <i class="fa-solid fa-camera"></i><b>Tomar foto</b><small>Cámara</small></button>
+        <button (click)="uploadImage()" [disabled]="!aiEnabled()">
+          <i class="fa-solid fa-image"></i><b>Subir imagen</b><small>Galería</small></button>
+      </div>
+    </p-dialog>
+
+    <!-- ═══ Hoja «Más»: gestión y herramientas ═══ -->
+    <p-dialog [(visible)]="moreVisible" [modal]="true" [position]="'bottom'" [dismissableMask]="true"
+              [style]="{ width: '100%', maxWidth: '600px' }" header="Más">
+      <div class="menu">
+        <button (click)="fromMore('cats')"><i class="fa-solid fa-tags"></i><span>Editar categorías</span><i class="fa-solid fa-chevron-right go"></i></button>
+        <button (click)="fromMore('recurring')"><i class="fa-solid fa-rotate"></i><span>Gastos recurrentes</span><i class="fa-solid fa-chevron-right go"></i></button>
+        <button (click)="fromMore('compare')"><i class="fa-solid fa-code-compare"></i><span>Comparar meses</span><i class="fa-solid fa-chevron-right go"></i></button>
+        <button (click)="fromMore('csv')"><i class="fa-solid fa-file-csv"></i><span>Exportar CSV</span><i class="fa-solid fa-chevron-right go"></i></button>
       </div>
     </p-dialog>
 
@@ -609,9 +620,10 @@ export class AppComponent implements OnInit {
 
   // Navegación inferior (0=Resumen, 1=Categorías, 2=Tendencia, 3=Movimientos)
   readonly tab = signal(0);
-  // Hoja de elección de fuente de imagen (tomar foto / subir imagen).
-  // Campo plano para el two-way [(visible)] del p-dialog (como el resto de diálogos).
+  // Hoja «Registrar gasto» (manual / texto / cámara / galería) y menú «Más».
+  // Campos planos para el two-way [(visible)] del p-dialog (como el resto de diálogos).
   pickerVisible = false;
+  moreVisible = false;
 
   sheetVisible = false;
   readonly sheetState = signal<SheetState>('form');
@@ -956,11 +968,22 @@ export class AppComponent implements OnInit {
     else if (this.pastedText.trim()) { this.runTextScan(); }
   }
   // Abre la hoja para elegir cómo aportar la imagen del recibo.
-  openScan(): void { if (this.aiEnabled()) this.pickerVisible = true; }
+  // FAB central: abre la hoja para registrar un gasto (manual/texto/cámara/galería).
+  openRegister(): void { this.pickerVisible = true; }
+  chooseManual(): void { this.pickerVisible = false; this.openManual(); }
+  chooseText(): void { this.pickerVisible = false; this.openText(); }
   takePhoto(): void { this.pickerVisible = false; this.cameraInput?.nativeElement.click(); }
   uploadImage(): void { this.pickerVisible = false; this.fileInput?.nativeElement.click(); }
-  // "Otra foto": cierra la hoja de resultado y vuelve a ofrecer foto/galería.
-  pickAgain(): void { this.sheetVisible = false; this.openScan(); }
+  // "Otra foto": cierra la hoja de resultado y vuelve a ofrecer las opciones.
+  pickAgain(): void { this.sheetVisible = false; this.openRegister(); }
+  // Menú «Más»: cierra la hoja y ejecuta la acción elegida.
+  fromMore(action: 'cats' | 'recurring' | 'compare' | 'csv'): void {
+    this.moreVisible = false;
+    if (action === 'cats') this.openCats();
+    else if (action === 'recurring') this.openRecurring();
+    else if (action === 'compare') this.openCompare();
+    else if (action === 'csv') this.exportCsv();
+  }
 
   private runScan(): void {
     if (!this.lastImage) return;
