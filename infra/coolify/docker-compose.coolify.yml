@@ -4,35 +4,49 @@
 #  Equivalente a render.yaml pero para Coolify. Levanta el gateway +
 #  TODAS las apps (backend y frontend) como un único recurso.
 #
+#  ENV COMPARTIDAS: todas las apps (admin + sub-apps) usan el MISMO set de
+#  variables (bloque `x-common-env`). Se definen UNA vez en Coolify y aplican
+#  a todos los backends. Lo único por-app es APP_NAME y DB_SCHEMA (estructural,
+#  no secreto). Así no hay envVars distintas por app.
+#
 #  Diferencias con docker-compose.yml (local):
-#    · SIN servicio `db`: la Postgres es un recurso GESTIONADO de Coolify
-#      (una BD por entorno: spider-db-test / spider-db-prod). Los backends
-#      la alcanzan por DB_HOST/DB_* (misma red `coolify`).
-#    · SIN puertos publicados al host: Coolify + Traefik hacen el ingress.
-#      Solo el `gateway` se expone públicamente (dominio del entorno).
-#    · Secretos y conexión a BD llegan por variables (ver .env.coolify.example).
+#    · SIN servicio `db`: Postgres es un recurso GESTIONADO de Coolify, una BD
+#      por entorno (spider-db-test / spider-db-prod), INTERNA (red `coolify`,
+#      sin puerto público). Los backends la alcanzan por DB_HOST/DB_*.
+#    · SIN puertos al host: Coolify + Traefik hacen el ingress. Solo el
+#      `gateway` se expone con el dominio del entorno.
 #
 #  Entrada única: https://<dominio>  → gateway → /admin, /gastos, …
 #
-#  Ver infra/coolify/README.md para la guía de migración paso a paso.
-#
-#  NOTA build contexts: relativos a la RAÍZ del repo (apps/…, infra/…), no a
-#  esta carpeta. Coolify despliega con --project-directory = raíz del repo.
-#
-#  MEMORIA: cada servicio tiene `mem_limit` para no malgastar RAM. Los
-#  backends Java capan el heap al 70% del límite (JAVA_TOOL_OPTIONS +
-#  SerialGC del entrypoint). Total ~2.6 GB con las 4 apps arriba.
-#
-#  DB_SCHEMA usa ${SCHEMA_PREFIX} (por defecto vacío = schema <app>). Como
-#  cada entorno tiene su PROPIA BD, se usan schemas planos; el prefijo queda
-#  disponible por si alguna vez se comparte una BD entre entornos.
+#  NOTA build contexts: relativos a la RAÍZ del repo (Coolify usa
+#  --project-directory = raíz). MEMORIA: mem_limit por servicio; los backends
+#  Java capan heap al 70% (JAVA_TOOL_OPTIONS + SerialGC). ~2.6 GB con 4 apps.
+#  Cada entorno tiene su BD → schemas planos (SCHEMA_PREFIX por defecto vacío).
 # ══════════════════════════════════════════════════════════════
+
+# ── Env COMPARTIDA por todos los backends (se define una vez en Coolify). ──
+x-common-env: &common-env
+  DB_HOST: ${DB_HOST}
+  DB_PORT: ${DB_PORT:-5432}
+  DB_NAME: ${DB_NAME:-spider}
+  DB_USER: ${DB_USER}
+  DB_PASSWORD: ${DB_PASSWORD}
+  AUTH_JWT_SECRET: ${AUTH_JWT_SECRET}
+  REGISTRY_TOKEN: ${REGISTRY_TOKEN}
+  ADMIN_REGISTRY_URL: ${ADMIN_REGISTRY_URL:-http://admin-backend:8080}
+  ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  AUTH_DEV_LOGIN: ${AUTH_DEV_LOGIN:-false}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-latest}
+  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://spider.muvatec.com}
+  JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
+
 services:
   # ── Gateway: ÚNICO servicio expuesto. Enruta /<app> y /<app>-api. ──
   gateway:
     build: infra/gateway
-    # SERVICE_FQDN_GATEWAY_80: Coolify expone este servicio (puerto 80) con
-    # el dominio del entorno y genera las labels de Traefik.
     environment:
       - SERVICE_FQDN_GATEWAY_80
       - PORT=80
@@ -47,22 +61,9 @@ services:
   admin-backend:
     build: apps/admin/backend
     environment:
+      <<: *common-env
       APP_NAME: admin
       DB_SCHEMA: ${SCHEMA_PREFIX:-}admin
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT:-5432}
-      DB_NAME: ${DB_NAME:-spider}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET}
-      REGISTRY_TOKEN: ${REGISTRY_TOKEN}
-      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      # Login de desarrollo (sin Google). Solo test: AUTH_DEV_LOGIN=true.
-      AUTH_DEV_LOGIN: ${AUTH_DEV_LOGIN:-false}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://spider.muvatec.com}
-      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
     restart: unless-stopped
     mem_limit: 640m
     networks: [coolify, default]
@@ -81,14 +82,9 @@ services:
   gastos-backend:
     build: apps/gastos/backend
     environment:
+      <<: *common-env
       APP_NAME: gastos
       DB_SCHEMA: ${SCHEMA_PREFIX:-}gastos
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT:-5432}
-      DB_NAME: ${DB_NAME:-spider}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
     restart: unless-stopped
     mem_limit: 640m
     networks: [coolify, default]
@@ -107,18 +103,9 @@ services:
   electrolineras-backend:
     build: apps/electrolineras/backend
     environment:
+      <<: *common-env
       APP_NAME: electrolineras
       DB_SCHEMA: ${SCHEMA_PREFIX:-}electrolineras
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT:-5432}
-      DB_NAME: ${DB_NAME:-spider}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      # Sesión y registro heredan del admin (mismo secreto/token).
-      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET}
-      REGISTRY_TOKEN: ${REGISTRY_TOKEN}
-      ADMIN_REGISTRY_URL: http://admin-backend:8080
-      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
     restart: unless-stopped
     mem_limit: 640m
     networks: [coolify, default]
@@ -137,17 +124,9 @@ services:
   alertas-backend:
     build: apps/alertas/backend
     environment:
+      <<: *common-env
       APP_NAME: alertas
       DB_SCHEMA: ${SCHEMA_PREFIX:-}alertas
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT:-5432}
-      DB_NAME: ${DB_NAME:-spider}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET}
-      REGISTRY_TOKEN: ${REGISTRY_TOKEN}
-      ADMIN_REGISTRY_URL: http://admin-backend:8080
-      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
     restart: unless-stopped
     mem_limit: 640m
     networks: [coolify, default]
@@ -163,8 +142,7 @@ services:
     networks: [coolify, default]
 
 networks:
-  # Red compartida de Coolify: permite alcanzar la BD gestionada
-  # (spider-db-test / spider-db-prod) por su hostname interno.
+  # Red compartida de Coolify: alcanza la BD gestionada por su hostname interno.
   coolify:
     external: true
   default: {}
