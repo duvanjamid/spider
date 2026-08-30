@@ -141,3 +141,5 @@ curl -X POST -H "Authorization: Bearer <TOKEN_COOLIFY>" \
 (o el botón *Deploy* del recurso). La URL `/api/v1/deploy` necesita bearer, así
 que NO sirve como webhook de GitHub: para auto-deploy usa la URL de la pestaña
 *Webhooks* del recurso.
+
+<!-- retest auto-deploy con panel estable 02:37:30 UTC -->
