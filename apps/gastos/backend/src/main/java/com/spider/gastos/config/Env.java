@@ -28,6 +28,15 @@ public final class Env {
     public static String geminiModel() { return get("GEMINI_MODEL", "gemini-flash-latest"); }
     public static boolean aiEnabled() { return !geminiApiKey().isBlank(); }
 
+    // Presupuesto de "pensamiento" de Gemini (tokens). Con 0 el modelo no razona
+    // y falla al leer la imagen del recibo; con un presupuesto acotado dispone de
+    // unos segundos para pensar sin dispararse a 20-40s. Configurable por entorno.
+    public static int geminiThinkingBudget() { return getInt("GEMINI_THINKING_BUDGET", 2048); }
+
+    // Timeout de la llamada a Gemini (segundos). Ha de dar margen a esos segundos
+    // de pensamiento para no cortar la respuesta a mitad.
+    public static int geminiTimeoutSeconds() { return getInt("GEMINI_TIMEOUT_SECONDS", 90); }
+
     // ── Secreto de sesión de la plataforma (mismo que el admin) para
     //    identificar al usuario por la cookie spider_session. ──
     public static String authJwtSecret() { return get("AUTH_JWT_SECRET", "dev-secret-change-me"); }
