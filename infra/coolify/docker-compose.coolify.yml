@@ -6,39 +6,41 @@
 #
 #  Diferencias con docker-compose.yml (local):
 #    · SIN servicio `db`: la Postgres es un recurso GESTIONADO de Coolify
-#      (backups/UI aparte). Los backends la alcanzan por DB_HOST/DB_*.
+#      (una BD por entorno: spider-db-test / spider-db-prod). Los backends
+#      la alcanzan por DB_HOST/DB_* (misma red `coolify`).
 #    · SIN puertos publicados al host: Coolify + Traefik hacen el ingress.
-#      Solo el `gateway` se expone públicamente (dominio spider.muvatec.com).
-#    · Los secretos y la conexión a BD llegan por variables de entorno
-#      definidas en Coolify (ver .env.coolify.example).
+#      Solo el `gateway` se expone públicamente (dominio del entorno).
+#    · Secretos y conexión a BD llegan por variables (ver .env.coolify.example).
 #
-#  Entrada única: https://spider.muvatec.com  → gateway → /admin, /gastos, …
+#  Entrada única: https://<dominio>  → gateway → /admin, /gastos, …
 #
 #  Ver infra/coolify/README.md para la guía de migración paso a paso.
 #
 #  NOTA build contexts: relativos a la RAÍZ del repo (apps/…, infra/…), no a
 #  esta carpeta. Coolify despliega con --project-directory = raíz del repo.
-#  DB_SCHEMA usa ${SCHEMA_PREFIX}: vacío = prod (schema <app>), "test_" =
-#  entorno de test (schema test_<app>). Se fija por variable de entorno.
+#
+#  MEMORIA: cada servicio tiene `mem_limit` para no malgastar RAM. Los
+#  backends Java capan el heap al 70% del límite (JAVA_TOOL_OPTIONS +
+#  SerialGC del entrypoint). Total ~2.6 GB con las 4 apps arriba.
+#
+#  DB_SCHEMA usa ${SCHEMA_PREFIX} (por defecto vacío = schema <app>). Como
+#  cada entorno tiene su PROPIA BD, se usan schemas planos; el prefijo queda
+#  disponible por si alguna vez se comparte una BD entre entornos.
 # ══════════════════════════════════════════════════════════════
 services:
   # ── Gateway: ÚNICO servicio expuesto. Enruta /<app> y /<app>-api. ──
   gateway:
     build: infra/gateway
-    # SERVICE_FQDN_GATEWAY_80 le dice a Coolify que exponga este servicio
-    # (puerto 80) con un dominio y genere las labels de Traefik. Tras el
-    # primer deploy, edita el dominio en la UI de Coolify a:
-    #   https://spider.muvatec.com
+    # SERVICE_FQDN_GATEWAY_80: Coolify expone este servicio (puerto 80) con
+    # el dominio del entorno y genera las labels de Traefik.
     environment:
       - SERVICE_FQDN_GATEWAY_80
       - PORT=80
-      # Upstreams internos: por defecto el entrypoint del gateway ya apunta
-      # a los nombres de servicio de este compose (admin-frontend:80,
-      # admin-backend:8080, …). No hace falta sobreescribir.
     depends_on:
       - admin-backend
       - admin-frontend
     restart: unless-stopped
+    mem_limit: 96m
 
   # ═════════════════════ APP: admin (plataforma) ═════════════════════
   admin-backend:
@@ -57,7 +59,9 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://spider.muvatec.com}
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
     restart: unless-stopped
+    mem_limit: 640m
 
   admin-frontend:
     build: apps/admin/frontend
@@ -66,6 +70,7 @@ services:
     depends_on:
       - admin-backend
     restart: unless-stopped
+    mem_limit: 96m
 
   # ═════════════════════ APP: gastos ═════════════════════════
   gastos-backend:
@@ -78,7 +83,9 @@ services:
       DB_NAME: ${DB_NAME:-spider}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
     restart: unless-stopped
+    mem_limit: 640m
 
   gastos-frontend:
     build: apps/gastos/frontend
@@ -87,6 +94,7 @@ services:
     depends_on:
       - gastos-backend
     restart: unless-stopped
+    mem_limit: 96m
 
   # ═════════════════════ APP: electrolineras ═════════════════════════
   electrolineras-backend:
@@ -103,7 +111,9 @@ services:
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET}
       REGISTRY_TOKEN: ${REGISTRY_TOKEN}
       ADMIN_REGISTRY_URL: http://admin-backend:8080
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
     restart: unless-stopped
+    mem_limit: 640m
 
   electrolineras-frontend:
     build: apps/electrolineras/frontend
@@ -112,6 +122,7 @@ services:
     depends_on:
       - electrolineras-backend
     restart: unless-stopped
+    mem_limit: 96m
 
   # ═════════════════════ APP: alertas ═════════════════════════
   alertas-backend:
@@ -127,7 +138,9 @@ services:
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET}
       REGISTRY_TOKEN: ${REGISTRY_TOKEN}
       ADMIN_REGISTRY_URL: http://admin-backend:8080
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
     restart: unless-stopped
+    mem_limit: 640m
 
   alertas-frontend:
     build: apps/alertas/frontend
@@ -136,3 +149,4 @@ services:
     depends_on:
       - alertas-backend
     restart: unless-stopped
+    mem_limit: 96m
