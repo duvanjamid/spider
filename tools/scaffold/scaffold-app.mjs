@@ -717,9 +717,10 @@ RUN npm run build
 FROM nginx:1.27-alpine AS runtime
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/dist/browser /usr/share/nginx/html
-ENV PORT=80
+ENV PORT=80 \\
+    PWA_PREFIX=""
 EXPOSE 80
-CMD ["/bin/sh", "-c", "sed -i \\"s/__PORT__/\${PORT}/\\" /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"]
+CMD ["/bin/sh", "-c", "sed -i \\"s/__PORT__/\${PORT}/\\" /etc/nginx/conf.d/default.conf && sed -i \\"s|__PWA_PREFIX__|\${PWA_PREFIX}|g\\" /usr/share/nginx/html/manifest.webmanifest /usr/share/nginx/html/index.html && exec nginx -g 'daemon off;'"]
 `,
 
 frontDockerignore: `node_modules/\ndist/\n.angular/\n*.log\n`,
@@ -728,7 +729,7 @@ indexHtml: `<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>Spider · __APP__</title>
+  <title>__PWA_PREFIX__Spider · __APP__</title>
   <base href="./">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <!-- PWA propia de esta app (scope = /__APP__/): se instala por separado con su icono. -->
@@ -736,7 +737,7 @@ indexHtml: `<!doctype html>
   <meta name="theme-color" content="__THEME__">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="__APP__">
+  <meta name="apple-mobile-web-app-title" content="__PWA_PREFIX____APP__">
   <link rel="apple-touch-icon" href="icon-192.png">
 </head>
 <body>
@@ -753,8 +754,8 @@ indexHtml: `<!doctype html>
 `,
 
 manifest: `{
-  "name": "Spider · __APP__",
-  "short_name": "__APP__",
+  "name": "__PWA_PREFIX__Spider · __APP__",
+  "short_name": "__PWA_PREFIX____APP__",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

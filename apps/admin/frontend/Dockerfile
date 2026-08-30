@@ -17,7 +17,8 @@ FROM nginx:1.27-alpine AS runtime
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 # El application builder de Angular 18 emite a dist/browser.
 COPY --from=builder /app/dist/browser /usr/share/nginx/html
-ENV PORT=80
+ENV PORT=80 \
+    PWA_PREFIX=""
 EXPOSE 80
 # Sustituye el puerto y arranca nginx en foreground.
-CMD ["/bin/sh", "-c", "sed -i \"s/__PORT__/${PORT}/\" /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"]
+CMD ["/bin/sh", "-c", "sed -i \"s/__PORT__/${PORT}/\" /etc/nginx/conf.d/default.conf && sed -i \"s|__PWA_PREFIX__|${PWA_PREFIX}|g\" /usr/share/nginx/html/manifest.webmanifest /usr/share/nginx/html/index.html && exec nginx -g 'daemon off;'"]

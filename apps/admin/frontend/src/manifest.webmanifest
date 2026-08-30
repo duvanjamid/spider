@@ -1,6 +1,6 @@
 {
-  "name": "Spider Admin",
-  "short_name": "Spider",
+  "name": "__PWA_PREFIX__Spider Admin",
+  "short_name": "__PWA_PREFIX__Spider",
   "description": "Panel maestro: apps, usuarios y accesos",
   "start_url": ".",
   "scope": ".",

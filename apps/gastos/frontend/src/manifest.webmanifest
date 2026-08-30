@@ -1,6 +1,6 @@
 {
-  "name": "Gastos",
-  "short_name": "Gastos",
+  "name": "__PWA_PREFIX__Gastos",
+  "short_name": "__PWA_PREFIX__Gastos",
   "description": "Registra tus gastos del día a día con IA",
   "start_url": ".",
   "scope": ".",

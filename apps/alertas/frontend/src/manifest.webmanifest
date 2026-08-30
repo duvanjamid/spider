@@ -1,6 +1,6 @@
 {
-  "name": "Spider · alertas",
-  "short_name": "alertas",
+  "name": "__PWA_PREFIX__Spider · alertas",
+  "short_name": "__PWA_PREFIX__alertas",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
