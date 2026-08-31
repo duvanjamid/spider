@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Spider · iniciando…</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- Respaldo sin JS: recarga cada 20s por si el JS no corre. Con JS, el
+       redirect es inmediato en cuanto el servicio pedido responde. -->
+  <meta http-equiv="refresh" content="20">
+  <meta name="theme-color" content="#0f1115">
+  <style>
+    :root{
+      --bg:#f4f6fb; --panel:#ffffff; --fg:#1e2330; --muted:#5b6472;
+      --accent:#6c8cff; --accent2:#10b981; --ring:rgba(108,140,255,.18); --line:#e2e6ef;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{ --bg:#0f1115; --panel:#161922; --fg:#e6e8ee; --muted:#9aa3b2;
+             --accent:#8aa2ff; --accent2:#34d399; --ring:rgba(138,162,255,.16); --line:#262a33; }
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; background:var(--bg); color:var(--fg);
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+      display:grid; place-items:center; overflow:hidden;
+    }
+    .stage{ text-align:center; padding:28px; width:100%; max-width:380px; position:relative; z-index:1 }
+    .web{ position:fixed; inset:0; z-index:0; opacity:.5; pointer-events:none }
+    .core{ position:relative; width:132px; height:132px; margin:0 auto 22px }
+    .orbit{ position:absolute; inset:0; border-radius:50%; border:1px dashed var(--ring); animation:spin 9s linear infinite }
+    .orbit.b{ inset:16px; animation-duration:6s; animation-direction:reverse }
+    .orbit .sat{ position:absolute; top:-5px; left:50%; width:10px; height:10px; margin-left:-5px; border-radius:50%; background:var(--accent) }
+    .orbit.b .sat{ background:var(--accent2) }
+    .bug{ position:absolute; inset:0; display:grid; place-items:center; font-size:50px; animation:bob 2.4s ease-in-out infinite }
+    .glow{ position:absolute; inset:20px; border-radius:50%; background:radial-gradient(circle,var(--ring),transparent 70%); animation:pulse 2.4s ease-in-out infinite }
+    h1{ font-size:1.25rem; margin:0 0 4px }
+    .sub{ color:var(--muted); margin:0 0 18px; font-size:.9rem }
+    /* Lista de servicios */
+    .svc{ list-style:none; margin:0 auto; padding:0; text-align:left; max-width:300px }
+    .svc li{ display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--line);
+             border-radius:12px; background:var(--panel); margin-bottom:8px; font-size:.94rem }
+    .svc .nm{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-transform:capitalize }
+    .svc .st{ font-size:.8rem; color:var(--muted) }
+    .svc .ic{ width:20px; height:20px; flex:none; display:grid; place-items:center }
+    .spin{ width:16px; height:16px; border-radius:50%; border:2px solid var(--ring); border-top-color:var(--accent); animation:spin .8s linear infinite }
+    .ok{ color:var(--accent2); font-size:1.05rem; font-weight:800 }
+    li.up{ border-color:color-mix(in srgb, var(--accent2) 45%, var(--line)) }
+    li.up .st{ color:var(--accent2) }
+    @keyframes spin{ to{ transform:rotate(360deg) } }
+    @keyframes bob{ 0%,100%{ transform:translateY(-4px) } 50%{ transform:translateY(4px) } }
+    @keyframes pulse{ 0%,100%{ transform:scale(.9); opacity:.5 } 50%{ transform:scale(1.08); opacity:1 } }
+    @media (prefers-reduced-motion: reduce){ *{ animation:none !important } }
+  </style>
+</head>
+<body>
+  <svg class="web" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <g fill="none" stroke="currentColor" stroke-width=".15" opacity=".35" color="var(--accent)">
+      <line x1="50" y1="50" x2="50" y2="-10"/><line x1="50" y1="50" x2="95" y2="5"/>
+      <line x1="50" y1="50" x2="110" y2="50"/><line x1="50" y1="50" x2="95" y2="95"/>
+      <line x1="50" y1="50" x2="50" y2="110"/><line x1="50" y1="50" x2="5" y2="95"/>
+      <line x1="50" y1="50" x2="-10" y2="50"/><line x1="50" y1="50" x2="5" y2="5"/>
+      <polygon points="50,30 68,42 62,64 38,64 32,42"/>
+      <polygon points="50,16 82,38 72,80 28,80 18,38"/>
+      <polygon points="50,2 96,34 82,96 18,96 4,34"/>
+    </g>
+  </svg>
+
+  <div class="stage">
+    <div class="core">
+      <div class="glow"></div>
+      <div class="orbit"><span class="sat"></span></div>
+      <div class="orbit b"><span class="sat"></span></div>
+      <div class="bug">🕷️</div>
+    </div>
+    <h1 id="title">Iniciando el sistema Spider</h1>
+    <p class="sub" id="sub">Despertando los servicios…</p>
+    <ul class="svc" id="svc"></ul>
+  </div>
+
+  <script>
+    // ── Levanta cada servicio, muestra su progreso y entra cuando el pedido esté listo ──
+    var done = false;
+
+    // App pedida = primer segmento de la ruta (o admin en la raíz).
+    var TARGET = (location.pathname.split('/').filter(Boolean)[0] || 'admin').toLowerCase();
+
+    // Estado por app: { slug, name, up }. Se siembra con lo que sabemos ya,
+    // así el "warming" empieza sin esperar al descubrimiento.
+    var apps = [];
+    function seed(slug, name){
+      slug = (slug||'').toLowerCase(); if(!slug) return;
+      if(!apps.some(function(a){return a.slug===slug;})) apps.push({slug:slug, name:name||slug, up:false});
+    }
+    seed(TARGET, TARGET); seed('admin', 'admin');
+
+    var svcEl = document.getElementById('svc');
+    var subEl = document.getElementById('sub');
+    function render(){
+      svcEl.innerHTML = '';
+      apps.forEach(function(a){
+        var li = document.createElement('li'); if(a.up) li.className='up';
+        li.innerHTML = '<span class="ic">' + (a.up ? '<span class="ok">✓</span>' : '<span class="spin"></span>') +
+          '</span><span class="nm">' + a.name + '</span>' +
+          '<span class="st">' + (a.up ? 'listo' : 'levantando…') + '</span>';
+        svcEl.appendChild(li);
+      });
+    }
+
+    // fetch con timeout (para que el sondeo no se cuelgue en un arranque lento).
+    function fetchT(url, ms){
+      var ctrl = new AbortController();
+      var to = setTimeout(function(){ ctrl.abort(); }, ms);
+      return fetch(url, { cache:'no-store', signal:ctrl.signal })
+        .finally(function(){ clearTimeout(to); });
+    }
+
+    // Descubre todas las apps registradas (endpoint público del admin).
+    function discover(){
+      return fetchT('/admin-api/apps', 8000)
+        .then(function(r){ return r.ok ? r.json() : []; })
+        .then(function(list){ (list||[]).forEach(function(a){ if(a&&a.slug) seed(a.slug, a.name); }); })
+        .catch(function(){});
+    }
+
+    // Pinguea el frontend de una app y de paso la despierta. Está "arriba"
+    // solo si responde OK y NO es esta página de carga (cabecera X-Spider-Loading).
+    function ping(a){
+      return fetchT('/' + a.slug + '/', 6000)
+        .then(function(r){ a.up = r.ok && !r.headers.get('x-spider-loading'); })
+        .catch(function(){ a.up = false; });
+    }
+
+    function enter(t){
+      done = true;
+      document.getElementById('title').textContent = '¡Listo! entrando a ' + t.name;
+      subEl.textContent = '';
+      setTimeout(function(){ location.replace('/' + t.slug + '/'); }, 400);
+    }
+
+    // Bucle de descubrimiento INDEPENDIENTE: no bloquea la detección del
+    // frontend (que es lo que decide la redirección). Reintenta suave.
+    function discoverLoop(){
+      if(done) return;
+      discover().finally(function(){ if(!done) setTimeout(discoverLoop, 15000); });
+    }
+
+    var running = false;
+    function tick(){
+      if(done || running) return;
+      running = true;
+      // Pinguea SOLO frontends, en paralelo. En cuanto el destino responde, entra.
+      Promise.all(apps.map(ping)).then(function(){
+        running = false;
+        if(done) return;
+        render();
+        var upN = apps.filter(function(a){return a.up;}).length;
+        subEl.textContent = upN ? ('Listos ' + upN + ' de ' + apps.length + '…') : 'Despertando los servicios…';
+        var t = apps.filter(function(a){return a.slug===TARGET;})[0];
+        if(t && t.up) enter(t);
+      }).catch(function(){ running = false; });
+    }
+
+    render();
+    discoverLoop();
+    tick();
+    var timer = setInterval(tick, 2000);
+    // Al volver de segundo plano (bfcache) reintenta ya, sin esperar al timer.
+    window.addEventListener('pageshow', function(){ if(!done) tick(); });
+    window.addEventListener('visibilitychange', function(){ if(!done && !document.hidden) tick(); });
+  </script>
+</body>
+</html>

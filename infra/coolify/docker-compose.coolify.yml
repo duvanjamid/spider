@@ -1,0 +1,152 @@
+# ══════════════════════════════════════════════════════════════
+#  Spider · despliegue en COOLIFY (Docker Compose, un solo recurso)
+#
+#  Equivalente a render.yaml pero para Coolify. Levanta el gateway +
+#  TODAS las apps (backend y frontend) como un único recurso.
+#
+#  ENV COMPARTIDAS: todas las apps (admin + sub-apps) usan el MISMO set de
+#  variables (bloque `x-common-env`). Se definen UNA vez en Coolify y aplican
+#  a todos los backends. Lo único por-app es APP_NAME y DB_SCHEMA (estructural,
+#  no secreto). Así no hay envVars distintas por app.
+#
+#  Diferencias con docker-compose.yml (local):
+#    · SIN servicio `db`: Postgres es un recurso GESTIONADO de Coolify, una BD
+#      por entorno (spider-db-test / spider-db-prod), INTERNA (red `coolify`,
+#      sin puerto público). Los backends la alcanzan por DB_HOST/DB_*.
+#    · SIN puertos al host: Coolify + Traefik hacen el ingress. Solo el
+#      `gateway` se expone con el dominio del entorno.
+#
+#  Entrada única: https://<dominio>  → gateway → /admin, /gastos, …
+#
+#  NOTA build contexts: relativos a la RAÍZ del repo (Coolify usa
+#  --project-directory = raíz). MEMORIA: mem_limit por servicio; los backends
+#  Java capan heap al 70% (JAVA_TOOL_OPTIONS + SerialGC). ~2.6 GB con 4 apps.
+#  Cada entorno tiene su BD → schemas planos (SCHEMA_PREFIX por defecto vacío).
+# ══════════════════════════════════════════════════════════════
+
+# ── Env COMPARTIDA por todos los backends (se define una vez en Coolify). ──
+x-common-env: &common-env
+  DB_HOST: ${DB_HOST}
+  DB_PORT: ${DB_PORT:-5432}
+  DB_NAME: ${DB_NAME:-spider}
+  DB_USER: ${DB_USER}
+  DB_PASSWORD: ${DB_PASSWORD}
+  AUTH_JWT_SECRET: ${AUTH_JWT_SECRET}
+  REGISTRY_TOKEN: ${REGISTRY_TOKEN}
+  ADMIN_REGISTRY_URL: ${ADMIN_REGISTRY_URL:-http://admin-backend:8080}
+  ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  AUTH_DEV_LOGIN: ${AUTH_DEV_LOGIN:-false}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://spider.muvatec.com}
+  JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
+
+services:
+  # ── Gateway: ÚNICO servicio expuesto. Enruta /<app> y /<app>-api. ──
+  gateway:
+    build: infra/gateway
+    environment:
+      - SERVICE_FQDN_GATEWAY_80
+      - PORT=80
+    depends_on:
+      - admin-backend
+      - admin-frontend
+    restart: unless-stopped
+    mem_limit: 96m
+    networks: [coolify, default]
+
+  # ═════════════════════ APP: admin (plataforma) ═════════════════════
+  admin-backend:
+    build: apps/admin/backend
+    environment:
+      <<: *common-env
+      APP_NAME: admin
+      DB_SCHEMA: ${SCHEMA_PREFIX:-}admin
+    restart: unless-stopped
+    mem_limit: 640m
+    networks: [coolify, default]
+
+  admin-frontend:
+    build: apps/admin/frontend
+    environment:
+      PORT: 80
+      PWA_PREFIX: ${PWA_PREFIX:-}
+    depends_on:
+      - admin-backend
+    restart: unless-stopped
+    mem_limit: 96m
+    networks: [coolify, default]
+
+  # ═════════════════════ APP: gastos ═════════════════════════
+  gastos-backend:
+    build: apps/gastos/backend
+    environment:
+      <<: *common-env
+      APP_NAME: gastos
+      DB_SCHEMA: ${SCHEMA_PREFIX:-}gastos
+    restart: unless-stopped
+    mem_limit: 640m
+    networks: [coolify, default]
+
+  gastos-frontend:
+    build: apps/gastos/frontend
+    environment:
+      PORT: 80
+      PWA_PREFIX: ${PWA_PREFIX:-}
+    depends_on:
+      - gastos-backend
+    restart: unless-stopped
+    mem_limit: 96m
+    networks: [coolify, default]
+
+  # ═════════════════════ APP: electrolineras ═════════════════════════
+  electrolineras-backend:
+    build: apps/electrolineras/backend
+    environment:
+      <<: *common-env
+      APP_NAME: electrolineras
+      DB_SCHEMA: ${SCHEMA_PREFIX:-}electrolineras
+    restart: unless-stopped
+    mem_limit: 640m
+    networks: [coolify, default]
+
+  electrolineras-frontend:
+    build: apps/electrolineras/frontend
+    environment:
+      PORT: 80
+      PWA_PREFIX: ${PWA_PREFIX:-}
+    depends_on:
+      - electrolineras-backend
+    restart: unless-stopped
+    mem_limit: 96m
+    networks: [coolify, default]
+
+  # ═════════════════════ APP: alertas ═════════════════════════
+  alertas-backend:
+    build: apps/alertas/backend
+    environment:
+      <<: *common-env
+      APP_NAME: alertas
+      DB_SCHEMA: ${SCHEMA_PREFIX:-}alertas
+    restart: unless-stopped
+    mem_limit: 640m
+    networks: [coolify, default]
+
+  alertas-frontend:
+    build: apps/alertas/frontend
+    environment:
+      PORT: 80
+      PWA_PREFIX: ${PWA_PREFIX:-}
+    depends_on:
+      - alertas-backend
+    restart: unless-stopped
+    mem_limit: 96m
+    networks: [coolify, default]
+
+networks:
+  # Red compartida de Coolify: alcanza la BD gestionada por su hostname interno.
+  coolify:
+    external: true
+  default: {}

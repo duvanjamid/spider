@@ -1,0 +1,41 @@
+// ── Tokens de tema. Claro por defecto; oscuro según el dispositivo. ──
+:root {
+  --bg: #f4f6fb;
+  --panel: #ffffff;
+  --panel-2: #eef1f7;
+  --fg: #1e2330;
+  --muted: #5b6472;
+  --accent: #10b981;            /* verde de gastos (coherente con logo/tema) */
+  --border: #e2e6ef;
+  --shadow: 0 1px 3px rgba(20, 26, 40, .08), 0 8px 24px rgba(20, 26, 40, .06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --panel: #161922;
+    --panel-2: #1d212b;
+    --fg: #e6e8ee;
+    --muted: #9aa3b2;
+    --accent: #34d399;          /* verde de gastos (oscuro) */
+    --border: #262a33;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 30px rgba(0, 0, 0, .35);
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;          // nunca scroll horizontal a nivel de página
+}
+
+// Los medios nunca desbordan su contenedor.
+img, svg, canvas, table { max-width: 100%; }
+
+h3 { margin: 18px 0 10px; }

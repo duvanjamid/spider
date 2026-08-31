@@ -1,0 +1,8 @@
+# Configuración de Ligero. El puerto real lo fija App.java desde la
+# variable PORT (Render la inyecta); aquí quedan valores por defecto.
+server:
+  host: 0.0.0.0
+  port: ${PORT:-8080}
+
+logging:
+  level: INFO
