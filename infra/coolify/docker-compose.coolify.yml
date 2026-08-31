@@ -33,7 +33,7 @@ x-common-env: &common-env
   DB_PASSWORD: ${DB_PASSWORD}
   AUTH_JWT_SECRET: ${AUTH_JWT_SECRET}
   REGISTRY_TOKEN: ${REGISTRY_TOKEN}
-  ADMIN_REGISTRY_URL: ${ADMIN_REGISTRY_URL:-http://admin-backend:8080}
+  ADMIN_REGISTRY_URL: http://${NS}-admin-backend:8080
   ADMIN_EMAILS: ${ADMIN_EMAILS:-}
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
@@ -47,9 +47,19 @@ services:
   # ── Gateway: ÚNICO servicio expuesto. Enruta /<app> y /<app>-api. ──
   gateway:
     build: infra/gateway
+    # Upstreams con alias ÚNICO por entorno (${NS}) para no chocar con los
+    # servicios homónimos del otro entorno en la red compartida `coolify`.
     environment:
       - SERVICE_FQDN_GATEWAY_80
       - PORT=80
+      - ADMIN_BACKEND=http://${NS}-admin-backend:8080
+      - ADMIN_FRONTEND=http://${NS}-admin-frontend:80
+      - GASTOS_BACKEND=http://${NS}-gastos-backend:8080
+      - GASTOS_FRONTEND=http://${NS}-gastos-frontend:80
+      - ELECTROLINERAS_BACKEND=http://${NS}-electrolineras-backend:8080
+      - ELECTROLINERAS_FRONTEND=http://${NS}-electrolineras-frontend:80
+      - ALERTAS_BACKEND=http://${NS}-alertas-backend:8080
+      - ALERTAS_FRONTEND=http://${NS}-alertas-frontend:80
     depends_on:
       - admin-backend
       - admin-frontend
@@ -66,7 +76,9 @@ services:
       DB_SCHEMA: ${SCHEMA_PREFIX:-}admin
     restart: unless-stopped
     mem_limit: 640m
-    networks: [coolify, default]
+    networks:
+      default: {}
+      coolify: { aliases: ["${NS}-admin-backend"] }
 
   admin-frontend:
     build: apps/admin/frontend
@@ -77,7 +89,9 @@ services:
       - admin-backend
     restart: unless-stopped
     mem_limit: 96m
-    networks: [coolify, default]
+    networks:
+      default: {}
+      coolify: { aliases: ["${NS}-admin-frontend"] }
 
   # ═════════════════════ APP: gastos ═════════════════════════
   gastos-backend:
@@ -88,7 +102,9 @@ services:
       DB_SCHEMA: ${SCHEMA_PREFIX:-}gastos
     restart: unless-stopped
     mem_limit: 640m
-    networks: [coolify, default]
+    networks:
+      default: {}
+      coolify: { aliases: ["${NS}-gastos-backend"] }
 
   gastos-frontend:
     build: apps/gastos/frontend
@@ -99,7 +115,9 @@ services:
       - gastos-backend
     restart: unless-stopped
     mem_limit: 96m
-    networks: [coolify, default]
+    networks:
+      default: {}
+      coolify: { aliases: ["${NS}-gastos-frontend"] }
 
   # ═════════════════════ APP: electrolineras ═════════════════════════
   electrolineras-backend:
@@ -110,7 +128,9 @@ services:
       DB_SCHEMA: ${SCHEMA_PREFIX:-}electrolineras
     restart: unless-stopped
     mem_limit: 640m
-    networks: [coolify, default]
+    networks:
+      default: {}
+      coolify: { aliases: ["${NS}-electrolineras-backend"] }
 
   electrolineras-frontend:
     build: apps/electrolineras/frontend
@@ -121,7 +141,9 @@ services:
       - electrolineras-backend
     restart: unless-stopped
     mem_limit: 96m
-    networks: [coolify, default]
+    networks:
+      default: {}
+      coolify: { aliases: ["${NS}-electrolineras-frontend"] }
 
   # ═════════════════════ APP: alertas ═════════════════════════
   alertas-backend:
@@ -132,7 +154,9 @@ services:
       DB_SCHEMA: ${SCHEMA_PREFIX:-}alertas
     restart: unless-stopped
     mem_limit: 640m
-    networks: [coolify, default]
+    networks:
+      default: {}
+      coolify: { aliases: ["${NS}-alertas-backend"] }
 
   alertas-frontend:
     build: apps/alertas/frontend
@@ -143,7 +167,9 @@ services:
       - alertas-backend
     restart: unless-stopped
     mem_limit: 96m
-    networks: [coolify, default]
+    networks:
+      default: {}
+      coolify: { aliases: ["${NS}-alertas-frontend"] }
 
 networks:
   # Red compartida de Coolify: alcanza la BD gestionada por su hostname interno.
