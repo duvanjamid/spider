@@ -734,7 +734,8 @@ indexHtml: `<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <!-- PWA propia de esta app (scope = /__APP__/): se instala por separado con su icono. -->
   <link rel="manifest" href="manifest.webmanifest">
-  <meta name="theme-color" content="__THEME__">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f6fb">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f1115">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="__PWA_PREFIX____APP__">
@@ -760,7 +761,7 @@ manifest: `{
   "scope": ".",
   "display": "standalone",
   "background_color": "#0f1115",
-  "theme_color": "__THEME__",
+  "theme_color": "#0f1115",
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
