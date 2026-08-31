@@ -32,6 +32,9 @@ dependencies {
     implementation "com.ligeroframework:ligero-server-jdk:${ligeroVersion}"
     implementation "com.ligeroframework:ligero-json:${ligeroVersion}"
 
+    // ── JSON (canje de tokens de Google en el login OAuth) ──
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
+
     // ── Migraciones SQL (Flyway) · nada de DDL a mano ──
     implementation "org.flywaydb:flyway-core:${flywayVersion}"
     implementation "org.flywaydb:flyway-database-postgresql:${flywayVersion}"
