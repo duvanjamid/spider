@@ -35,7 +35,10 @@ public final class ExpenseController {
     public record ItemInput(String nombre, Double cantidad, Double precioUnitario, Double total) {}
 
     /** Cuerpo para escanear una imagen. */
-    public record ScanInput(String image, String mediaType) {}
+    public record ScanInput(String image, String mediaType, List<ImageInput> images) {}
+
+    /** Una foto (base64 + tipo) cuando se envían varias de una misma factura. */
+    public record ImageInput(String image, String mediaType) {}
 
     /** Cuerpo para escanear texto pegado. */
     public record TextScanInput(String text) {}
@@ -213,13 +216,31 @@ public final class ExpenseController {
             }
             String user = email(ctx.header("Cookie"));
             ScanInput in = ctx.body(ScanInput.class);
-            if (in == null || in.image() == null || in.image().isBlank()) {
+            // Acepta una imagen (image) o varias fotos de la misma factura (images, máx. 3).
+            List<Map<String, Object>> imgs = new java.util.ArrayList<>();
+            if (in != null && in.images() != null) {
+                for (ImageInput im : in.images()) {
+                    if (im == null || im.image() == null || im.image().isBlank()) continue;
+                    Map<String, Object> m = new java.util.HashMap<>();
+                    m.put("image", im.image());
+                    m.put("mediaType", or(im.mediaType(), "image/jpeg"));
+                    imgs.add(m);
+                    if (imgs.size() >= 3) break;
+                }
+            }
+            if (imgs.isEmpty() && in != null && in.image() != null && !in.image().isBlank()) {
+                Map<String, Object> m = new java.util.HashMap<>();
+                m.put("image", in.image());
+                m.put("mediaType", or(in.mediaType(), "image/jpeg"));
+                imgs.add(m);
+            }
+            if (imgs.isEmpty()) {
                 ctx.status(400).json(Map.of("error", "falta 'image' (base64)"));
                 return;
             }
             try {
                 var cats = categories.ensureAndList(user);
-                ctx.json(scanner.scan(in.image(), or(in.mediaType(), "image/jpeg"), cats));
+                ctx.json(scanner.scan(imgs, cats));
             } catch (Exception e) {
                 ctx.status(502).json(Map.of("error", "No se pudo leer la imagen: " + e.getMessage()));
             }

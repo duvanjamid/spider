@@ -280,7 +280,7 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
       </div>
 
       <!-- Inputs ocultos: cámara y galería (se disparan desde la hoja «Registrar gasto») -->
-      <input #file type="file" accept="image/*" hidden (change)="onFile($event)" />
+      <input #file type="file" accept="image/*" multiple hidden (change)="onFile($event)" />
       <input #camera type="file" accept="image/*" capture="environment" hidden (change)="onFile($event)" />
       <div class="muted" *ngIf="!aiEnabled()" style="margin:10px 0 0"><i class="pi pi-info-circle"></i> Configura GEMINI_API_KEY para el escaneo con IA.</div>
 
@@ -450,7 +450,7 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
         <button (click)="takePhoto()" [disabled]="!aiEnabled()">
           <i class="fa-solid fa-camera"></i><b>Tomar foto</b><small>Cámara</small></button>
         <button (click)="uploadImage()" [disabled]="!aiEnabled()">
-          <i class="fa-solid fa-image"></i><b>Subir imagen</b><small>Galería</small></button>
+          <i class="fa-solid fa-image"></i><b>Subir imagen</b><small>Galería · hasta 3</small></button>
       </div>
     </p-dialog>
 
@@ -479,7 +479,7 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
           <div class="ln m"></div><div class="ln l"></div><div class="ln s"></div>
         </div>
         <div class="scan-status">
-          <div class="t">Analizando con IA</div>
+          <div class="t">Analizando con IA<span *ngIf="imageCount() > 1"> · {{ imageCount() }} fotos</span></div>
           <div class="s">{{ scanPhase() }}</div>
         </div>
         <div class="beads"><i></i><i></i><i></i></div>
@@ -732,7 +732,7 @@ export class AppComponent implements OnInit {
   readonly scanPhase = signal<string>('Preparando imagen…');
   private phaseTimer: ReturnType<typeof setInterval> | null = null;
   scanned = false;
-  private lastImage: { base64: string; mediaType: string } | null = null;
+  private lastImages: { base64: string; mediaType: string }[] = [];   // hasta 3 fotos de la misma factura
   readonly lastImageUrl = signal<string | null>(null);
   form = this.emptyForm();
 
@@ -1067,16 +1067,16 @@ export class AppComponent implements OnInit {
 
   onFile(ev: Event): void {
     const input = ev.target as HTMLInputElement;
-    const f = input.files?.[0];
-    if (!f) return;
+    const files = Array.from(input.files ?? []).slice(0, 3);   // máx. 3 fotos de la misma factura
+    input.value = '';
+    if (!files.length) return;
     this.sheetVisible = true; this.sheetState.set('loading'); this.startPhases();
     this.regiones.set([]); this.lastImageUrl.set(null);
-    this.downscale(f).then((img) => {
-      this.lastImage = img;
-      this.lastImageUrl.set(`data:${img.mediaType};base64,${img.base64}`);
+    Promise.all(files.map((f) => this.downscale(f))).then((imgs) => {
+      this.lastImages = imgs;
+      this.lastImageUrl.set(`data:${imgs[0].mediaType};base64,${imgs[0].base64}`);
       this.runScan();
     }).catch(() => { this.stopPhases(); this.sheetState.set('error'); });
-    input.value = '';
   }
 
   private downscale(file: File): Promise<{ base64: string; mediaType: string }> {
@@ -1112,7 +1112,7 @@ export class AppComponent implements OnInit {
   private stopPhases(): void { if (this.phaseTimer) { clearInterval(this.phaseTimer); this.phaseTimer = null; } }
 
   retry(): void {
-    if (this.lastImage) { this.sheetState.set('loading'); this.startPhases(); this.runScan(); }
+    if (this.lastImages.length) { this.sheetState.set('loading'); this.startPhases(); this.runScan(); }
     else if (this.pastedText.trim()) { this.runTextScan(); }
   }
   // Abre la hoja para elegir cómo aportar la imagen del recibo.
@@ -1133,17 +1133,20 @@ export class AppComponent implements OnInit {
     else if (action === 'csv') this.exportCsv();
   }
 
+  imageCount(): number { return this.lastImages.length; }
+
   private runScan(): void {
-    if (!this.lastImage) return;
+    if (!this.lastImages.length) return;
     this.sheetVisible = true; this.sheetState.set('loading');
-    this.api.scan(this.lastImage.base64, this.lastImage.mediaType).pipe(timeout(70000)).subscribe({
+    const images = this.lastImages.map((i) => ({ image: i.base64, mediaType: i.mediaType }));
+    this.api.scanImages(images).pipe(timeout(90000)).subscribe({
       next: (s) => this.applyScan(s), error: () => { this.stopPhases(); this.sheetState.set('error'); },
     });
   }
 
   runTextScan(): void {
     if (!this.pastedText.trim()) return;
-    this.lastImage = null; this.lastImageUrl.set(null); this.regiones.set([]);
+    this.lastImages = []; this.lastImageUrl.set(null); this.regiones.set([]);
     this.textDialog = false; this.sheetVisible = true; this.sheetState.set('loading'); this.startPhases();
     this.api.scanText(this.pastedText).pipe(timeout(70000)).subscribe({
       next: (s) => this.applyScan(s), error: () => { this.stopPhases(); this.sheetState.set('error'); },
