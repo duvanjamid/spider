@@ -48,7 +48,7 @@ export interface Scan {
 export interface ExpenseItem { name: string; quantity: number | null; unitPrice: number | null; lineTotal: number | null; }
 export interface PriceStore { store: string; minPrice: number; avgPrice: number; lastPrice: number; lastOn: string; count: number; shared?: boolean; }
 export interface PriceProduct { name: string; categorySlug: string; categoryName: string; stores: PriceStore[]; minPrice: number; maxPrice: number; storeCount: number; cheapestStore: string; shared?: boolean; }
-export interface Me { email: string; guest: boolean; onboarded: boolean; }
+export interface Me { email: string; guest: boolean; onboarded: boolean; name?: string; picture?: string; }
 export interface CategoryTemplate { slug: string; name: string; color: string; icon: string; }
 export interface NewExpense {
   amount: number; currency?: string; categoryId?: number | null;
@@ -63,6 +63,8 @@ export class GastosService {
   private opts = { withCredentials: true };
 
   me(): Observable<Me> { return this.http.get<Me>(`${this.base}/me`, this.opts); }
+  /** Cierra la sesión de la plataforma (cookie compartida que emite admin). */
+  logout(): Observable<unknown> { return this.http.post(`/admin-api/auth/logout`, {}, this.opts); }
   categoryTemplates(): Observable<CategoryTemplate[]> {
     return this.http.get<CategoryTemplate[]>(`${this.base}/category-templates`, this.opts);
   }

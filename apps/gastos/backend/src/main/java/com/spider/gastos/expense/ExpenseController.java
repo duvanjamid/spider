@@ -98,9 +98,15 @@ public final class ExpenseController {
     public void register(Ligero app) {
         // Estado del usuario: si ya completó el onboarding y si es invitado.
         app.get("/me", ctx -> {
-            String user = email(ctx.header("Cookie"));
-            ctx.json(Map.of("email", user, "guest", GUEST.equals(user),
-                    "onboarded", categories.isOnboarded(user)));
+            Identity.Profile p = identity.profileFromCookie(ctx.header("Cookie"));
+            String user = p == null ? GUEST : p.email();
+            Map<String, Object> me = new java.util.LinkedHashMap<>();
+            me.put("email", user);
+            me.put("guest", GUEST.equals(user));
+            me.put("onboarded", categories.isOnboarded(user));
+            me.put("name", p == null || p.name() == null ? "" : p.name());
+            me.put("picture", p == null || p.picture() == null ? "" : p.picture());
+            ctx.json(me);
         });
 
         // Set base de categorías para elegir en el onboarding.
