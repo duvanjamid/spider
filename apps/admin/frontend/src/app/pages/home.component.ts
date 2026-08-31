@@ -3,7 +3,6 @@ import { NgFor, NgIf, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
-import { InputTextModule } from 'primeng/inputtext';
 import { TagModule } from 'primeng/tag';
 import { AuthService } from '../core/auth.service';
 import { PlatformService, SpiderApp } from '../core/platform.service';
@@ -13,7 +12,7 @@ type View = 'cards' | 'list';
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [NgFor, NgIf, NgTemplateOutlet, FormsModule, RouterLink, ButtonModule, InputTextModule, TagModule],
+  imports: [NgFor, NgIf, NgTemplateOutlet, FormsModule, RouterLink, ButtonModule, TagModule],
   styles: [`
     .shell { max-width: 1120px; margin: 0 auto; padding: 0 16px 64px; }
 
@@ -46,16 +45,33 @@ type View = 'cards' | 'list';
     .hero-head h2 { margin: 0; font-size: 1.7rem; letter-spacing: -.5px; }
     .hero-head p { margin: 6px 0 0; color: var(--muted); }
 
-    /* Landing (no auth) */
-    .land { text-align: center; padding: 60px 0 28px; }
-    .hlogo { width: 68px; height: 68px; color: var(--accent); }
-    .land h2 { font-size: 2rem; margin: 12px 0 8px; }
+    /* Landing (no auth) — pantalla de login */
     .muted { color: var(--muted); }
-    .login-box { max-width: 420px; margin: 26px auto 0; display: flex; flex-direction: column; gap: 12px;
-                 background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 22px; box-shadow: var(--shadow); }
-    .row { display: flex; gap: 8px; } .row input { flex: 1; }
-    .sep { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: .82rem; }
-    .sep::before, .sep::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    .login-wrap { min-height: 82vh; display: grid; place-items: center; padding: 32px 16px; }
+    .login-card { position: relative; width: 100%; max-width: 400px; text-align: center; overflow: hidden;
+                  background: var(--panel); border: 1px solid var(--border); border-radius: 24px;
+                  padding: 40px 30px 34px; box-shadow: 0 20px 60px rgba(20,26,40,.16); }
+    .login-card::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 120px;
+                  background: radial-gradient(120% 100% at 50% 0%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%); }
+    .login-logo { position: relative; width: 76px; height: 76px; margin: 0 auto 18px; border-radius: 22px;
+                  display: grid; place-items: center; color: #fff;
+                  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #9b6cff));
+                  box-shadow: 0 10px 26px color-mix(in srgb, var(--accent) 40%, transparent); }
+    .login-logo svg { width: 42px; height: 42px; }
+    .login-card h2 { position: relative; margin: 0; font-size: 1.5rem; letter-spacing: -.4px; }
+    .login-card .sub { position: relative; margin: 8px 0 26px; color: var(--muted); font-size: .95rem; line-height: 1.45; }
+    .gbtn { position: relative; width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 12px;
+            padding: 13px 18px; border-radius: 14px; border: 1px solid var(--border); background: var(--panel-2);
+            color: var(--fg); font: inherit; font-weight: 700; font-size: 1rem; cursor: pointer; transition: transform .12s, box-shadow .12s, border-color .12s; }
+    .gbtn:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); box-shadow: 0 8px 20px rgba(20,26,40,.12); }
+    .gbtn:active { transform: translateY(0); }
+    .gbtn .gicon { width: 20px; height: 20px; flex: none; }
+    .login-note { position: relative; margin: 20px 0 0; color: var(--muted); font-size: .8rem; }
+    .login-err { position: relative; margin: 0 0 18px; padding: 10px 12px; border-radius: 12px; font-size: .86rem;
+                 background: color-mix(in srgb, #ef4444 12%, transparent); color: #ef4444;
+                 border: 1px solid color-mix(in srgb, #ef4444 30%, transparent); }
+    .login-env { position: absolute; top: 14px; right: 14px; font-size: .62rem; font-weight: 800; letter-spacing: .5px;
+                 padding: 3px 8px; border-radius: 6px; background: #f59e0b; color: #1a1200; text-transform: uppercase; }
 
     /* Toolbar */
     .toolbar { display: flex; align-items: center; gap: 10px; margin: 18px 4px 14px; flex-wrap: wrap; }
@@ -136,28 +152,35 @@ type View = 'cards' | 'list';
         <p-button label="Cerrar sesión" icon="fa-solid fa-arrow-right-from-bracket" severity="secondary" (onClick)="auth.logout(); menuOpen.set(false)" />
       </div>
 
-      <!-- LANDING -->
-      <div class="land" *ngIf="auth.ready() && !auth.user()">
-        <svg class="hlogo" viewBox="0 0 32 32" aria-hidden="true">
-          <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M11 12 L4 7 M11 16 L3 16 M11 20 L4 25" /><path d="M21 12 L28 7 M21 16 L29 16 M21 20 L28 25" />
-          </g>
-          <ellipse cx="16" cy="16" rx="6" ry="7" fill="currentColor" />
-          <circle cx="13.6" cy="14" r="1.3" fill="var(--bg)" /><circle cx="18.4" cy="14" r="1.3" fill="var(--bg)" />
-        </svg>
-        <h2>Tu suite de aplicaciones</h2>
-        <p class="muted">Inicia sesión para ver las aplicaciones que tienes habilitadas.</p>
-        <div class="login-box">
-          <p-button label="Entrar con Google" icon="fa-brands fa-google" (onClick)="auth.loginWithGoogle()" />
-          <!-- Dev-login: solo visible cuando el backend lo habilita (AUTH_DEV_LOGIN=true, p.ej. local). -->
-          <ng-container *ngIf="devLogin()">
-            <div class="sep">o, para desarrollo</div>
-            <div class="row">
-              <input pInputText type="email" placeholder="tu-correo@gmail.com" [(ngModel)]="email" (keyup.enter)="doDevLogin()" />
-              <p-button label="Entrar" (onClick)="doDevLogin()" [disabled]="!email" />
-            </div>
-            <small class="muted" *ngIf="error()">{{ error() }}</small>
-          </ng-container>
+      <!-- LANDING · login -->
+      <div class="login-wrap" *ngIf="auth.ready() && !auth.user()">
+        <div class="login-card">
+          <span class="login-env" *ngIf="isTest()">test</span>
+          <div class="login-logo">
+            <svg viewBox="0 0 32 32" aria-hidden="true">
+              <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M11 12 L4 7 M11 16 L3 16 M11 20 L4 25" /><path d="M21 12 L28 7 M21 16 L29 16 M21 20 L28 25" />
+              </g>
+              <ellipse cx="16" cy="16" rx="6" ry="7" fill="currentColor" />
+              <circle cx="13.6" cy="14" r="1.3" fill="#fff" /><circle cx="18.4" cy="14" r="1.3" fill="#fff" />
+            </svg>
+          </div>
+          <h2>Bienvenido a Spider</h2>
+          <p class="sub">Tu suite de aplicaciones en un solo lugar.<br>Inicia sesión para continuar.</p>
+
+          <div class="login-err" *ngIf="loginError()">{{ loginError() }}</div>
+
+          <button class="gbtn" (click)="auth.loginWithGoogle()">
+            <svg class="gicon" viewBox="0 0 48 48" aria-hidden="true">
+              <path fill="#4285F4" d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z"/>
+              <path fill="#34A853" d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z"/>
+              <path fill="#FBBC05" d="M11.69 28.18c-.44-1.32-.69-2.73-.69-4.18s.25-2.86.69-4.18v-5.7H4.34C2.85 17.09 2 20.45 2 24s.85 6.91 2.34 9.88l7.35-5.7z"/>
+              <path fill="#EA4335" d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z"/>
+            </svg>
+            Continuar con Google
+          </button>
+
+          <p class="login-note">Solo con tu cuenta de Google.</p>
         </div>
       </div>
 
@@ -234,13 +257,11 @@ export class HomeComponent implements OnInit {
   readonly auth = inject(AuthService);
   private platform = inject(PlatformService);
 
-  email = '';
   query = '';
   readonly apps = signal<SpiderApp[]>([]);
   readonly loaded = signal(false);
-  readonly error = signal('');
+  readonly loginError = signal('');
   readonly isTest = signal(false);
-  readonly devLogin = signal(false);
   readonly menuOpen = signal(false);
   readonly favs = signal<string[]>([]);
   readonly view = signal<View>('cards');
@@ -274,9 +295,16 @@ export class HomeComponent implements OnInit {
   ngOnInit(): void {
     this.auth.refresh();
     this.platform.health().subscribe({
-      next: (h) => { this.isTest.set(h.env === 'test'); this.devLogin.set(!!h.devLogin); },
+      next: (h) => this.isTest.set(h.env === 'test'),
       error: () => {},
     });
+    // Si el login con Google falló, el backend redirige con ?auth_error=…
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get('auth_error');
+    if (err) {
+      this.loginError.set(err);
+      history.replaceState(null, '', window.location.pathname);
+    }
     const v = localStorage.getItem('spider_view');
     if (v === 'list' || v === 'cards') this.view.set(v);
   }
@@ -299,11 +327,6 @@ export class HomeComponent implements OnInit {
     localStorage.setItem(this.favKey(), JSON.stringify(arr));
   }
 
-  doDevLogin(): void {
-    this.error.set('');
-    if (!this.email) return;
-    this.auth.devLogin(this.email).subscribe({ error: () => this.error.set('No se pudo entrar (¿dev-login deshabilitado?).') });
-  }
 
   private loadApps(): void {
     this.platform.myApps().subscribe({

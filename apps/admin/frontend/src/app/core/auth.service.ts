@@ -1,6 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap } from 'rxjs';
 import { environment } from '../../environments/environment';
 
 export interface Me {
@@ -28,15 +27,7 @@ export class AuthService {
     });
   }
 
-  /** Login de desarrollo (sin Google). Requiere AUTH_DEV_LOGIN=true en el backend. */
-  devLogin(email: string): Observable<Me> {
-    const url = `${this.base}/auth/dev-login?email=${encodeURIComponent(email)}`;
-    return this.http.post<Me>(url, {}, { withCredentials: true }).pipe(
-      tap((u) => this.user.set(u)),
-    );
-  }
-
-  /** Inicia el login con Google (pendiente de credenciales). */
+  /** Inicia el login con Google. */
   loginWithGoogle(): void {
     window.location.href = `${this.base}/auth/google/login`;
   }

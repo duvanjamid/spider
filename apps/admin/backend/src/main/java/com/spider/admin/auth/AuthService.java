@@ -38,11 +38,6 @@ public class AuthService {
         this.sessions = sessions;
     }
 
-    /** Login de desarrollo: emite sesión para un correo arbitrario. */
-    public Session devLogin(String email) {
-        return new Session(sessions.issue(email), email);
-    }
-
     /**
      * Canjea el authorization code de Google por tokens, valida el {@code id_token}
      * y emite la sesión de Spider con el correo verificado.
