@@ -272,13 +272,19 @@ public class ExpenseService {
                 WITH pts AS (
                   SELECT ei.name_norm, ei.name,
                          COALESCE(NULLIF(e.merchant, ''), '(sin tienda)') AS store,
+                         COALESCE(c.slug, 'otros') AS cat_slug,
+                         COALESCE(c.name, 'Sin categoría') AS cat_name,
                          COALESCE(ei.unit_price, ei.line_total / NULLIF(ei.quantity, 0), ei.line_total) AS price,
                          e.spent_on
-                  FROM expense_item ei JOIN expense e ON e.id = ei.expense_id
+                  FROM expense_item ei
+                  JOIN expense e ON e.id = ei.expense_id
+                  LEFT JOIN category c ON c.id = e.category_id
                   WHERE e.owner_email = ?
                 )
                 SELECT name_norm,
                        (array_agg(name ORDER BY spent_on DESC))[1] AS name,
+                       (array_agg(cat_slug ORDER BY spent_on DESC))[1] AS cat_slug,
+                       (array_agg(cat_name ORDER BY spent_on DESC))[1] AS cat_name,
                        store,
                        MIN(price) AS min_price,
                        AVG(price) AS avg_price,
@@ -300,6 +306,8 @@ public class ExpenseService {
                     if (p == null) {
                         p = new LinkedHashMap<>();
                         p.put("name", rs.getString("name"));
+                        p.put("categorySlug", rs.getString("cat_slug"));
+                        p.put("categoryName", rs.getString("cat_name"));
                         p.put("stores", new ArrayList<Map<String, Object>>());
                         p.put("minPrice", Double.MAX_VALUE);
                         p.put("maxPrice", 0.0);

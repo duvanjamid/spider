@@ -389,12 +389,29 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
 
       <!-- ═══ Página: Precios (comparativa por producto y tienda) ═══ -->
       <section class="page" *ngIf="tab() === 4">
+        <div class="filters" *ngIf="prices().length">
+          <input class="inp" style="flex:1;min-width:150px" type="text"
+                 [ngModel]="priceQuery()" (ngModelChange)="priceQuery.set($event)" placeholder="Buscar producto…" />
+          <select class="sel" style="width:auto" [ngModel]="priceCat()" (ngModelChange)="priceCat.set($event)">
+            <option value="">Todas las categorías</option>
+            <option *ngFor="let c of categories()" [value]="c.slug">{{ c.name }}</option>
+          </select>
+          <select class="sel" style="width:auto" [ngModel]="priceStore()" (ngModelChange)="priceStore.set($event)">
+            <option value="">Todas las tiendas</option>
+            <option *ngFor="let s of priceStores()" [value]="s">{{ s }}</option>
+          </select>
+        </div>
+
         <p class="muted" *ngIf="pricesLoaded() && prices().length === 0" style="text-align:center;padding:40px 0">
           <i class="fa-solid fa-tags" style="font-size:1.6rem;display:block;margin-bottom:10px"></i>
           Escanea facturas con detalle de productos y aquí verás dónde está más barato cada cosa.
         </p>
+        <p class="muted" *ngIf="prices().length && filteredPrices().length === 0" style="text-align:center;padding:24px">
+          Sin productos que coincidan con el filtro.
+        </p>
+
         <div class="plist">
-          <div class="pcard" *ngFor="let p of prices()">
+          <div class="pcard" *ngFor="let p of filteredPrices()">
             <div class="pcard-h">
               <b>{{ p.name }}</b>
               <span class="muted" *ngIf="p.storeCount > 1">{{ p.storeCount }} tiendas · ahorro {{ fmt(p.maxPrice - p.minPrice) }}</span>
@@ -705,6 +722,24 @@ export class AppComponent implements OnInit {
   // Comparativa de precios por producto/tienda.
   readonly prices = signal<PriceProduct[]>([]);
   readonly pricesLoaded = signal<boolean>(false);
+  // Filtros de la página Precios (signals → el filtrado reacciona al instante).
+  readonly priceCat = signal<string>('');
+  readonly priceStore = signal<string>('');
+  readonly priceQuery = signal<string>('');
+  readonly priceStores = computed(() => {
+    const set = new Set<string>();
+    for (const p of this.prices()) for (const s of p.stores) set.add(s.store);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  });
+  readonly filteredPrices = computed(() => {
+    const cat = this.priceCat(), store = this.priceStore(), q = this.priceQuery().trim().toLowerCase();
+    return this.prices().filter((p) => {
+      if (cat && p.categorySlug !== cat) return false;
+      if (store && !p.stores.some((s) => s.store === store)) return false;
+      if (q && !p.name.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  });
 
   catDialog = false;
   catForm: { id: number | null; name: string; color: string } = { id: null, name: '', color: '#6c8cff' };
