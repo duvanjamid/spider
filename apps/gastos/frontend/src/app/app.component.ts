@@ -8,7 +8,8 @@ import { ChartModule } from 'primeng/chart';
 import { DialogModule } from 'primeng/dialog';
 import { TagModule } from 'primeng/tag';
 import {
-  Budget, Category, CategoryTemplate, Expense, GastosService, Me, Monto, Recurring, Region, Scan, Summary, Trend,
+  Budget, Category, CategoryTemplate, Expense, ExpenseItem, GastosService, Me, Monto, PriceProduct,
+  Recurring, Region, Scan, ScanItem, Summary, Trend,
 } from './gastos.service';
 
 type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
@@ -173,7 +174,7 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
     /* Las pestañas de PrimeNG se controlan desde aquí; ocultamos su barra propia. */
     :host ::ng-deep .p-tabview .p-tabview-nav-container { display: none; }
     .bnav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; height: 64px;
-            display: grid; grid-template-columns: repeat(4, 1fr); align-items: center;
+            display: grid; grid-template-columns: repeat(5, 1fr); align-items: center;
             background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(12px);
             border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom, 0); }
     .bnav-item { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0;
@@ -205,6 +206,25 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
 
     /* Cada pestaña es su propia página */
     .page { padding-top: 16px; }
+
+    /* Precios por producto/tienda */
+    .plist { display: flex; flex-direction: column; gap: 12px; }
+    .pcard { border: 1px solid var(--border); border-radius: 14px; background: var(--panel); padding: 12px 14px; box-shadow: var(--shadow); }
+    .pcard-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+    .pcard-h b { font-size: 1.02rem; text-transform: capitalize; }
+    .pcard-h .muted { font-size: .76rem; white-space: nowrap; }
+    .pstore { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); }
+    .pstore-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pstore-p { font-weight: 700; white-space: nowrap; }
+    .pstore.best .pstore-n, .pstore.best .pstore-p { color: var(--accent); }
+    .pstore.best .pstore-p i { margin-left: 5px; font-size: .72rem; }
+
+    /* Lista de productos (en el detalle y en la confirmación del escaneo) */
+    .items { border-top: 1px solid var(--border); margin-top: 6px; }
+    .items .it { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+    .items .it .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .items .it .q { color: var(--muted); font-size: .8rem; }
+    .items .it .p { font-weight: 700; white-space: nowrap; }
 
     /* Menú «Más» (lista de acciones) */
     .menu { display: flex; flex-direction: column; }
@@ -367,6 +387,26 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
             </div>
       </section>
 
+      <!-- ═══ Página: Precios (comparativa por producto y tienda) ═══ -->
+      <section class="page" *ngIf="tab() === 4">
+        <p class="muted" *ngIf="pricesLoaded() && prices().length === 0" style="text-align:center;padding:40px 0">
+          <i class="fa-solid fa-tags" style="font-size:1.6rem;display:block;margin-bottom:10px"></i>
+          Escanea facturas con detalle de productos y aquí verás dónde está más barato cada cosa.
+        </p>
+        <div class="plist">
+          <div class="pcard" *ngFor="let p of prices()">
+            <div class="pcard-h">
+              <b>{{ p.name }}</b>
+              <span class="muted" *ngIf="p.storeCount > 1">{{ p.storeCount }} tiendas · ahorro {{ fmt(p.maxPrice - p.minPrice) }}</span>
+            </div>
+            <div class="pstore" *ngFor="let s of p.stores" [class.best]="s.store === p.cheapestStore && p.storeCount > 1">
+              <span class="pstore-n">{{ s.store }} <small class="muted" *ngIf="s.count > 1">×{{ s.count }}</small></span>
+              <span class="pstore-p">{{ fmt(s.minPrice) }}<i class="fa-solid fa-arrow-down" *ngIf="s.store === p.cheapestStore && p.storeCount > 1"></i></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- ═══ Navegación inferior + botón central de escaneo ═══ -->
       <nav class="bnav">
         <button class="bnav-item" [class.on]="tab() === 0" (click)="tab.set(0)">
@@ -375,6 +415,8 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
           <i class="fa-solid fa-list-ul"></i><span>Movimientos</span></button>
         <button class="bnav-fab" (click)="openRegister()" aria-label="Registrar gasto">
           <i class="fa-solid fa-plus"></i></button>
+        <button class="bnav-item" [class.on]="tab() === 4" (click)="openPrices()">
+          <i class="fa-solid fa-tags"></i><span>Precios</span></button>
         <button class="bnav-item" (click)="moreVisible = true">
           <i class="fa-solid fa-ellipsis"></i><span>Más</span></button>
       </nav>
@@ -467,13 +509,22 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
                 <option [ngValue]="null" disabled>Elige…</option>
                 <option *ngFor="let c of categories()" [ngValue]="c.id">{{ c.name }}</option>
               </select>
-              <span class="hint" *ngIf="suggested()">Sugerida por IA: “{{ suggested() }}” — créala en Categorías</span>
+              <span class="hint" *ngIf="suggested()">Nueva categoría sugerida: “{{ suggested() }}” — se creará al guardar</span>
             </div>
             <div class="field"><label>Fecha de compra</label><input class="inp" type="date" [(ngModel)]="form.spentOn" /></div>
             <div class="field"><label>Hora de compra</label><input class="inp" type="time" [(ngModel)]="form.spentTime" /></div>
             <div class="field"><label>Establecimiento</label><input class="inp" type="text" [(ngModel)]="form.merchant" placeholder="Comercio" /></div>
             <div class="field"><label>NIT</label><input class="inp" type="text" [(ngModel)]="form.nit" placeholder="NIT / ID tributario" /></div>
             <div class="field full"><label>Descripción</label><input class="inp" type="text" [(ngModel)]="form.description" placeholder="Detalle" /></div>
+            <div class="field full" *ngIf="scanItems().length">
+              <label>Productos detectados ({{ scanItems().length }})</label>
+              <div class="items">
+                <div class="it" *ngFor="let it of scanItems()">
+                  <span class="n">{{ it.nombre }}<span class="q" *ngIf="it.cantidad"> ×{{ it.cantidad }}</span><span class="q" *ngIf="it.precioUnitario"> · {{ fmt(it.precioUnitario) }} c/u</span></span>
+                  <span class="p" *ngIf="it.total">{{ fmt(it.total) }}</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -513,6 +564,15 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
         <div class="det-row"><span>Comprado</span><b>{{ fmtDateTime(d.spentAt) }}</b></div>
         <div class="det-row"><span>Registrado</span><b>{{ fmtDateTime(d.registeredAt) }}</b></div>
         <div class="det-row"><span>Origen</span><b>{{ sourceLabel(d.source) }}</b></div>
+        <div *ngIf="detailItems().length" style="margin-top:10px">
+          <span class="muted" style="font-size:.8rem">Productos</span>
+          <div class="items">
+            <div class="it" *ngFor="let it of detailItems()">
+              <span class="n">{{ it.name }}<span class="q" *ngIf="it.quantity"> ×{{ it.quantity }}</span><span class="q" *ngIf="it.unitPrice"> · {{ fmt(it.unitPrice) }} c/u</span></span>
+              <span class="p" *ngIf="it.lineTotal">{{ fmt(it.lineTotal) }}</span>
+            </div>
+          </div>
+        </div>
       </div>
       <ng-template pTemplate="footer">
         <p-button label="Eliminar" icon="pi pi-trash" severity="danger" [text]="true" (onClick)="delFromDetail()" />
@@ -626,6 +686,7 @@ export class AppComponent implements OnInit {
   readonly montos = signal<Monto[]>([]);
   readonly regiones = signal<Region[]>([]);
   readonly suggested = signal<string | null>(null);
+  readonly scanItems = signal<ScanItem[]>([]);   // productos extraídos por la IA
   readonly saving = signal<boolean>(false);
   readonly scanPhase = signal<string>('Preparando imagen…');
   private phaseTimer: ReturnType<typeof setInterval> | null = null;
@@ -639,6 +700,11 @@ export class AppComponent implements OnInit {
 
   detailDialog = false;
   readonly detail = signal<Expense | null>(null);
+  readonly detailItems = signal<ExpenseItem[]>([]);   // productos del gasto abierto
+
+  // Comparativa de precios por producto/tienda.
+  readonly prices = signal<PriceProduct[]>([]);
+  readonly pricesLoaded = signal<boolean>(false);
 
   catDialog = false;
   catForm: { id: number | null; name: string; color: string } = { id: null, name: '', color: '#6c8cff' };
@@ -932,7 +998,7 @@ export class AppComponent implements OnInit {
   // ── Alta / escaneo ──
   openManual(): void {
     this.scanned = false; this.montos.set([]); this.regiones.set([]); this.lastImageUrl.set(null);
-    this.suggested.set(null); this.form = this.emptyForm(); this.sheetTab.set('datos');
+    this.suggested.set(null); this.scanItems.set([]); this.form = this.emptyForm(); this.sheetTab.set('datos');
     this.sheetState.set('form'); this.sheetVisible = true;
   }
   toManual(): void { this.scanned = false; this.montos.set([]); this.sheetTab.set('datos'); this.sheetState.set('form'); }
@@ -1029,6 +1095,7 @@ export class AppComponent implements OnInit {
     this.scanned = true;
     this.montos.set(s.montos);
     this.regiones.set(s.regiones ?? []);
+    this.scanItems.set(s.productos ?? []);
     this.suggested.set(s.categoriaId ? null : s.categoriaSugerida);
     const fecha = this.validDate(s.fecha) ? s.fecha! : new Date().toISOString().slice(0, 10);
     const hora = this.validTime(s.hora) ? s.hora! : '';
@@ -1043,13 +1110,33 @@ export class AppComponent implements OnInit {
   save(): void {
     if (!this.form.amount || this.form.amount <= 0) return;
     this.saving.set(true);
+    const sug = this.suggested();
+    // #1: si la IA sugirió una categoría nueva y no elegiste otra, se crea al vuelo.
+    if (sug && !this.form.categoryId) {
+      this.api.createCategory(sug, this.randColor(), 'fa-solid fa-wallet').subscribe({
+        next: (c) => this.persistExpense(c.id),
+        error: () => this.persistExpense(null),
+      });
+    } else {
+      this.persistExpense(this.form.categoryId);
+    }
+  }
+
+  private persistExpense(categoryId: number | null): void {
     const spentAt = this.form.spentTime ? `${this.form.spentOn}T${this.form.spentTime}` : undefined;
-    this.api.create({ amount: this.form.amount, currency: this.form.currency, categoryId: this.form.categoryId,
+    const items = this.scanItems();
+    this.api.create({ amount: this.form.amount!, currency: this.form.currency, categoryId,
       merchant: this.form.merchant, description: this.form.description, nit: this.form.nit,
-      spentOn: this.form.spentOn, spentAt, source: this.scanned ? 'scan' : 'manual' }).subscribe({
-      next: () => { this.saving.set(false); this.sheetVisible = false; this.reload(); },
+      spentOn: this.form.spentOn, spentAt, source: this.scanned ? 'scan' : 'manual',
+      items: items.length ? items : undefined }).subscribe({
+      next: () => { this.saving.set(false); this.sheetVisible = false; this.loadCategories(); this.reload(); this.pricesLoaded.set(false); },
       error: () => { this.saving.set(false); alert('No se pudo guardar.'); },
     });
+  }
+
+  private randColor(): string {
+    const pal = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6', '#8b5cf6'];
+    return pal[Math.floor(Math.random() * pal.length)];
   }
 
   del(id: number): void { this.api.remove(id).subscribe(() => this.reload()); }
@@ -1065,7 +1152,20 @@ export class AppComponent implements OnInit {
   }
 
   // ── Detalle de movimiento ──
-  openDetail(e: Expense): void { this.detail.set(e); this.detailDialog = true; }
+  openDetail(e: Expense): void {
+    this.detail.set(e); this.detailItems.set([]); this.detailDialog = true;
+    this.api.itemsOf(e.id).subscribe({ next: (it) => this.detailItems.set(it), error: () => {} });
+  }
+
+  openPrices(): void { this.tab.set(4); if (!this.pricesLoaded()) this.loadPrices(); }
+
+  // Carga perezosa de la comparativa de precios (solo la primera vez / tras cambios).
+  loadPrices(): void {
+    this.api.prices().subscribe({
+      next: (p) => { this.prices.set(p); this.pricesLoaded.set(true); },
+      error: () => this.pricesLoaded.set(true),
+    });
+  }
   delFromDetail(): void {
     const d = this.detail();
     if (!d) return;

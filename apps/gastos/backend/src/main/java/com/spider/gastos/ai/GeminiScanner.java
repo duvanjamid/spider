@@ -117,7 +117,9 @@ public class GeminiScanner {
                   "hora": string|null,
                   "categoriaId": number|null,
                   "categoriaNombre": string|null,
-                  "categoriaSugerida": string|null%s
+                  "categoriaSugerida": string|null,
+                  "productos": [ { "nombre": string, "cantidad": number|null,
+                                   "precioUnitario": number|null, "total": number|null } ]%s
                 }
                 Reglas:
                 - "montos": lista TODOS los totales candidatos que veas (p. ej. "Subtotal/Neto",
@@ -128,8 +130,13 @@ public class GeminiScanner {
                   establecimiento y el contexto (p. ej. "Almuerzo para 2: bandeja paisa y jugos
                   en Restaurante La Fonda" o "Mercado semanal: frutas, lácteos y aseo en Éxito").
                   Evita algo genérico como "compra" o solo el nombre del comercio.
-                - "fecha": fecha de la compra en formato YYYY-MM-DD si aparece, si no null.
+                - "fecha": SIEMPRE intenta extraer la fecha de la compra del comprobante en formato
+                  YYYY-MM-DD (busca "Fecha", "Date", el sello de la caja, etc.); deja null solo si de
+                  verdad no aparece en la imagen/texto.
                 - "hora": hora de la compra en formato HH:MM (24h) si aparece en el comprobante, si no null.
+                - "productos": si la factura lista ítems, extrae CADA línea con "nombre" (corto, el
+                  producto en sí, sin códigos), "cantidad", "precioUnitario" (precio por unidad) y
+                  "total" de la línea. Números sin separador de miles. Si no hay detalle de productos, deja [].
                 - "categoriaId"/"categoriaNombre": elige de esta lista del usuario (id: nombre): %s
                 - Si NINGUNA categoría aplica, deja categoriaId/categoriaNombre en null y propón un
                   nombre en "categoriaSugerida".
@@ -166,6 +173,18 @@ public class GeminiScanner {
             }
         }
 
+        List<Map<String, Object>> productos = new ArrayList<>();
+        for (JsonNode p : ex.path("productos")) {
+            String nombre = p.path("nombre").asText("").trim();
+            if (nombre.isEmpty()) continue;
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("nombre", nombre);
+            item.put("cantidad", p.path("cantidad").isNumber() ? p.path("cantidad").asDouble() : null);
+            item.put("precioUnitario", p.path("precioUnitario").isNumber() ? p.path("precioUnitario").asDouble() : null);
+            item.put("total", p.path("total").isNumber() ? p.path("total").asDouble() : null);
+            productos.add(item);
+        }
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("identificado", identificado);
         out.put("nit", asText(ex, "nit"));
@@ -177,6 +196,7 @@ public class GeminiScanner {
         out.put("categoriaId", ex.path("categoriaId").isNumber() ? ex.path("categoriaId").asLong() : null);
         out.put("categoriaNombre", asText(ex, "categoriaNombre"));
         out.put("categoriaSugerida", asText(ex, "categoriaSugerida"));
+        out.put("productos", productos);
         out.put("regiones", regiones);
         return out;
     }

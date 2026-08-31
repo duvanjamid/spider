@@ -25,6 +25,7 @@ export interface Trend { series: TrendPoint[]; forecastNext: number; average: nu
 
 export interface Monto { etiqueta: string; valor: number; }
 export interface Region { campo: string; etiqueta: string; box: number[]; }
+export interface ScanItem { nombre: string; cantidad: number | null; precioUnitario: number | null; total: number | null; }
 export interface Scan {
   identificado: boolean;
   nit: string | null;
@@ -36,13 +37,18 @@ export interface Scan {
   categoriaId: number | null;
   categoriaNombre: string | null;
   categoriaSugerida: string | null;
+  productos: ScanItem[];
   regiones: Region[];
 }
+export interface ExpenseItem { name: string; quantity: number | null; unitPrice: number | null; lineTotal: number | null; }
+export interface PriceStore { store: string; minPrice: number; avgPrice: number; lastPrice: number; lastOn: string; count: number; }
+export interface PriceProduct { name: string; stores: PriceStore[]; minPrice: number; maxPrice: number; storeCount: number; cheapestStore: string; }
 export interface Me { email: string; guest: boolean; onboarded: boolean; }
 export interface CategoryTemplate { slug: string; name: string; color: string; icon: string; }
 export interface NewExpense {
   amount: number; currency?: string; categoryId?: number | null;
   merchant?: string; description?: string; spentOn?: string; spentAt?: string; nit?: string; source?: string;
+  items?: ScanItem[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -82,6 +88,8 @@ export class GastosService {
   expenses(month: string): Observable<Expense[]> { return this.http.get<Expense[]>(`${this.base}/expenses?month=${month}`, this.opts); }
   create(e: NewExpense): Observable<{ id: number }> { return this.http.post<{ id: number }>(`${this.base}/expenses`, e, this.opts); }
   remove(id: number): Observable<unknown> { return this.http.delete(`${this.base}/expenses/${id}`, this.opts); }
+  itemsOf(id: number): Observable<ExpenseItem[]> { return this.http.get<ExpenseItem[]>(`${this.base}/expenses/${id}/items`, this.opts); }
+  prices(): Observable<PriceProduct[]> { return this.http.get<PriceProduct[]>(`${this.base}/prices`, this.opts); }
   summary(month: string): Observable<Summary> { return this.http.get<Summary>(`${this.base}/summary?month=${month}`, this.opts); }
   trend(months = 6): Observable<Trend> { return this.http.get<Trend>(`${this.base}/trend?months=${months}`, this.opts); }
   aiStatus(): Observable<{ enabled: boolean }> { return this.http.get<{ enabled: boolean }>(`${this.base}/ai-status`, this.opts); }
