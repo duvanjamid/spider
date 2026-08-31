@@ -213,5 +213,142 @@ public class ExpenseService {
         return den == 0 ? 0 : num / den;
     }
 
+    // ══════════════ Productos de la factura (detalle) ══════════════
+
+    /** Guarda las líneas de producto de un gasto (nombre, cantidad, precio unitario, total). */
+    public void addItems(long expenseId, List<Map<String, Object>> items) {
+        if (items == null || items.isEmpty()) return;
+        String sql = "INSERT INTO expense_item (expense_id, name, name_norm, quantity, unit_price, line_total) "
+                + "VALUES (?, ?, ?, ?, ?, ?)";
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            for (Map<String, Object> it : items) {
+                String name = str(it.get("nombre")).trim();
+                if (name.isBlank()) continue;
+                ps.setLong(1, expenseId);
+                ps.setString(2, name);
+                ps.setString(3, normalize(name));
+                setNum(ps, 4, it.get("cantidad"));
+                setNum(ps, 5, it.get("precioUnitario"));
+                setNum(ps, 6, it.get("total"));
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        } catch (Exception e) { throw new RuntimeException("Error guardando productos", e); }
+    }
+
+    /** Productos de un gasto del usuario (para el detalle del movimiento). */
+    public List<Map<String, Object>> itemsOf(String email, long expenseId) {
+        String sql = """
+                SELECT ei.name, ei.quantity, ei.unit_price, ei.line_total
+                FROM expense_item ei JOIN expense e ON e.id = ei.expense_id
+                WHERE ei.expense_id = ? AND e.owner_email = ?
+                ORDER BY ei.id
+                """;
+        List<Map<String, Object>> out = new ArrayList<>();
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setLong(1, expenseId);
+            ps.setString(2, email);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("name", rs.getString("name"));
+                    m.put("quantity", num(rs.getBigDecimal("quantity")));
+                    m.put("unitPrice", num(rs.getBigDecimal("unit_price")));
+                    m.put("lineTotal", num(rs.getBigDecimal("line_total")));
+                    out.add(m);
+                }
+            }
+        } catch (Exception e) { throw new RuntimeException("Error listando productos", e); }
+        return out;
+    }
+
+    /**
+     * Comparativa de precios por producto y tienda: para cada producto (agrupado
+     * por nombre normalizado) devuelve las tiendas donde se ha comprado con su
+     * precio mínimo/medio/último, la tienda más barata y el rango de precios.
+     */
+    public List<Map<String, Object>> prices(String email) {
+        String sql = """
+                WITH pts AS (
+                  SELECT ei.name_norm, ei.name,
+                         COALESCE(NULLIF(e.merchant, ''), '(sin tienda)') AS store,
+                         COALESCE(ei.unit_price, ei.line_total / NULLIF(ei.quantity, 0), ei.line_total) AS price,
+                         e.spent_on
+                  FROM expense_item ei JOIN expense e ON e.id = ei.expense_id
+                  WHERE e.owner_email = ?
+                )
+                SELECT name_norm,
+                       (array_agg(name ORDER BY spent_on DESC))[1] AS name,
+                       store,
+                       MIN(price) AS min_price,
+                       AVG(price) AS avg_price,
+                       (array_agg(price ORDER BY spent_on DESC))[1] AS last_price,
+                       MAX(spent_on) AS last_on,
+                       COUNT(*) AS n
+                FROM pts
+                WHERE price IS NOT NULL
+                GROUP BY name_norm, store
+                ORDER BY name_norm, min_price ASC
+                """;
+        Map<String, Map<String, Object>> prod = new LinkedHashMap<>();
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, email);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String norm = rs.getString("name_norm");
+                    Map<String, Object> p = prod.get(norm);
+                    if (p == null) {
+                        p = new LinkedHashMap<>();
+                        p.put("name", rs.getString("name"));
+                        p.put("stores", new ArrayList<Map<String, Object>>());
+                        p.put("minPrice", Double.MAX_VALUE);
+                        p.put("maxPrice", 0.0);
+                        prod.put(norm, p);
+                    }
+                    double min = rs.getBigDecimal("min_price").doubleValue();
+                    Map<String, Object> st = new LinkedHashMap<>();
+                    st.put("store", rs.getString("store"));
+                    st.put("minPrice", min);
+                    st.put("avgPrice", rs.getBigDecimal("avg_price").doubleValue());
+                    st.put("lastPrice", rs.getBigDecimal("last_price").doubleValue());
+                    st.put("lastOn", rs.getString("last_on"));
+                    st.put("count", rs.getInt("n"));
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> stores = (List<Map<String, Object>>) p.get("stores");
+                    stores.add(st);
+                    p.put("minPrice", Math.min((double) p.get("minPrice"), min));
+                    p.put("maxPrice", Math.max((double) p.get("maxPrice"), min));
+                }
+            }
+        } catch (Exception e) { throw new RuntimeException("Error comparando precios", e); }
+
+        List<Map<String, Object>> out = new ArrayList<>(prod.values());
+        for (Map<String, Object> p : out) {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> stores = (List<Map<String, Object>>) p.get("stores");
+            p.put("storeCount", stores.size());
+            // La consulta ordena las tiendas por precio mínimo asc → la primera es la más barata.
+            p.put("cheapestStore", stores.isEmpty() ? "" : stores.get(0).get("store"));
+        }
+        // Primero los productos comprados en más tiendas (más útiles para comparar).
+        out.sort((a, b) -> Integer.compare((int) b.get("storeCount"), (int) a.get("storeCount")));
+        return out;
+    }
+
+    private static String normalize(String s) {
+        if (s == null) return "";
+        return java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "").toLowerCase().trim().replaceAll("\\s+", " ");
+    }
+
+    private static String str(Object o) { return o == null ? "" : String.valueOf(o); }
+
+    private static Double num(java.math.BigDecimal b) { return b == null ? null : b.doubleValue(); }
+
+    private static void setNum(PreparedStatement ps, int idx, Object v) throws java.sql.SQLException {
+        if (v instanceof Number n) ps.setDouble(idx, n.doubleValue());
+        else ps.setNull(idx, java.sql.Types.NUMERIC);
+    }
+
     private static String nz(String s) { return s == null ? "" : s; }
 }

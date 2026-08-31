@@ -26,10 +26,13 @@ import java.util.Map;
  */
 public final class ExpenseController {
 
-    /** Cuerpo para crear un gasto. spentAt = momento de compra ISO (opcional). */
+    /** Cuerpo para crear un gasto. spentAt = momento de compra ISO (opcional). items = productos. */
     public record ExpenseInput(Double amount, String currency, Long categoryId,
                                String merchant, String description, String spentOn,
-                               String spentAt, String nit, String source) {}
+                               String spentAt, String nit, String source, List<ItemInput> items) {}
+
+    /** Línea de producto del gasto (opcional; suele venir del escaneo). */
+    public record ItemInput(String nombre, Double cantidad, Double precioUnitario, Double total) {}
 
     /** Cuerpo para escanear una imagen. */
     public record ScanInput(String image, String mediaType) {}
@@ -124,8 +127,28 @@ public final class ExpenseController {
             long id = svc.create(user, amount, or(in.currency(), "COP"), catId,
                     nz(in.merchant()), nz(in.description()), in.spentOn(), in.spentAt(), nz(in.nit()),
                     or(in.source(), "manual"));
+            if (in.items() != null && !in.items().isEmpty()) {
+                List<Map<String, Object>> items = new java.util.ArrayList<>();
+                for (ItemInput it : in.items()) {
+                    if (it == null || it.nombre() == null || it.nombre().isBlank()) continue;
+                    Map<String, Object> m = new java.util.HashMap<>();
+                    m.put("nombre", it.nombre());
+                    m.put("cantidad", it.cantidad());
+                    m.put("precioUnitario", it.precioUnitario());
+                    m.put("total", it.total());
+                    items.add(m);
+                }
+                svc.addItems(id, items);
+            }
             ctx.status(201).json(Map.of("id", id));
         });
+
+        // Productos (líneas) de un gasto del usuario.
+        app.get("/expenses/{id}/items", ctx ->
+                ctx.json(svc.itemsOf(email(ctx.header("Cookie")), Long.parseLong(ctx.pathParam("id")))));
+
+        // Comparativa de precios por producto y tienda.
+        app.get("/prices", ctx -> ctx.json(svc.prices(email(ctx.header("Cookie")))));
 
         app.delete("/expenses/{id}", ctx -> {
             svc.delete(email(ctx.header("Cookie")), Long.parseLong(ctx.pathParam("id")));
