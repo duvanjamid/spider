@@ -8,7 +8,7 @@ import { ChartModule } from 'primeng/chart';
 import { DialogModule } from 'primeng/dialog';
 import { TagModule } from 'primeng/tag';
 import {
-  Budget, CategoryShare, Category, CategoryTemplate, Connections, Expense, ExpenseItem, GastosService, Me, Monto, PriceProduct,
+  Budget, CategoryShare, Category, CategoryTemplate, Connections, Expense, ExpenseItem, GastosService, Me, Monto, PriceProduct, SharedInCategory,
   Recurring, Region, Scan, ScanItem, Summary, Trend,
 } from './gastos.service';
 
@@ -378,6 +378,11 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
               </select>
               <span class="muted">{{ filtered().length }} de {{ expenses().length }}</span>
             </div>
+            <div class="seg" *ngIf="household().length" style="margin-bottom:12px">
+              <button [class.on]="movFilter() === 'all'" (click)="movFilter.set('all')">Todos</button>
+              <button [class.on]="movFilter() === 'mine'" (click)="movFilter.set('mine')">Míos</button>
+              <button [class.on]="movFilter() === 'shared'" (click)="movFilter.set('shared')">Compartidos</button>
+            </div>
             <div class="list">
               <div class="row clickable" *ngFor="let e of filtered()" (click)="openDetail(e)">
                 <span class="dot" [style.background]="e.categoryColor || '#9aa3b2'"></span>
@@ -715,6 +720,16 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
         <p-button icon="pi pi-pencil" [text]="true" size="small" (onClick)="editCat(c)" />
         <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="delCat(c)" />
       </div>
+
+      <!-- Categorías compartidas conmigo (creadas por el hogar): solo lectura -->
+      <ng-container *ngIf="sharedInCats().length">
+        <h3>Compartidas conmigo</h3>
+        <div class="cat-row" *ngFor="let c of sharedInCats()">
+          <span class="dot" [style.background]="c.color" style="width:12px;height:12px;border-radius:50%"></span>
+          <span style="flex:1">{{ c.name }} <small class="muted">· de {{ c.owner }}</small></span>
+          <i class="fa-solid fa-eye" style="color:var(--muted)" title="Solo lectura (no es tuya)"></i>
+        </div>
+      </ng-container>
     </p-dialog>
 
     <!-- ═══ Recurrentes ═══ -->
@@ -793,6 +808,8 @@ export class AppComponent implements OnInit {
   readonly household = signal<string[]>([]);     // correos conectados (aceptados)
   readonly conns = signal<Connections | null>(null);
   readonly catShares = signal<CategoryShare[]>([]);
+  readonly sharedInCats = signal<SharedInCategory[]>([]);   // categorías del hogar compartidas conmigo (solo lectura)
+  readonly movFilter = signal<'all' | 'mine' | 'shared'>('all');   // filtro de movimientos
   homeDialog = false;
   inviteEmail = '';
 
@@ -919,7 +936,10 @@ export class AppComponent implements OnInit {
   readonly filtered = computed(() => {
     const q = this.query.trim().toLowerCase();
     const cat = this.filterCat;
+    const mf = this.movFilter();
     return this.expenses().filter((e) => {
+      if (mf === 'mine' && e.mine === false) return false;
+      if (mf === 'shared' && !(e.mine === false || e.shared)) return false;
       if (cat && e.categorySlug !== cat) return false;
       if (!q) return true;
       return (e.merchant + ' ' + e.description + ' ' + e.nit + ' ' + e.categoryName).toLowerCase().includes(q);
@@ -1061,7 +1081,7 @@ export class AppComponent implements OnInit {
   }
 
   // ── Categorías ──
-  openCats(): void { this.resetCatForm(); this.loadBudgets(); this.catDialog = true; }
+  openCats(): void { this.resetCatForm(); this.loadBudgets(); this.loadHome(); this.catDialog = true; }
   resetCatForm(): void { this.catForm = { id: null, name: '', color: '#6c8cff' }; }
   editCat(c: Category): void { this.catForm = { id: c.id, name: c.name, color: c.color }; }
   saveCat(): void {
@@ -1298,6 +1318,7 @@ export class AppComponent implements OnInit {
   private loadHome(): void {
     this.api.household().subscribe({ next: (h) => this.household.set(h), error: () => {} });
     this.api.categoryShares().subscribe({ next: (s) => this.catShares.set(s), error: () => {} });
+    this.api.sharedInCategories().subscribe({ next: (s) => this.sharedInCats.set(s), error: () => {} });
   }
   openHome(): void {
     this.moreVisible = false; this.homeDialog = true; this.inviteEmail = '';

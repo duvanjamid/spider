@@ -10,6 +10,7 @@ export interface Expense {
   categorySlug: string; categoryName: string; categoryColor: string;
   shared?: boolean; sharedWith?: string[]; sharedCategory?: boolean; mine?: boolean; sharedBy?: string;
 }
+export interface SharedInCategory { id: number; slug: string; name: string; color: string; icon: string; owner: string; }
 export interface ConnRow { id: number; email: string; }
 export interface Connections { accepted: ConnRow[]; incoming: ConnRow[]; outgoing: ConnRow[]; }
 export interface CategoryShare { slug: string; emails: string[]; }
@@ -117,5 +118,6 @@ export class GastosService {
   removeConn(id: number): Observable<unknown> { return this.http.delete(`${this.base}/connections/${id}`, this.opts); }
   shareExpense(id: number, emails: string[]): Observable<unknown> { return this.http.put(`${this.base}/expenses/${id}/share`, { emails }, this.opts); }
   categoryShares(): Observable<CategoryShare[]> { return this.http.get<CategoryShare[]>(`${this.base}/categories/shares`, this.opts); }
+  sharedInCategories(): Observable<SharedInCategory[]> { return this.http.get<SharedInCategory[]>(`${this.base}/categories/shared-in`, this.opts); }
   shareCategory(slug: string, emails: string[]): Observable<unknown> { return this.http.put(`${this.base}/categories/share`, { slug, emails }, this.opts); }
 }

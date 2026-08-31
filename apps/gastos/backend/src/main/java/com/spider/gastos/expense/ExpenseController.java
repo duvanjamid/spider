@@ -115,6 +115,8 @@ public final class ExpenseController {
         });
 
         app.get("/categories", ctx -> ctx.json(categories.ensureAndList(email(ctx.header("Cookie")))));
+        // Categorías de miembros del hogar compartidas conmigo (solo lectura).
+        app.get("/categories/shared-in", ctx -> ctx.json(categories.sharedInList(email(ctx.header("Cookie")))));
 
         app.post("/categories", ctx -> {
             String user = email(ctx.header("Cookie"));
