@@ -113,8 +113,10 @@ public class AuthService {
         if (email.isBlank()) {
             throw new IllegalStateException("id_token sin correo");
         }
+        String name = claims.path("name").asText("").trim();
+        String picture = claims.path("picture").asText("").trim();
 
-        return new Session(sessions.issue(email), email);
+        return new Session(sessions.issue(email, name, picture), email);
     }
 
     /** Decodifica (sin verificar firma) el payload de un JWT y lo parsea como JSON. */
@@ -133,11 +135,17 @@ public class AuthService {
 
     /** Extrae y verifica el correo de la cookie de sesión; null si no hay/expiró. */
     public String emailFromCookie(String cookieHeader) {
+        Sessions.Profile p = profileFromCookie(cookieHeader);
+        return p == null ? null : p.email();
+    }
+
+    /** Extrae el perfil (email + nombre + foto) de la cookie de sesión; null si no hay/expiró. */
+    public Sessions.Profile profileFromCookie(String cookieHeader) {
         if (cookieHeader == null) return null;
         for (String part : cookieHeader.split(";")) {
             String p = part.trim();
             if (p.startsWith(COOKIE + "=")) {
-                return sessions.verify(p.substring(COOKIE.length() + 1));
+                return sessions.profile(p.substring(COOKIE.length() + 1));
             }
         }
         return null;

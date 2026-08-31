@@ -241,6 +241,37 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
     .menu button > i:first-child { width: 22px; text-align: center; color: var(--accent); font-size: 1.05rem; }
     .menu button > span { flex: 1; }
     .menu button .go { color: var(--muted); font-size: .8rem; }
+    .menu button .badge { background: var(--accent); color: #fff; border-radius: 999px; font-size: .72rem;
+                          font-weight: 700; padding: 1px 8px; margin-left: auto; }
+
+    /* Mi cuenta / perfil */
+    .account { display: flex; flex-direction: column; }
+    .profile { border-radius: 18px; overflow: hidden; border: 1px solid var(--border);
+               background: var(--panel); box-shadow: var(--shadow); }
+    .pf-cover { height: 76px; background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 45%, #9b6cff)); }
+    .pf-body { padding: 0 18px 18px; text-align: center; margin-top: -40px; }
+    .pf-avatar { width: 80px; height: 80px; border-radius: 50%; margin: 0 auto 10px; background: var(--panel-2);
+                 border: 3px solid var(--panel); box-shadow: 0 4px 16px rgba(0,0,0,.22); overflow: hidden;
+                 display: grid; place-items: center; font-weight: 800; font-size: 1.8rem; color: var(--accent); }
+    .pf-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .pf-name { font-weight: 800; font-size: 1.22rem; letter-spacing: -.2px; }
+    .pf-mail { color: var(--muted); font-size: .9rem; margin-top: 3px; word-break: break-all; }
+    .pf-chip { display: inline-flex; align-items: center; gap: 7px; margin-top: 12px; font-size: .78rem; font-weight: 700;
+               padding: 6px 12px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+    .pf-chip.guest { background: color-mix(in srgb, #f59e0b 16%, transparent); color: #f59e0b; }
+    .acc-group { margin-top: 18px; }
+    .acc-title { font-size: .72rem; font-weight: 800; letter-spacing: .6px; text-transform: uppercase;
+                 color: var(--muted); margin: 0 4px 8px; }
+    .acc-group .menu { border: 1px solid var(--border); border-radius: 14px; background: var(--panel); overflow: hidden; }
+    .acc-group .menu button { padding: 14px; }
+    .logout { width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 14px;
+              border: 1px solid color-mix(in srgb, #ef4444 40%, var(--border)); border-radius: 14px; background: none;
+              color: #ef4444; font: inherit; font-weight: 700; font-size: .96rem; cursor: pointer; }
+    .logout:active { background: color-mix(in srgb, #ef4444 10%, transparent); }
+    .acc-cta { margin: 14px 0 2px; }
+    .acc-foot { text-align: center; color: var(--muted); font-size: .76rem; margin: 18px 0 2px; }
+    .bnav-ava { width: 24px; height: 24px; border-radius: 50%; overflow: hidden; display: inline-block; }
+    .bnav-ava img { width: 100%; height: 100%; object-fit: cover; }
   `],
   template: `
     <!-- ═══════════════ ONBOARDING (primera vez) ═══════════════ -->
@@ -444,8 +475,11 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
           <i class="fa-solid fa-plus"></i></button>
         <button class="bnav-item" [class.on]="tab() === 4" (click)="openPrices()">
           <i class="fa-solid fa-tags"></i><span>Precios</span></button>
-        <button class="bnav-item" (click)="moreVisible = true">
-          <i class="fa-solid fa-ellipsis"></i><span>Más</span></button>
+        <button class="bnav-item" (click)="moreVisible = true" aria-label="Mi cuenta">
+          <span class="bnav-ava" *ngIf="me()?.picture && !avatarBroken">
+            <img [src]="me()?.picture" alt="" (error)="avatarBroken = true" referrerpolicy="no-referrer" /></span>
+          <i class="fa-solid fa-circle-user" *ngIf="!me()?.picture || avatarBroken"></i>
+          <span>Cuenta</span></button>
       </nav>
     </div>
 
@@ -464,15 +498,55 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
       </div>
     </p-dialog>
 
-    <!-- ═══ Hoja «Más»: gestión y herramientas ═══ -->
+    <!-- ═══ Hoja «Mi cuenta»: perfil + herramientas + salir ═══ -->
     <p-dialog [(visible)]="moreVisible" [modal]="true" [position]="'bottom'" [dismissableMask]="true"
-              [style]="{ width: '100%', maxWidth: '600px' }" header="Más">
-      <div class="menu">
-        <button (click)="openHome()"><i class="fa-solid fa-house-user"></i><span>Hogar (compartir)</span><i class="fa-solid fa-chevron-right go"></i></button>
-        <button (click)="fromMore('cats')"><i class="fa-solid fa-tags"></i><span>Editar categorías</span><i class="fa-solid fa-chevron-right go"></i></button>
-        <button (click)="fromMore('recurring')"><i class="fa-solid fa-rotate"></i><span>Gastos recurrentes</span><i class="fa-solid fa-chevron-right go"></i></button>
-        <button (click)="fromMore('compare')"><i class="fa-solid fa-code-compare"></i><span>Comparar meses</span><i class="fa-solid fa-chevron-right go"></i></button>
-        <button (click)="fromMore('csv')"><i class="fa-solid fa-file-csv"></i><span>Exportar CSV</span><i class="fa-solid fa-chevron-right go"></i></button>
+              [style]="{ width: '100%', maxWidth: '600px' }" header="Mi cuenta">
+      <div class="account">
+        <!-- Tarjeta de perfil (nombre/foto de Google) -->
+        <div class="profile">
+          <div class="pf-cover"></div>
+          <div class="pf-body">
+            <div class="pf-avatar">
+              <img *ngIf="me()?.picture && !avatarBroken" [src]="me()?.picture" alt=""
+                   (error)="avatarBroken = true" referrerpolicy="no-referrer" />
+              <span *ngIf="!me()?.picture || avatarBroken">{{ initials() }}</span>
+            </div>
+            <div class="pf-name">{{ displayName() }}</div>
+            <div class="pf-mail" *ngIf="me()?.email && !isGuest()">{{ me()?.email }}</div>
+            <div class="pf-chip" *ngIf="!isGuest()"><i class="fa-brands fa-google"></i> Conectado con Google</div>
+            <div class="pf-chip guest" *ngIf="isGuest()"><i class="fa-solid fa-user-clock"></i> Modo invitado</div>
+          </div>
+        </div>
+
+        <!-- Invitado: entrar con Google -->
+        <div class="acc-cta" *ngIf="isGuest()">
+          <a href="/admin/" style="text-decoration:none">
+            <p-button label="Entrar con Google" icon="fa-brands fa-google" [style]="{ width: '100%' }" />
+          </a>
+          <p class="muted" style="text-align:center;font-size:.82rem;margin:8px 4px 0">
+            Inicia sesión para guardar tus gastos y compartir con tu hogar.</p>
+        </div>
+
+        <!-- Herramientas -->
+        <div class="acc-group">
+          <div class="acc-title">Gestión</div>
+          <div class="menu">
+            <button (click)="openHome()"><i class="fa-solid fa-house-user"></i><span>Hogar (compartir)</span>
+              <span class="badge" *ngIf="conns()?.incoming?.length">{{ conns()?.incoming?.length }}</span>
+              <i class="fa-solid fa-chevron-right go"></i></button>
+            <button (click)="fromMore('cats')"><i class="fa-solid fa-tags"></i><span>Mis categorías</span><i class="fa-solid fa-chevron-right go"></i></button>
+            <button (click)="fromMore('recurring')"><i class="fa-solid fa-rotate"></i><span>Gastos recurrentes</span><i class="fa-solid fa-chevron-right go"></i></button>
+            <button (click)="fromMore('compare')"><i class="fa-solid fa-code-compare"></i><span>Comparar meses</span><i class="fa-solid fa-chevron-right go"></i></button>
+            <button (click)="fromMore('csv')"><i class="fa-solid fa-file-csv"></i><span>Exportar CSV</span><i class="fa-solid fa-chevron-right go"></i></button>
+          </div>
+        </div>
+
+        <!-- Cerrar sesión -->
+        <div class="acc-group" *ngIf="!isGuest()">
+          <button class="logout" (click)="logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Cerrar sesión</button>
+        </div>
+
+        <div class="acc-foot">Gastos · Spider<span *ngIf="isTest()"> · entorno test</span></div>
       </div>
     </p-dialog>
 
@@ -783,6 +857,7 @@ export class AppComponent implements OnInit {
   readonly dark = signal<boolean>(typeof window !== 'undefined' && window.matchMedia
     ? window.matchMedia('(prefers-color-scheme: dark)').matches : true);
   readonly isTest = signal(false);
+  readonly me = signal<Me | null>(null);   // usuario actual (perfil de Google)
 
   readonly month = signal<string>(new Date().toISOString().slice(0, 7));
   readonly categories = signal<Category[]>([]);
@@ -1024,6 +1099,7 @@ export class AppComponent implements OnInit {
     // Decide onboarding vs dashboard: primer ingreso o sin categorías.
     this.api.me().subscribe({
       next: (me: Me) => {
+        this.me.set(me);
         this.api.categories().subscribe({
           next: (cats) => {
             this.categories.set(cats);
@@ -1227,6 +1303,31 @@ export class AppComponent implements OnInit {
     else if (action === 'recurring') this.openRecurring();
     else if (action === 'compare') this.openCompare();
     else if (action === 'csv') this.exportCsv();
+  }
+
+  // ── Mi cuenta / perfil ──
+  avatarBroken = false;
+  isGuest(): boolean { const m = this.me(); return !m || !!m.guest; }
+  displayName(): string {
+    const m = this.me();
+    if (m?.name) return m.name;
+    if (this.isGuest()) return 'Invitado';
+    const e = m?.email || '';
+    return e.includes('@') ? e.split('@')[0] : (e || 'Invitado');
+  }
+  initials(): string {
+    if (this.isGuest()) return '🙂';
+    const parts = this.displayName().trim().split(/\s+/).filter(Boolean);
+    const a = parts[0]?.[0] ?? '';
+    const b = parts.length > 1 ? parts[parts.length - 1][0] : '';
+    return (a + b).toUpperCase() || '·';
+  }
+  logout(): void {
+    this.moreVisible = false;
+    this.api.logout().subscribe({
+      next: () => (window.location.href = '/admin/'),
+      error: () => (window.location.href = '/admin/'),
+    });
   }
 
   imageCount(): number { return this.lastImages.length; }

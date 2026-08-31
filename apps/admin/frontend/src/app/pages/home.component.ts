@@ -27,6 +27,9 @@ type View = 'cards' | 'list';
     .env { font-size: .66rem; font-weight: 800; letter-spacing: .5px; padding: 3px 8px; border-radius: 6px;
            background: #f59e0b; color: #1a1200; text-transform: uppercase; }
     .userchip { display: flex; align-items: center; gap: 10px; }
+    .uava { width: 30px; height: 30px; border-radius: 50%; overflow: hidden; flex: none; display: grid; place-items: center;
+            background: var(--panel-2); color: var(--accent); font-weight: 800; font-size: .9rem; }
+    .uava img { width: 100%; height: 100%; object-fit: cover; }
     .userchip .mail { color: var(--muted); font-size: .9rem; max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .hamb { display: none; }
     .drawer { position: fixed; inset: 0 0 0 auto; width: min(82vw, 320px); background: var(--panel);
@@ -113,7 +116,9 @@ type View = 'cards' | 'list';
         </div>
         <span class="spacer"></span>
         <div class="userchip desktop" *ngIf="auth.user() as u">
-          <span class="mail">{{ u.email }}</span>
+          <span class="uava" *ngIf="u.picture; else uini"><img [src]="u.picture" alt="" referrerpolicy="no-referrer" /></span>
+          <ng-template #uini><span class="uava ini">{{ (u.name || u.email).charAt(0).toUpperCase() }}</span></ng-template>
+          <span class="mail">{{ u.name || u.email }}</span>
           <a *ngIf="u.admin" routerLink="/admin"><p-button label="Panel admin" icon="fa-solid fa-gauge-high" [outlined]="true" size="small" /></a>
           <p-button label="Salir" icon="fa-solid fa-arrow-right-from-bracket" [text]="true" size="small" (onClick)="auth.logout()" />
         </div>
