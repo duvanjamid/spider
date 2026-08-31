@@ -383,7 +383,7 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
                 <span class="dot" [style.background]="e.categoryColor || '#9aa3b2'"></span>
                 <div class="grow">
                   <div>{{ e.merchant || e.description || e.categoryName || 'Gasto' }}</div>
-                  <small>{{ e.categoryName || 'Otros' }} · {{ e.spentOn }}<span *ngIf="e.source === 'scan'"> · 🤖</span><span *ngIf="e.source === 'recurring'"> · 🔁</span><span *ngIf="e.shared" class="shared-tag"> · <i class="fa-solid fa-users"></i> compartido</span></small>
+                  <small>{{ e.categoryName || 'Otros' }} · {{ e.spentOn }}<span *ngIf="e.source === 'scan'"> · 🤖</span><span *ngIf="e.source === 'recurring'"> · 🔁</span><span *ngIf="e.mine === false" class="shared-tag"> · <i class="fa-solid fa-users"></i> de {{ e.sharedBy }}</span><span *ngIf="e.mine !== false && e.shared" class="shared-tag"> · <i class="fa-solid fa-users"></i> compartido</span></small>
                 </div>
                 <span class="amt">{{ fmt(e.amount, e.currency) }}</span>
                 <i class="fa-solid fa-chevron-right" style="color:var(--muted);font-size:.8rem"></i>
@@ -634,6 +634,7 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
         <div class="det-row"><span>Comprado</span><b>{{ fmtDateTime(d.spentAt) }}</b></div>
         <div class="det-row"><span>Registrado</span><b>{{ fmtDateTime(d.registeredAt) }}</b></div>
         <div class="det-row"><span>Origen</span><b>{{ sourceLabel(d.source) }}</b></div>
+        <div class="det-row" *ngIf="d.mine === false"><span>Pagado por</span><b><i class="fa-solid fa-users" style="color:var(--accent)"></i> {{ d.sharedBy }}</b></div>
         <div class="det-row" *ngIf="d.sharedWith?.length"><span>Compartido con</span><b>{{ d.sharedWith?.join(', ') }}</b></div>
         <div class="det-row" *ngIf="d.sharedCategory"><span>Categoría</span><b><i class="fa-solid fa-users" style="color:var(--accent)"></i> compartida con el hogar</b></div>
         <div *ngIf="detailItems().length" style="margin-top:10px">
@@ -673,8 +674,8 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
       </div>
       <ng-template pTemplate="footer">
         <div *ngIf="!editing()" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
-          <p-button label="Eliminar" icon="pi pi-trash" severity="danger" [text]="true" (onClick)="delFromDetail()" />
-          <p-button label="Editar" icon="pi pi-pencil" [outlined]="true" (onClick)="startEdit()" />
+          <p-button *ngIf="detail()?.mine !== false" label="Eliminar" icon="pi pi-trash" severity="danger" [text]="true" (onClick)="delFromDetail()" />
+          <p-button *ngIf="detail()?.mine !== false" label="Editar" icon="pi pi-pencil" [outlined]="true" (onClick)="startEdit()" />
           <p-button label="Cerrar" [text]="true" (onClick)="detailDialog = false" />
         </div>
         <div *ngIf="editing()" style="display:flex;gap:8px;justify-content:flex-end">

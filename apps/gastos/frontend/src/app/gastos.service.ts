@@ -8,7 +8,7 @@ export interface Expense {
   id: number; amount: number; currency: string; merchant: string; description: string; nit: string;
   spentOn: string; spentAt: string; registeredAt: string; source: string;
   categorySlug: string; categoryName: string; categoryColor: string;
-  shared?: boolean; sharedWith?: string[]; sharedCategory?: boolean;
+  shared?: boolean; sharedWith?: string[]; sharedCategory?: boolean; mine?: boolean; sharedBy?: string;
 }
 export interface ConnRow { id: number; email: string; }
 export interface Connections { accepted: ConnRow[]; incoming: ConnRow[]; outgoing: ConnRow[]; }
