@@ -22,7 +22,8 @@
               "src/manifest.webmanifest",
               "src/sw.js",
               "src/icon-192.png",
-              "src/icon-512.png"
+              "src/icon-512.png",
+              "src/logo.svg"
             ],
             "styles": [
               "node_modules/primeicons/primeicons.css",
