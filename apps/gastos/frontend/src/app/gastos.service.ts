@@ -97,6 +97,9 @@ export class GastosService {
   scan(image: string, mediaType: string): Observable<Scan> {
     return this.http.post<Scan>(`${this.base}/scan`, { image, mediaType }, this.opts);
   }
+  scanImages(images: { image: string; mediaType: string }[]): Observable<Scan> {
+    return this.http.post<Scan>(`${this.base}/scan`, { images }, this.opts);
+  }
   scanText(text: string): Observable<Scan> {
     return this.http.post<Scan>(`${this.base}/scan-text`, { text }, this.opts);
   }

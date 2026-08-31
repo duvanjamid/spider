@@ -32,16 +32,40 @@ public class GeminiScanner {
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10)).build();
 
-    /** Escaneo de imagen (foto de recibo). Incluye regiones analizadas. */
+    /** Escaneo de una sola imagen (conveniencia). */
     public Map<String, Object> scan(String base64Image, String mediaType,
+                                    List<Map<String, Object>> categories) throws Exception {
+        Map<String, Object> one = new LinkedHashMap<>();
+        one.put("image", base64Image);
+        one.put("mediaType", mediaType);
+        return scan(List.of(one), categories);
+    }
+
+    /**
+     * Escaneo de 1..N fotos de la MISMA factura (facturas grandes: varias tomas).
+     * Se combinan en un único resultado. Las regiones solo aplican con una imagen.
+     */
+    public Map<String, Object> scan(List<Map<String, Object>> images,
                                     List<Map<String, Object>> categories) throws Exception {
         if (!Env.aiEnabled()) throw new IllegalStateException("IA no configurada (falta GEMINI_API_KEY)");
         ObjectNode root = Json.MAPPER.createObjectNode();
         ArrayNode parts = root.putArray("contents").addObject().putArray("parts");
-        ObjectNode inline = parts.addObject().putObject("inline_data");
-        inline.put("mime_type", mediaType == null ? "image/jpeg" : mediaType);
-        inline.put("data", base64Image);
-        parts.addObject().put("text", prompt(categories, true));
+        int n = 0;
+        for (Map<String, Object> img : images) {
+            Object data = img.get("image");
+            if (data == null || String.valueOf(data).isBlank()) continue;
+            Object mt = img.get("mediaType");
+            ObjectNode inline = parts.addObject().putObject("inline_data");
+            inline.put("mime_type", mt == null || String.valueOf(mt).isBlank() ? "image/jpeg" : String.valueOf(mt));
+            inline.put("data", String.valueOf(data));
+            n++;
+        }
+        String note = n > 1
+                ? "Estas son " + n + " fotos de la MISMA factura (distintas partes de un solo comprobante). "
+                  + "Combínalas en UN ÚNICO resultado: junta TODOS los productos de todas las fotos y usa el "
+                  + "total real del comprobante (no sumes totales repetidos que aparezcan en varias fotos).\n\n"
+                : "";
+        parts.addObject().put("text", note + prompt(categories, n <= 1));
         return call(root);
     }
 
