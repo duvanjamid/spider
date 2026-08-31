@@ -3,6 +3,8 @@ package com.spider.admin.auth;
 import com.ligero.Ligero;
 import com.spider.admin.access.AccessService;
 import com.spider.admin.config.Env;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -25,6 +27,8 @@ import java.util.Map;
  * otros nombres, ajústalos aquí (punto único).
  */
 public final class AuthController {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
     private static final String GOOGLE_AUTH_ENDPOINT =
             "https://accounts.google.com/o/oauth2/v2/auth";
@@ -52,30 +56,23 @@ public final class AuthController {
         });
 
         app.get("/auth/google/callback", ctx -> {
+            String base = Env.get("PUBLIC_BASE_URL", "http://localhost:8080");
             String code = ctx.queryParam("code");
             if (code == null || code.isBlank()) {
-                ctx.status(400).json(Map.of("error", "missing_code"));
+                // Google devolvió un error (o el usuario canceló) → a la pantalla de login.
+                String reason = ctx.queryParam("error");
+                ctx.redirect(base + "/admin/?auth_error=" + enc(reason == null ? "Login cancelado" : reason));
                 return;
             }
-            var session = auth.completeLogin(code);
-            ctx.header("Set-Cookie", auth.cookieName() + "=" + session.token() + COOKIE_ATTRS);
-            ctx.redirect(Env.get("PUBLIC_BASE_URL", "http://localhost:8080") + "/");
-        });
-
-        // Login de desarrollo (sin Google). Desactivado por defecto.
-        app.post("/auth/dev-login", ctx -> {
-            if (!Env.devLoginEnabled()) {
-                ctx.status(404).json(Map.of("error", "not_found"));
-                return;
+            try {
+                var session = auth.completeLogin(code);
+                ctx.header("Set-Cookie", auth.cookieName() + "=" + session.token() + COOKIE_ATTRS);
+                ctx.redirect(base + "/");
+            } catch (Exception e) {
+                // No dejamos un 500 mudo: registramos el detalle y mostramos el motivo en el login.
+                log.error("Fallo en el login con Google: {}", e.getMessage(), e);
+                ctx.redirect(base + "/admin/?auth_error=" + enc(shortReason(e.getMessage())));
             }
-            String email = ctx.queryParam("email");
-            if (email == null || email.isBlank()) {
-                ctx.status(400).json(Map.of("error", "missing_email"));
-                return;
-            }
-            var session = auth.devLogin(email.trim().toLowerCase());
-            ctx.header("Set-Cookie", auth.cookieName() + "=" + session.token() + COOKIE_ATTRS);
-            ctx.json(Map.of("email", session.email(), "admin", access.isAdmin(session.email())));
         });
 
         app.get("/auth/me", ctx -> {
@@ -101,6 +98,13 @@ public final class AuthController {
         m.put("name", profile.name() == null ? "" : profile.name());
         m.put("picture", profile.picture() == null ? "" : profile.picture());
         return m;
+    }
+
+    /** Mensaje corto y legible para mostrar en el login (sin volcar stacktraces). */
+    private static String shortReason(String msg) {
+        if (msg == null || msg.isBlank()) return "No se pudo completar el login. Intenta de nuevo.";
+        String m = msg.replaceAll("\\s+", " ").trim();
+        return m.length() > 200 ? m.substring(0, 200) + "…" : m;
     }
 
     private static String enc(String s) {
