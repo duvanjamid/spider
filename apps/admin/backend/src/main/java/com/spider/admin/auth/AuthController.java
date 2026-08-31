@@ -79,18 +79,28 @@ public final class AuthController {
         });
 
         app.get("/auth/me", ctx -> {
-            String email = auth.emailFromCookie(ctx.header("Cookie"));
-            if (email == null) {
+            var profile = auth.profileFromCookie(ctx.header("Cookie"));
+            if (profile == null) {
                 ctx.status(401).json(Map.of("error", "unauthenticated"));
                 return;
             }
-            ctx.json(Map.of("email", email, "admin", access.isAdmin(email)));
+            ctx.json(meJson(profile));
         });
 
         app.post("/auth/logout", ctx -> {
             ctx.header("Set-Cookie", auth.cookieName() + "=" + COOKIE_ATTRS + "; Max-Age=0");
             ctx.json(Map.of("status", "logged_out"));
         });
+    }
+
+    /** {email, admin, name, picture} del perfil actual (name/picture "" si faltan). */
+    private Map<String, Object> meJson(Sessions.Profile profile) {
+        Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("email", profile.email());
+        m.put("admin", access.isAdmin(profile.email()));
+        m.put("name", profile.name() == null ? "" : profile.name());
+        m.put("picture", profile.picture() == null ? "" : profile.picture());
+        return m;
     }
 
     private static String enc(String s) {
