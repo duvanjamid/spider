@@ -8,7 +8,12 @@ export interface Expense {
   id: number; amount: number; currency: string; merchant: string; description: string; nit: string;
   spentOn: string; spentAt: string; registeredAt: string; source: string;
   categorySlug: string; categoryName: string; categoryColor: string;
+  shared?: boolean; sharedWith?: string[]; sharedCategory?: boolean; mine?: boolean; sharedBy?: string;
 }
+export interface SharedInCategory { id: number; slug: string; name: string; color: string; icon: string; owner: string; }
+export interface ConnRow { id: number; email: string; }
+export interface Connections { accepted: ConnRow[]; incoming: ConnRow[]; outgoing: ConnRow[]; }
+export interface CategoryShare { slug: string; emails: string[]; }
 export interface CatTotal { slug: string; name: string; color: string; total: number; budget: number; }
 export interface Budget { categoryId: number; slug: string; name: string; color: string; amount: number; }
 export interface Recurring {
@@ -41,14 +46,14 @@ export interface Scan {
   regiones: Region[];
 }
 export interface ExpenseItem { name: string; quantity: number | null; unitPrice: number | null; lineTotal: number | null; }
-export interface PriceStore { store: string; minPrice: number; avgPrice: number; lastPrice: number; lastOn: string; count: number; }
-export interface PriceProduct { name: string; categorySlug: string; categoryName: string; stores: PriceStore[]; minPrice: number; maxPrice: number; storeCount: number; cheapestStore: string; }
+export interface PriceStore { store: string; minPrice: number; avgPrice: number; lastPrice: number; lastOn: string; count: number; shared?: boolean; }
+export interface PriceProduct { name: string; categorySlug: string; categoryName: string; stores: PriceStore[]; minPrice: number; maxPrice: number; storeCount: number; cheapestStore: string; shared?: boolean; }
 export interface Me { email: string; guest: boolean; onboarded: boolean; }
 export interface CategoryTemplate { slug: string; name: string; color: string; icon: string; }
 export interface NewExpense {
   amount: number; currency?: string; categoryId?: number | null;
   merchant?: string; description?: string; spentOn?: string; spentAt?: string; nit?: string; source?: string;
-  items?: ScanItem[];
+  items?: ScanItem[]; shareWith?: string[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -104,4 +109,15 @@ export class GastosService {
     return this.http.post<Scan>(`${this.base}/scan-text`, { text }, this.opts);
   }
   health(): Observable<{ env: string }> { return this.http.get<{ env: string }>(`${this.base}/health`, this.opts); }
+
+  // ── Hogar / compartir ──
+  connections(): Observable<Connections> { return this.http.get<Connections>(`${this.base}/connections`, this.opts); }
+  household(): Observable<string[]> { return this.http.get<string[]>(`${this.base}/household`, this.opts); }
+  invite(email: string): Observable<unknown> { return this.http.post(`${this.base}/connections`, { email }, this.opts); }
+  acceptConn(id: number): Observable<unknown> { return this.http.post(`${this.base}/connections/${id}/accept`, {}, this.opts); }
+  removeConn(id: number): Observable<unknown> { return this.http.delete(`${this.base}/connections/${id}`, this.opts); }
+  shareExpense(id: number, emails: string[]): Observable<unknown> { return this.http.put(`${this.base}/expenses/${id}/share`, { emails }, this.opts); }
+  categoryShares(): Observable<CategoryShare[]> { return this.http.get<CategoryShare[]>(`${this.base}/categories/shares`, this.opts); }
+  sharedInCategories(): Observable<SharedInCategory[]> { return this.http.get<SharedInCategory[]>(`${this.base}/categories/shared-in`, this.opts); }
+  shareCategory(slug: string, emails: string[]): Observable<unknown> { return this.http.put(`${this.base}/categories/share`, { slug, emails }, this.opts); }
 }

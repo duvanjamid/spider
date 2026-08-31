@@ -7,6 +7,7 @@ import com.spider.gastos.db.DbConfig;
 import com.spider.gastos.db.Migrations;
 import com.spider.gastos.expense.BudgetService;
 import com.spider.gastos.expense.CategoryService;
+import com.spider.gastos.expense.ConnectionService;
 import com.spider.gastos.expense.ExpenseController;
 import com.spider.gastos.expense.ExpenseService;
 import com.spider.gastos.expense.RecurringService;
@@ -32,11 +33,12 @@ public final class App {
         var categories = new CategoryService(ds);
         var budgets = new BudgetService(ds);
         var recurring = new RecurringService(ds);
+        var connections = new ConnectionService(ds);
         var scanner = new GeminiScanner();
 
         Ligero app = Ligero.create(Env.port());
         HealthController.register(app);
-        new ExpenseController(expenses, categories, budgets, recurring, scanner).register(app);
+        new ExpenseController(expenses, categories, budgets, recurring, scanner, connections).register(app);
 
         log.info("Backend '{}' escuchando en :{} (schema '{}', IA={})",
                 Env.appName(), Env.port(), db.schema(), Env.aiEnabled());

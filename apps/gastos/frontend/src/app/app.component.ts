@@ -8,7 +8,7 @@ import { ChartModule } from 'primeng/chart';
 import { DialogModule } from 'primeng/dialog';
 import { TagModule } from 'primeng/tag';
 import {
-  Budget, Category, CategoryTemplate, Expense, ExpenseItem, GastosService, Me, Monto, PriceProduct,
+  Budget, CategoryShare, Category, CategoryTemplate, Connections, Expense, ExpenseItem, GastosService, Me, Monto, PriceProduct, SharedInCategory,
   Recurring, Region, Scan, ScanItem, Summary, Trend,
 } from './gastos.service';
 
@@ -207,6 +207,11 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
     /* Cada pestaña es su propia página */
     .page { padding-top: 16px; }
 
+    /* Selección de con quién compartir (chips) y etiqueta "compartido" */
+    .chips-sel { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chips-sel .chip { border: 1px solid var(--border); }
+    .shared-tag { color: var(--accent); font-weight: 600; }
+
     /* Precios por producto/tienda */
     .plist { display: flex; flex-direction: column; gap: 12px; }
     .pcard { border: 1px solid var(--border); border-radius: 14px; background: var(--panel); padding: 12px 14px; box-shadow: var(--shadow); }
@@ -373,12 +378,17 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
               </select>
               <span class="muted">{{ filtered().length }} de {{ expenses().length }}</span>
             </div>
+            <div class="seg" *ngIf="household().length" style="margin-bottom:12px">
+              <button [class.on]="movFilter() === 'all'" (click)="movFilter.set('all')">Todos</button>
+              <button [class.on]="movFilter() === 'mine'" (click)="movFilter.set('mine')">Míos</button>
+              <button [class.on]="movFilter() === 'shared'" (click)="movFilter.set('shared')">Compartidos</button>
+            </div>
             <div class="list">
               <div class="row clickable" *ngFor="let e of filtered()" (click)="openDetail(e)">
                 <span class="dot" [style.background]="e.categoryColor || '#9aa3b2'"></span>
                 <div class="grow">
                   <div>{{ e.merchant || e.description || e.categoryName || 'Gasto' }}</div>
-                  <small>{{ e.categoryName || 'Otros' }} · {{ e.spentOn }}<span *ngIf="e.source === 'scan'"> · 🤖</span><span *ngIf="e.source === 'recurring'"> · 🔁</span></small>
+                  <small>{{ e.categoryName || 'Otros' }} · {{ e.spentOn }}<span *ngIf="e.source === 'scan'"> · 🤖</span><span *ngIf="e.source === 'recurring'"> · 🔁</span><span *ngIf="e.mine === false" class="shared-tag"> · <i class="fa-solid fa-users"></i> de {{ e.sharedBy }}</span><span *ngIf="e.mine !== false && e.shared" class="shared-tag"> · <i class="fa-solid fa-users"></i> compartido</span></small>
                 </div>
                 <span class="amt">{{ fmt(e.amount, e.currency) }}</span>
                 <i class="fa-solid fa-chevron-right" style="color:var(--muted);font-size:.8rem"></i>
@@ -413,11 +423,11 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
         <div class="plist">
           <div class="pcard" *ngFor="let p of filteredPrices()">
             <div class="pcard-h">
-              <b>{{ p.name }}</b>
+              <b>{{ p.name }} <i *ngIf="p.shared" class="fa-solid fa-users shared-tag" title="incluye precios del hogar"></i></b>
               <span class="muted" *ngIf="p.storeCount > 1">{{ p.storeCount }} tiendas · ahorro {{ fmt(p.maxPrice - p.minPrice) }}</span>
             </div>
             <div class="pstore" *ngFor="let s of p.stores" [class.best]="s.store === p.cheapestStore && p.storeCount > 1">
-              <span class="pstore-n">{{ s.store }} <small class="muted" *ngIf="s.count > 1">×{{ s.count }}</small></span>
+              <span class="pstore-n">{{ s.store }} <small class="muted" *ngIf="s.count > 1">×{{ s.count }}</small><i *ngIf="s.shared" class="fa-solid fa-users shared-tag" style="margin-left:6px" title="del hogar"></i></span>
               <span class="pstore-p">{{ fmt(s.minPrice) }}<i class="fa-solid fa-arrow-down" *ngIf="s.store === p.cheapestStore && p.storeCount > 1"></i></span>
             </div>
           </div>
@@ -458,11 +468,49 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
     <p-dialog [(visible)]="moreVisible" [modal]="true" [position]="'bottom'" [dismissableMask]="true"
               [style]="{ width: '100%', maxWidth: '600px' }" header="Más">
       <div class="menu">
+        <button (click)="openHome()"><i class="fa-solid fa-house-user"></i><span>Hogar (compartir)</span><i class="fa-solid fa-chevron-right go"></i></button>
         <button (click)="fromMore('cats')"><i class="fa-solid fa-tags"></i><span>Editar categorías</span><i class="fa-solid fa-chevron-right go"></i></button>
         <button (click)="fromMore('recurring')"><i class="fa-solid fa-rotate"></i><span>Gastos recurrentes</span><i class="fa-solid fa-chevron-right go"></i></button>
         <button (click)="fromMore('compare')"><i class="fa-solid fa-code-compare"></i><span>Comparar meses</span><i class="fa-solid fa-chevron-right go"></i></button>
         <button (click)="fromMore('csv')"><i class="fa-solid fa-file-csv"></i><span>Exportar CSV</span><i class="fa-solid fa-chevron-right go"></i></button>
       </div>
+    </p-dialog>
+
+    <!-- ═══ Hogar: conexiones + compartir ═══ -->
+    <p-dialog [(visible)]="homeDialog" [modal]="true" header="Hogar" [dismissableMask]="true" [style]="{ width: '94%', maxWidth: '460px' }">
+      <p class="muted" style="margin-top:0;font-size:.9rem">Comparte gastos y categorías con tu hogar. La otra persona debe aceptar la invitación.</p>
+      <div class="cat-add">
+        <input class="inp" style="flex:1" type="email" [(ngModel)]="inviteEmail" placeholder="correo@gmail.com" (keyup.enter)="sendInvite()" />
+        <p-button label="Invitar" icon="pi pi-user-plus" (onClick)="sendInvite()" [disabled]="!inviteEmail.trim()" />
+      </div>
+      <ng-container *ngIf="conns() as cn">
+        <div *ngIf="cn.incoming.length">
+          <h3>Invitaciones recibidas</h3>
+          <div class="cat-row" *ngFor="let c of cn.incoming">
+            <span style="flex:1">{{ c.email }}</span>
+            <p-button label="Aceptar" size="small" (onClick)="acceptConn(c.id)" />
+            <p-button icon="pi pi-times" [text]="true" severity="danger" size="small" (onClick)="removeConn(c.id)" />
+          </div>
+        </div>
+        <div *ngIf="cn.accepted.length">
+          <h3>Conectados</h3>
+          <div class="cat-row" *ngFor="let c of cn.accepted">
+            <i class="fa-solid fa-circle-check" style="color:var(--accent)"></i>
+            <span style="flex:1">{{ c.email }}</span>
+            <p-button icon="pi pi-trash" [text]="true" severity="danger" size="small" (onClick)="removeConn(c.id)" />
+          </div>
+        </div>
+        <div *ngIf="cn.outgoing.length">
+          <h3>Invitaciones enviadas</h3>
+          <div class="cat-row" *ngFor="let c of cn.outgoing">
+            <span style="flex:1">{{ c.email }} <small class="muted">· pendiente</small></span>
+            <p-button icon="pi pi-times" [text]="true" size="small" (onClick)="removeConn(c.id)" />
+          </div>
+        </div>
+        <p class="muted" *ngIf="!cn.incoming.length && !cn.accepted.length && !cn.outgoing.length" style="text-align:center;padding:16px 0">
+          Aún no tienes conexiones. Invita a alguien por su correo.
+        </p>
+      </ng-container>
     </p-dialog>
 
     <ng-template #noData><p class="muted" style="text-align:center;padding:40px 0">Aún no hay datos este mes.</p></ng-template>
@@ -542,6 +590,15 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
                 </div>
               </div>
             </div>
+            <div class="field full" *ngIf="household().length">
+              <label>Compartir con el hogar</label>
+              <div class="chips-sel">
+                <button type="button" class="chip" *ngFor="let em of household()"
+                        [class.sel]="form.shareWith.includes(em)" (click)="toggleShare(em)">
+                  <i class="fa-solid" [class.fa-user]="!form.shareWith.includes(em)" [class.fa-user-check]="form.shareWith.includes(em)"></i> {{ em }}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -582,6 +639,9 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
         <div class="det-row"><span>Comprado</span><b>{{ fmtDateTime(d.spentAt) }}</b></div>
         <div class="det-row"><span>Registrado</span><b>{{ fmtDateTime(d.registeredAt) }}</b></div>
         <div class="det-row"><span>Origen</span><b>{{ sourceLabel(d.source) }}</b></div>
+        <div class="det-row" *ngIf="d.mine === false"><span>Pagado por</span><b><i class="fa-solid fa-users" style="color:var(--accent)"></i> {{ d.sharedBy }}</b></div>
+        <div class="det-row" *ngIf="d.sharedWith?.length"><span>Compartido con</span><b>{{ d.sharedWith?.join(', ') }}</b></div>
+        <div class="det-row" *ngIf="d.sharedCategory"><span>Categoría</span><b><i class="fa-solid fa-users" style="color:var(--accent)"></i> compartida con el hogar</b></div>
         <div *ngIf="detailItems().length" style="margin-top:10px">
           <span class="muted" style="font-size:.8rem">Productos</span>
           <div class="items">
@@ -606,12 +666,21 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
           <div class="field"><label>Fecha de compra</label><input class="inp" type="date" [(ngModel)]="editForm.spentOn" /></div>
           <div class="field"><label>Establecimiento</label><input class="inp" type="text" [(ngModel)]="editForm.merchant" /></div>
           <div class="field full"><label>Descripción</label><input class="inp" type="text" [(ngModel)]="editForm.description" /></div>
+          <div class="field full" *ngIf="household().length">
+            <label>Compartir con el hogar</label>
+            <div class="chips-sel">
+              <button type="button" class="chip" *ngFor="let em of household()"
+                      [class.sel]="editForm.shareWith.includes(em)" (click)="toggleEditShare(em)">
+                <i class="fa-solid" [class.fa-user]="!editForm.shareWith.includes(em)" [class.fa-user-check]="editForm.shareWith.includes(em)"></i> {{ em }}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
       <ng-template pTemplate="footer">
         <div *ngIf="!editing()" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
-          <p-button label="Eliminar" icon="pi pi-trash" severity="danger" [text]="true" (onClick)="delFromDetail()" />
-          <p-button label="Editar" icon="pi pi-pencil" [outlined]="true" (onClick)="startEdit()" />
+          <p-button *ngIf="detail()?.mine !== false" label="Eliminar" icon="pi pi-trash" severity="danger" [text]="true" (onClick)="delFromDetail()" />
+          <p-button *ngIf="detail()?.mine !== false" label="Editar" icon="pi pi-pencil" [outlined]="true" (onClick)="startEdit()" />
           <p-button label="Cerrar" [text]="true" (onClick)="detailDialog = false" />
         </div>
         <div *ngIf="editing()" style="display:flex;gap:8px;justify-content:flex-end">
@@ -644,9 +713,23 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
         <span style="flex:1">{{ c.name }}</span>
         <input class="inp" style="width:120px" type="number" [value]="budgetFor(c.id)" (change)="setBudget(c.id, $any($event.target).value)"
                placeholder="Presup." title="Presupuesto mensual" />
+        <p-button [icon]="isCategoryShared(c.slug) ? 'pi pi-users' : 'pi pi-user'" [text]="true" size="small"
+                  [severity]="isCategoryShared(c.slug) ? 'success' : 'secondary'"
+                  [disabled]="!household().length" (onClick)="toggleCategoryShare(c.slug)"
+                  [title]="household().length ? (isCategoryShared(c.slug) ? 'Compartida — clic para dejar de compartir' : 'Compartir con el hogar') : 'Conecta a alguien en Hogar para compartir'" />
         <p-button icon="pi pi-pencil" [text]="true" size="small" (onClick)="editCat(c)" />
         <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="delCat(c)" />
       </div>
+
+      <!-- Categorías compartidas conmigo (creadas por el hogar): solo lectura -->
+      <ng-container *ngIf="sharedInCats().length">
+        <h3>Compartidas conmigo</h3>
+        <div class="cat-row" *ngFor="let c of sharedInCats()">
+          <span class="dot" [style.background]="c.color" style="width:12px;height:12px;border-radius:50%"></span>
+          <span style="flex:1">{{ c.name }} <small class="muted">· de {{ c.owner }}</small></span>
+          <i class="fa-solid fa-eye" style="color:var(--muted)" title="Solo lectura (no es tuya)"></i>
+        </div>
+      </ng-container>
     </p-dialog>
 
     <!-- ═══ Recurrentes ═══ -->
@@ -720,6 +803,15 @@ export class AppComponent implements OnInit {
   // Campos planos para el two-way [(visible)] del p-dialog (como el resto de diálogos).
   pickerVisible = false;
   moreVisible = false;
+
+  // Hogar / compartir
+  readonly household = signal<string[]>([]);     // correos conectados (aceptados)
+  readonly conns = signal<Connections | null>(null);
+  readonly catShares = signal<CategoryShare[]>([]);
+  readonly sharedInCats = signal<SharedInCategory[]>([]);   // categorías del hogar compartidas conmigo (solo lectura)
+  readonly movFilter = signal<'all' | 'mine' | 'shared'>('all');   // filtro de movimientos
+  homeDialog = false;
+  inviteEmail = '';
 
   sheetVisible = false;
   readonly sheetState = signal<SheetState>('form');
@@ -844,7 +936,10 @@ export class AppComponent implements OnInit {
   readonly filtered = computed(() => {
     const q = this.query.trim().toLowerCase();
     const cat = this.filterCat;
+    const mf = this.movFilter();
     return this.expenses().filter((e) => {
+      if (mf === 'mine' && e.mine === false) return false;
+      if (mf === 'shared' && !(e.mine === false || e.shared)) return false;
       if (cat && e.categorySlug !== cat) return false;
       if (!q) return true;
       return (e.merchant + ' ' + e.description + ' ' + e.nit + ' ' + e.categoryName).toLowerCase().includes(q);
@@ -925,6 +1020,7 @@ export class AppComponent implements OnInit {
   ngOnInit(): void {
     this.api.aiStatus().subscribe({ next: (s) => this.aiEnabled.set(s.enabled), error: () => {} });
     this.api.health().subscribe({ next: (h) => this.isTest.set(h.env === 'test'), error: () => {} });
+    this.loadHome();
     // Decide onboarding vs dashboard: primer ingreso o sin categorías.
     this.api.me().subscribe({
       next: (me: Me) => {
@@ -985,7 +1081,7 @@ export class AppComponent implements OnInit {
   }
 
   // ── Categorías ──
-  openCats(): void { this.resetCatForm(); this.loadBudgets(); this.catDialog = true; }
+  openCats(): void { this.resetCatForm(); this.loadBudgets(); this.loadHome(); this.catDialog = true; }
   resetCatForm(): void { this.catForm = { id: null, name: '', color: '#6c8cff' }; }
   editCat(c: Category): void { this.catForm = { id: c.id, name: c.name, color: c.color }; }
   saveCat(): void {
@@ -1164,7 +1260,8 @@ export class AppComponent implements OnInit {
     const fecha = this.validDate(s.fecha) ? s.fecha! : new Date().toISOString().slice(0, 10);
     const hora = this.validTime(s.hora) ? s.hora! : '';
     this.form = { amount: s.montos[0]?.valor ?? null, currency: 'COP', categoryId: s.categoriaId ?? null,
-      merchant: s.establecimiento ?? '', nit: s.nit ?? '', description: s.descripcion ?? '', spentOn: fecha, spentTime: hora };
+      merchant: s.establecimiento ?? '', nit: s.nit ?? '', description: s.descripcion ?? '', spentOn: fecha,
+      spentTime: hora, shareWith: [] as string[] };
     this.sheetTab.set('datos');
     this.sheetState.set('form');
   }
@@ -1192,7 +1289,8 @@ export class AppComponent implements OnInit {
     this.api.create({ amount: this.form.amount!, currency: this.form.currency, categoryId,
       merchant: this.form.merchant, description: this.form.description, nit: this.form.nit,
       spentOn: this.form.spentOn, spentAt, source: this.scanned ? 'scan' : 'manual',
-      items: items.length ? items : undefined }).subscribe({
+      items: items.length ? items : undefined,
+      shareWith: this.form.shareWith?.length ? this.form.shareWith : undefined }).subscribe({
       next: () => { this.saving.set(false); this.sheetVisible = false; this.loadCategories(); this.reload(); this.pricesLoaded.set(false); },
       error: () => { this.saving.set(false); alert('No se pudo guardar.'); },
     });
@@ -1212,7 +1310,46 @@ export class AppComponent implements OnInit {
 
   private emptyForm() {
     return { amount: null as number | null, currency: 'COP', categoryId: null as number | null,
-      merchant: '', nit: '', description: '', spentOn: new Date().toISOString().slice(0, 10), spentTime: '' };
+      merchant: '', nit: '', description: '', spentOn: new Date().toISOString().slice(0, 10), spentTime: '',
+      shareWith: [] as string[] };
+  }
+
+  // ── Hogar / compartir ──
+  private loadHome(): void {
+    this.api.household().subscribe({ next: (h) => this.household.set(h), error: () => {} });
+    this.api.categoryShares().subscribe({ next: (s) => this.catShares.set(s), error: () => {} });
+    this.api.sharedInCategories().subscribe({ next: (s) => this.sharedInCats.set(s), error: () => {} });
+  }
+  openHome(): void {
+    this.moreVisible = false; this.homeDialog = true; this.inviteEmail = '';
+    this.api.connections().subscribe({ next: (c) => this.conns.set(c), error: () => {} });
+  }
+  private reloadConns(): void {
+    this.api.connections().subscribe({ next: (c) => this.conns.set(c), error: () => {} });
+    this.loadHome();
+  }
+  sendInvite(): void {
+    const e = this.inviteEmail.trim().toLowerCase();
+    if (!e) return;
+    this.api.invite(e).subscribe({ next: () => { this.inviteEmail = ''; this.reloadConns(); },
+      error: () => alert('No se pudo invitar (revisa el correo).') });
+  }
+  acceptConn(id: number): void { this.api.acceptConn(id).subscribe(() => this.reloadConns()); }
+  removeConn(id: number): void { this.api.removeConn(id).subscribe(() => this.reloadConns()); }
+  // Alterna un correo en la selección de compartir del formulario.
+  toggleShare(email: string): void {
+    const set = new Set(this.form.shareWith);
+    if (set.has(email)) set.delete(email); else set.add(email);
+    this.form.shareWith = Array.from(set);
+  }
+  // Compartir una categoría con todo el hogar (o dejar de compartir).
+  toggleCategoryShare(slug: string): void {
+    const shared = this.isCategoryShared(slug);
+    const emails = shared ? [] : this.household();
+    this.api.shareCategory(slug, emails).subscribe(() => { this.loadHome(); this.reload(); this.pricesLoaded.set(false); });
+  }
+  isCategoryShared(slug: string): boolean {
+    return this.catShares().some((s) => s.slug === slug && s.emails.length > 0);
   }
 
   // ── Detalle de movimiento ──
@@ -1227,17 +1364,24 @@ export class AppComponent implements OnInit {
     if (!d) return;
     const catId = this.categories().find((c) => c.slug === d.categorySlug)?.id ?? null;
     this.editForm = { amount: d.amount, currency: d.currency || 'COP', categoryId: catId,
-      merchant: d.merchant, nit: d.nit, description: d.description, spentOn: d.spentOn, spentTime: '' };
+      merchant: d.merchant, nit: d.nit, description: d.description, spentOn: d.spentOn, spentTime: '',
+      shareWith: [...(d.sharedWith ?? [])] };
     this.editing.set(true);
   }
   cancelEdit(): void { this.editing.set(false); }
+  toggleEditShare(email: string): void {
+    const set = new Set(this.editForm.shareWith);
+    if (set.has(email)) set.delete(email); else set.add(email);
+    this.editForm.shareWith = Array.from(set);
+  }
   saveEdit(): void {
     const d = this.detail();
     if (!d) return;
     this.saving.set(true);
     const f = this.editForm;
     this.api.update(d.id, { amount: f.amount ?? d.amount, currency: f.currency, categoryId: f.categoryId,
-      merchant: f.merchant, description: f.description, nit: f.nit, spentOn: f.spentOn }).subscribe({
+      merchant: f.merchant, description: f.description, nit: f.nit, spentOn: f.spentOn,
+      shareWith: f.shareWith ?? [] }).subscribe({
       next: () => { this.saving.set(false); this.editing.set(false); this.detailDialog = false;
         this.reload(); this.pricesLoaded.set(false); },
       error: () => { this.saving.set(false); alert('No se pudo guardar.'); },
