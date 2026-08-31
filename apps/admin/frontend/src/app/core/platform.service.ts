@@ -26,6 +26,7 @@ export interface HealthInfo {
   app: string;
   schema: string;
   env: string;
+  devLogin?: boolean;
 }
 
 export interface Grant {

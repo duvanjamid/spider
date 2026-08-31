@@ -13,6 +13,8 @@ import com.spider.gastos.expense.ExpenseService;
 import com.spider.gastos.expense.RecurringService;
 import com.spider.gastos.health.HealthController;
 import com.spider.gastos.registry.Registry;
+import com.spider.gastos.session.AuthGuard;
+import com.spider.gastos.session.Identity;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +39,7 @@ public final class App {
         var scanner = new GeminiScanner();
 
         Ligero app = Ligero.create(Env.port());
+        app.use(new AuthGuard(new Identity()));   // sin sesión válida → 401 (nada de invitados)
         HealthController.register(app);
         new ExpenseController(expenses, categories, budgets, recurring, scanner, connections).register(app);
 

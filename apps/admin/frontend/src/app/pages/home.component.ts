@@ -149,12 +149,15 @@ type View = 'cards' | 'list';
         <p class="muted">Inicia sesión para ver las aplicaciones que tienes habilitadas.</p>
         <div class="login-box">
           <p-button label="Entrar con Google" icon="fa-brands fa-google" (onClick)="auth.loginWithGoogle()" />
-          <div class="sep">o, mientras configuramos Google</div>
-          <div class="row">
-            <input pInputText type="email" placeholder="tu-correo@gmail.com" [(ngModel)]="email" (keyup.enter)="doDevLogin()" />
-            <p-button label="Entrar" (onClick)="doDevLogin()" [disabled]="!email" />
-          </div>
-          <small class="muted" *ngIf="error()">{{ error() }}</small>
+          <!-- Dev-login: solo visible cuando el backend lo habilita (AUTH_DEV_LOGIN=true, p.ej. local). -->
+          <ng-container *ngIf="devLogin()">
+            <div class="sep">o, para desarrollo</div>
+            <div class="row">
+              <input pInputText type="email" placeholder="tu-correo@gmail.com" [(ngModel)]="email" (keyup.enter)="doDevLogin()" />
+              <p-button label="Entrar" (onClick)="doDevLogin()" [disabled]="!email" />
+            </div>
+            <small class="muted" *ngIf="error()">{{ error() }}</small>
+          </ng-container>
         </div>
       </div>
 
@@ -237,6 +240,7 @@ export class HomeComponent implements OnInit {
   readonly loaded = signal(false);
   readonly error = signal('');
   readonly isTest = signal(false);
+  readonly devLogin = signal(false);
   readonly menuOpen = signal(false);
   readonly favs = signal<string[]>([]);
   readonly view = signal<View>('cards');
@@ -269,7 +273,10 @@ export class HomeComponent implements OnInit {
 
   ngOnInit(): void {
     this.auth.refresh();
-    this.platform.health().subscribe({ next: (h) => this.isTest.set(h.env === 'test'), error: () => {} });
+    this.platform.health().subscribe({
+      next: (h) => { this.isTest.set(h.env === 'test'); this.devLogin.set(!!h.devLogin); },
+      error: () => {},
+    });
     const v = localStorage.getItem('spider_view');
     if (v === 'list' || v === 'cards') this.view.set(v);
   }
