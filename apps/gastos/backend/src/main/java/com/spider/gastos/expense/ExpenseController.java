@@ -26,10 +26,16 @@ import java.util.Map;
  */
 public final class ExpenseController {
 
-    /** Cuerpo para crear un gasto. spentAt = momento de compra ISO (opcional). items = productos. */
+    /** Cuerpo para crear un gasto. spentAt = momento ISO; items = productos; shareWith = correos del hogar. */
     public record ExpenseInput(Double amount, String currency, Long categoryId,
                                String merchant, String description, String spentOn,
-                               String spentAt, String nit, String source, List<ItemInput> items) {}
+                               String spentAt, String nit, String source, List<ItemInput> items,
+                               List<String> shareWith) {}
+
+    /** Cuerpos de conexiones y compartición. */
+    public record ConnInput(String email) {}
+    public record ShareInput(List<String> emails) {}
+    public record CatShareInput(String slug, List<String> emails) {}
 
     /** Línea de producto del gasto (opcional; suele venir del escaneo). */
     public record ItemInput(String nombre, Double cantidad, Double precioUnitario, Double total) {}
@@ -61,15 +67,30 @@ public final class ExpenseController {
     private final BudgetService budgets;
     private final RecurringService recurring;
     private final GeminiScanner scanner;
+    private final ConnectionService connections;
     private final Identity identity = new Identity();
 
     public ExpenseController(ExpenseService svc, CategoryService categories, BudgetService budgets,
-                             RecurringService recurring, GeminiScanner scanner) {
+                             RecurringService recurring, GeminiScanner scanner, ConnectionService connections) {
         this.svc = svc;
         this.categories = categories;
         this.budgets = budgets;
         this.recurring = recurring;
         this.scanner = scanner;
+        this.connections = connections;
+    }
+
+    /** Filtra los correos a solo los que están conectados (aceptados) con el usuario. */
+    private List<String> onlyConnected(String user, List<String> emails) {
+        if (emails == null || emails.isEmpty()) return List.of();
+        var fam = connections.connected(user);
+        var out = new java.util.ArrayList<String>();
+        for (String e : emails) {
+            if (e == null) continue;
+            String norm = e.trim().toLowerCase();
+            for (String f : fam) if (f.equalsIgnoreCase(norm)) { out.add(f); break; }
+        }
+        return out;
     }
 
     private static final String GUEST = "invitado@spider";
@@ -143,6 +164,7 @@ public final class ExpenseController {
                 }
                 svc.addItems(id, items);
             }
+            if (in.shareWith() != null) svc.shareExpense(user, id, onlyConnected(user, in.shareWith()));
             ctx.status(201).json(Map.of("id", id));
         });
 
@@ -161,12 +183,58 @@ public final class ExpenseController {
             Long catId = in.categoryId() == null ? null : categories.resolveCategoryId(user, in.categoryId(), null);
             svc.update(user, id, in.amount(), in.currency(), catId,
                     nz(in.merchant()), nz(in.description()), in.spentOn(), in.spentAt(), nz(in.nit()));
+            if (in.shareWith() != null) svc.shareExpense(user, id, onlyConnected(user, in.shareWith()));
             ctx.json(Map.of("status", "updated"));
+        });
+
+        // Con quién está compartido un gasto / (re)compartir un gasto.
+        app.get("/expenses/{id}/shares", ctx ->
+                ctx.json(svc.sharesOfExpense(email(ctx.header("Cookie")), Long.parseLong(ctx.pathParam("id")))));
+        app.put("/expenses/{id}/share", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            long id = Long.parseLong(ctx.pathParam("id"));
+            ShareInput in = ctx.body(ShareInput.class);
+            svc.shareExpense(user, id, onlyConnected(user, in == null ? null : in.emails()));
+            ctx.json(Map.of("status", "ok"));
         });
 
         app.delete("/expenses/{id}", ctx -> {
             svc.delete(email(ctx.header("Cookie")), Long.parseLong(ctx.pathParam("id")));
             ctx.json(Map.of("status", "deleted"));
+        });
+
+        // ── Compartir categorías ──
+        app.get("/categories/shares", ctx -> ctx.json(svc.sharedCategories(email(ctx.header("Cookie")))));
+        app.put("/categories/share", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            CatShareInput in = ctx.body(CatShareInput.class);
+            if (in == null || in.slug() == null || in.slug().isBlank()) {
+                ctx.status(400).json(Map.of("error", "slug requerido")); return;
+            }
+            svc.shareCategory(user, in.slug(), onlyConnected(user, in.emails()));
+            ctx.json(Map.of("status", "ok"));
+        });
+
+        // ── Conexiones de hogar ──
+        app.get("/connections", ctx -> ctx.json(connections.overview(email(ctx.header("Cookie")))));
+        app.get("/household", ctx -> ctx.json(connections.connected(email(ctx.header("Cookie")))));
+        app.post("/connections", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            if (GUEST.equals(user)) { ctx.status(403).json(Map.of("error", "inicia sesión para compartir")); return; }
+            ConnInput in = ctx.body(ConnInput.class);
+            if (in == null || in.email() == null || in.email().isBlank()) {
+                ctx.status(400).json(Map.of("error", "correo requerido")); return;
+            }
+            try { connections.invite(user, in.email()); ctx.json(Map.of("status", "invited")); }
+            catch (IllegalArgumentException e) { ctx.status(400).json(Map.of("error", e.getMessage())); }
+        });
+        app.post("/connections/{id}/accept", ctx -> {
+            connections.accept(email(ctx.header("Cookie")), Long.parseLong(ctx.pathParam("id")));
+            ctx.json(Map.of("status", "accepted"));
+        });
+        app.delete("/connections/{id}", ctx -> {
+            connections.remove(email(ctx.header("Cookie")), Long.parseLong(ctx.pathParam("id")));
+            ctx.json(Map.of("status", "removed"));
         });
 
         app.get("/summary", ctx ->

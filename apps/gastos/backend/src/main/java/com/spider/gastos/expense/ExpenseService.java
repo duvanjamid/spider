@@ -27,7 +27,11 @@ public class ExpenseService {
                 SELECT e.id, e.amount, e.currency, e.merchant, e.description, e.nit,
                        e.spent_on, COALESCE(e.spent_at, e.spent_on::timestamptz) AS spent_at,
                        e.created_at, e.source,
-                       c.slug AS cat_slug, c.name AS cat_name, c.color AS cat_color
+                       c.slug AS cat_slug, c.name AS cat_name, c.color AS cat_color,
+                       COALESCE((SELECT array_agg(es.shared_with ORDER BY es.shared_with)
+                                 FROM expense_share es WHERE es.expense_id = e.id), ARRAY[]::text[]) AS shared_with,
+                       EXISTS (SELECT 1 FROM category_share cs
+                               WHERE cs.owner_email = e.owner_email AND cs.slug = c.slug) AS shared_cat
                 FROM expense e LEFT JOIN category c ON c.id = e.category_id
                 WHERE e.owner_email = ? AND to_char(e.spent_on, 'YYYY-MM') = ?
                 ORDER BY COALESCE(e.spent_at, e.spent_on::timestamptz) DESC, e.id DESC
@@ -52,6 +56,11 @@ public class ExpenseService {
                     m.put("categorySlug", nz(rs.getString("cat_slug")));
                     m.put("categoryName", nz(rs.getString("cat_name")));
                     m.put("categoryColor", nz(rs.getString("cat_color")));
+                    List<String> sw = textArray(rs.getArray("shared_with"));
+                    boolean sharedCat = rs.getBoolean("shared_cat");
+                    m.put("sharedWith", sw);
+                    m.put("sharedCategory", sharedCat);
+                    m.put("shared", !sw.isEmpty() || sharedCat);
                     out.add(m);
                 }
             }
@@ -301,23 +310,37 @@ public class ExpenseService {
      */
     public List<Map<String, Object>> prices(String email) {
         String sql = """
-                WITH pts AS (
+                WITH fam AS (
+                  SELECT CASE WHEN requester_email = ? THEN addressee_email ELSE requester_email END AS email
+                  FROM connection
+                  WHERE status = 'accepted' AND (requester_email = ? OR addressee_email = ?)
+                ),
+                pts AS (
                   SELECT ei.name_norm, ei.name,
                          COALESCE(NULLIF(e.merchant, ''), '(sin tienda)') AS store,
                          COALESCE(c.slug, 'otros') AS cat_slug,
                          COALESCE(c.name, 'Sin categoría') AS cat_name,
                          COALESCE(ei.unit_price, ei.line_total / NULLIF(ei.quantity, 0), ei.line_total) AS price,
-                         e.spent_on
+                         e.spent_on,
+                         (e.owner_email <> ?) AS shared_in
                   FROM expense_item ei
                   JOIN expense e ON e.id = ei.expense_id
                   LEFT JOIN category c ON c.id = e.category_id
                   WHERE e.owner_email = ?
+                     OR ( e.owner_email IN (SELECT email FROM fam)
+                          AND ( EXISTS (SELECT 1 FROM expense_share es
+                                        WHERE es.expense_id = e.id AND es.shared_with = ?)
+                             OR EXISTS (SELECT 1 FROM category_share cs
+                                        WHERE cs.slug = c.slug
+                                          AND ( (cs.owner_email = e.owner_email AND cs.shared_with = ?)
+                                             OR (cs.owner_email = ? AND cs.shared_with = e.owner_email) )) ) )
                 )
                 SELECT name_norm,
                        (array_agg(name ORDER BY spent_on DESC))[1] AS name,
                        (array_agg(cat_slug ORDER BY spent_on DESC))[1] AS cat_slug,
                        (array_agg(cat_name ORDER BY spent_on DESC))[1] AS cat_name,
                        store,
+                       bool_or(shared_in) AS shared_store,
                        MIN(price) AS min_price,
                        AVG(price) AS avg_price,
                        (array_agg(price ORDER BY spent_on DESC))[1] AS last_price,
@@ -330,7 +353,7 @@ public class ExpenseService {
                 """;
         Map<String, Map<String, Object>> prod = new LinkedHashMap<>();
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setString(1, email);
+            for (int i = 1; i <= 8; i++) ps.setString(i, email);   // el correo se repite en todos los filtros
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     String norm = rs.getString("name_norm");
@@ -343,9 +366,11 @@ public class ExpenseService {
                         p.put("stores", new ArrayList<Map<String, Object>>());
                         p.put("minPrice", Double.MAX_VALUE);
                         p.put("maxPrice", 0.0);
+                        p.put("shared", false);
                         prod.put(norm, p);
                     }
                     double min = rs.getBigDecimal("min_price").doubleValue();
+                    boolean sharedStore = rs.getBoolean("shared_store");
                     Map<String, Object> st = new LinkedHashMap<>();
                     st.put("store", rs.getString("store"));
                     st.put("minPrice", min);
@@ -353,11 +378,13 @@ public class ExpenseService {
                     st.put("lastPrice", rs.getBigDecimal("last_price").doubleValue());
                     st.put("lastOn", rs.getString("last_on"));
                     st.put("count", rs.getInt("n"));
+                    st.put("shared", sharedStore);
                     @SuppressWarnings("unchecked")
                     List<Map<String, Object>> stores = (List<Map<String, Object>>) p.get("stores");
                     stores.add(st);
                     p.put("minPrice", Math.min((double) p.get("minPrice"), min));
                     p.put("maxPrice", Math.max((double) p.get("maxPrice"), min));
+                    if (sharedStore) p.put("shared", true);
                 }
             }
         } catch (Exception e) { throw new RuntimeException("Error comparando precios", e); }
@@ -372,6 +399,90 @@ public class ExpenseService {
         }
         // Primero los productos comprados en más tiendas (más útiles para comparar).
         out.sort((a, b) -> Integer.compare((int) b.get("storeCount"), (int) a.get("storeCount")));
+        return out;
+    }
+
+    // ══════════════ Compartir con el hogar ══════════════
+
+    /** Reemplaza con quién está compartido un gasto (solo si es del dueño). */
+    public void shareExpense(String owner, long expenseId, List<String> emails) {
+        try (Connection c = ds.getConnection()) {
+            boolean owned;
+            try (PreparedStatement ps = c.prepareStatement("SELECT 1 FROM expense WHERE id=? AND owner_email=?")) {
+                ps.setLong(1, expenseId); ps.setString(2, owner);
+                try (ResultSet rs = ps.executeQuery()) { owned = rs.next(); }
+            }
+            if (!owned) return;
+            try (PreparedStatement del = c.prepareStatement("DELETE FROM expense_share WHERE expense_id=?")) {
+                del.setLong(1, expenseId); del.executeUpdate();
+            }
+            insertShares(c, "INSERT INTO expense_share (expense_id, shared_with) VALUES (?, ?) ON CONFLICT DO NOTHING",
+                    emails, (ps, em) -> { ps.setLong(1, expenseId); ps.setString(2, em); });
+        } catch (Exception e) { throw new RuntimeException("Error compartiendo gasto", e); }
+    }
+
+    /** Reemplaza con quién está compartida una categoría del dueño (por slug). */
+    public void shareCategory(String owner, String slug, List<String> emails) {
+        try (Connection c = ds.getConnection()) {
+            try (PreparedStatement del = c.prepareStatement("DELETE FROM category_share WHERE owner_email=? AND slug=?")) {
+                del.setString(1, owner); del.setString(2, slug); del.executeUpdate();
+            }
+            insertShares(c, "INSERT INTO category_share (owner_email, slug, shared_with) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
+                    emails, (ps, em) -> { ps.setString(1, owner); ps.setString(2, slug); ps.setString(3, em); });
+        } catch (Exception e) { throw new RuntimeException("Error compartiendo categoría", e); }
+    }
+
+    @FunctionalInterface private interface Binder { void bind(PreparedStatement ps, String email) throws java.sql.SQLException; }
+
+    private static void insertShares(Connection c, String sql, List<String> emails, Binder b) throws java.sql.SQLException {
+        if (emails == null || emails.isEmpty()) return;
+        try (PreparedStatement ps = c.prepareStatement(sql)) {
+            for (String em : emails) {
+                if (em == null || em.isBlank()) continue;
+                b.bind(ps, em.trim().toLowerCase());
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        }
+    }
+
+    /** Correos con los que está compartido un gasto del dueño. */
+    public List<String> sharesOfExpense(String owner, long expenseId) {
+        List<String> out = new ArrayList<>();
+        String sql = "SELECT es.shared_with FROM expense_share es JOIN expense e ON e.id=es.expense_id "
+                + "WHERE es.expense_id=? AND e.owner_email=? ORDER BY es.shared_with";
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setLong(1, expenseId); ps.setString(2, owner);
+            try (ResultSet rs = ps.executeQuery()) { while (rs.next()) out.add(rs.getString(1)); }
+        } catch (Exception e) { throw new RuntimeException("Error consultando compartición", e); }
+        return out;
+    }
+
+    /** Categorías del dueño que están compartidas: {slug, emails[]}. */
+    public List<Map<String, Object>> sharedCategories(String owner) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        String sql = "SELECT slug, array_agg(shared_with ORDER BY shared_with) AS emails "
+                + "FROM category_share WHERE owner_email=? GROUP BY slug";
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, owner);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("slug", rs.getString("slug"));
+                    m.put("emails", textArray(rs.getArray("emails")));
+                    out.add(m);
+                }
+            }
+        } catch (Exception e) { throw new RuntimeException("Error consultando categorías compartidas", e); }
+        return out;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> textArray(java.sql.Array arr) throws java.sql.SQLException {
+        List<String> out = new ArrayList<>();
+        if (arr == null) return out;
+        Object o = arr.getArray();
+        if (o instanceof Object[] a) for (Object x : a) if (x != null) out.add(String.valueOf(x));
         return out;
     }
 
