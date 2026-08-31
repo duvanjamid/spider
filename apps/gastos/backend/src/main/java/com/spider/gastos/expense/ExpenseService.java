@@ -93,6 +93,38 @@ public class ExpenseService {
         return day.atStartOfDay();
     }
 
+    /** Edita un gasto del usuario. categoryId se asigna tal cual (null = sin categoría). */
+    public void update(String email, long id, Double amount, String currency, Long categoryId,
+                       String merchant, String description, String spentOn, String spentAt, String nit) {
+        LocalDate day = spentOn == null || spentOn.isBlank() ? null : LocalDate.parse(spentOn);
+        java.time.LocalDateTime moment = spentAt == null || spentAt.isBlank() ? null : parseMoment(spentAt, day == null ? LocalDate.now() : day);
+        String sql = """
+                UPDATE expense SET
+                    amount      = COALESCE(?, amount),
+                    currency    = COALESCE(?, currency),
+                    category_id = ?,
+                    merchant    = ?,
+                    description = ?,
+                    nit         = ?,
+                    spent_on    = COALESCE(?, spent_on),
+                    spent_at    = COALESCE(?, spent_at)
+                WHERE id = ? AND owner_email = ?
+                """;
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            if (amount == null) ps.setNull(1, java.sql.Types.NUMERIC); else ps.setDouble(1, amount);
+            ps.setString(2, currency == null || currency.isBlank() ? null : currency);
+            ps.setObject(3, categoryId);
+            ps.setString(4, merchant);
+            ps.setString(5, description);
+            ps.setString(6, nit);
+            ps.setObject(7, day);
+            ps.setObject(8, moment);
+            ps.setLong(9, id);
+            ps.setString(10, email);
+            ps.executeUpdate();
+        } catch (Exception e) { throw new RuntimeException("Error editando gasto", e); }
+    }
+
     public void delete(String email, long id) {
         try (Connection c = ds.getConnection();
              PreparedStatement ps = c.prepareStatement("DELETE FROM expense WHERE id = ? AND owner_email = ?")) {

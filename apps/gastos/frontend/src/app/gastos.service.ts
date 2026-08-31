@@ -87,6 +87,7 @@ export class GastosService {
   }
   expenses(month: string): Observable<Expense[]> { return this.http.get<Expense[]>(`${this.base}/expenses?month=${month}`, this.opts); }
   create(e: NewExpense): Observable<{ id: number }> { return this.http.post<{ id: number }>(`${this.base}/expenses`, e, this.opts); }
+  update(id: number, e: NewExpense): Observable<unknown> { return this.http.put(`${this.base}/expenses/${id}`, e, this.opts); }
   remove(id: number): Observable<unknown> { return this.http.delete(`${this.base}/expenses/${id}`, this.opts); }
   itemsOf(id: number): Observable<ExpenseItem[]> { return this.http.get<ExpenseItem[]>(`${this.base}/expenses/${id}/items`, this.opts); }
   prices(): Observable<PriceProduct[]> { return this.http.get<PriceProduct[]>(`${this.base}/prices`, this.opts); }

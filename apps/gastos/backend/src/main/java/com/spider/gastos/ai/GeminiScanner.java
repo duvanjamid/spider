@@ -137,9 +137,14 @@ public class GeminiScanner {
                 - "productos": si la factura lista ítems, extrae CADA línea con "nombre" (corto, el
                   producto en sí, sin códigos), "cantidad", "precioUnitario" (precio por unidad) y
                   "total" de la línea. Números sin separador de miles. Si no hay detalle de productos, deja [].
-                - "categoriaId"/"categoriaNombre": elige de esta lista del usuario (id: nombre): %s
-                - Si NINGUNA categoría aplica, deja categoriaId/categoriaNombre en null y propón un
-                  nombre en "categoriaSugerida".
+                - "categoriaId"/"categoriaNombre": elige de la lista del usuario SOLO si hay una que
+                  encaje ESPECÍFICAMENTE con la compra (id: nombre): %s
+                  NUNCA uses una categoría genérica de cajón ("Otros", "Varios", "General",
+                  "Misceláneos") como coincidencia: son el último recurso, no una respuesta.
+                - Si NINGUNA categoría específica aplica, deja categoriaId y categoriaNombre en null y
+                  SIEMPRE propón en "categoriaSugerida" un nombre corto y específico para el tipo de
+                  compra (p. ej. "Mascotas", "Farmacia", "Gasolina", "Restaurantes", "Papelería"),
+                  en vez de mandarla a "Otros".
                 - Si NO es un comprobante legible o no hay montos, pon "identificado": false.
                 %s""".formatted(regionsSpec, cats.toString().trim(), regionsRule);
     }

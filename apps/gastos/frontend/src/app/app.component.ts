@@ -568,8 +568,9 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
     </p-dialog>
 
     <!-- ═══ Detalle de movimiento ═══ -->
-    <p-dialog [(visible)]="detailDialog" [modal]="true" header="Detalle del gasto" [dismissableMask]="true" [style]="{ width: '92%', maxWidth: '460px' }">
-      <div class="det" *ngIf="detail() as d">
+    <p-dialog [(visible)]="detailDialog" [modal]="true" [header]="editing() ? 'Editar gasto' : 'Detalle del gasto'" [dismissableMask]="true" [style]="{ width: '92%', maxWidth: '460px' }">
+      <div *ngIf="detail() as d">
+        <div class="det" *ngIf="!editing()">
         <div class="det-amt">
           <span class="dot" [style.background]="d.categoryColor || '#9aa3b2'"></span>
           {{ fmt(d.amount, d.currency) }}
@@ -590,10 +591,33 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
             </div>
           </div>
         </div>
+        </div>
+
+        <!-- Edición del movimiento -->
+        <div class="form-grid" *ngIf="editing()">
+          <div class="field">
+            <label>Categoría</label>
+            <select class="sel" [(ngModel)]="editForm.categoryId">
+              <option [ngValue]="null">Sin categoría</option>
+              <option *ngFor="let c of categories()" [ngValue]="c.id">{{ c.name }}</option>
+            </select>
+          </div>
+          <div class="field"><label>Monto</label><input class="inp" type="number" [(ngModel)]="editForm.amount" /></div>
+          <div class="field"><label>Fecha de compra</label><input class="inp" type="date" [(ngModel)]="editForm.spentOn" /></div>
+          <div class="field"><label>Establecimiento</label><input class="inp" type="text" [(ngModel)]="editForm.merchant" /></div>
+          <div class="field full"><label>Descripción</label><input class="inp" type="text" [(ngModel)]="editForm.description" /></div>
+        </div>
       </div>
       <ng-template pTemplate="footer">
-        <p-button label="Eliminar" icon="pi pi-trash" severity="danger" [text]="true" (onClick)="delFromDetail()" />
-        <p-button label="Cerrar" (onClick)="detailDialog = false" />
+        <div *ngIf="!editing()" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+          <p-button label="Eliminar" icon="pi pi-trash" severity="danger" [text]="true" (onClick)="delFromDetail()" />
+          <p-button label="Editar" icon="pi pi-pencil" [outlined]="true" (onClick)="startEdit()" />
+          <p-button label="Cerrar" [text]="true" (onClick)="detailDialog = false" />
+        </div>
+        <div *ngIf="editing()" style="display:flex;gap:8px;justify-content:flex-end">
+          <p-button label="Cancelar" [text]="true" (onClick)="cancelEdit()" />
+          <p-button label="Guardar" icon="pi pi-check" (onClick)="saveEdit()" [loading]="saving()" />
+        </div>
       </ng-template>
     </p-dialog>
 
@@ -718,6 +742,8 @@ export class AppComponent implements OnInit {
   detailDialog = false;
   readonly detail = signal<Expense | null>(null);
   readonly detailItems = signal<ExpenseItem[]>([]);   // productos del gasto abierto
+  readonly editing = signal(false);                   // modo edición del movimiento
+  editForm = this.emptyForm();
 
   // Comparativa de precios por producto/tienda.
   readonly prices = signal<PriceProduct[]>([]);
@@ -1188,8 +1214,31 @@ export class AppComponent implements OnInit {
 
   // ── Detalle de movimiento ──
   openDetail(e: Expense): void {
-    this.detail.set(e); this.detailItems.set([]); this.detailDialog = true;
+    this.detail.set(e); this.detailItems.set([]); this.editing.set(false); this.detailDialog = true;
     this.api.itemsOf(e.id).subscribe({ next: (it) => this.detailItems.set(it), error: () => {} });
+  }
+
+  // Editar el movimiento (al menos la categoría) sin volver a crearlo.
+  startEdit(): void {
+    const d = this.detail();
+    if (!d) return;
+    const catId = this.categories().find((c) => c.slug === d.categorySlug)?.id ?? null;
+    this.editForm = { amount: d.amount, currency: d.currency || 'COP', categoryId: catId,
+      merchant: d.merchant, nit: d.nit, description: d.description, spentOn: d.spentOn, spentTime: '' };
+    this.editing.set(true);
+  }
+  cancelEdit(): void { this.editing.set(false); }
+  saveEdit(): void {
+    const d = this.detail();
+    if (!d) return;
+    this.saving.set(true);
+    const f = this.editForm;
+    this.api.update(d.id, { amount: f.amount ?? d.amount, currency: f.currency, categoryId: f.categoryId,
+      merchant: f.merchant, description: f.description, nit: f.nit, spentOn: f.spentOn }).subscribe({
+      next: () => { this.saving.set(false); this.editing.set(false); this.detailDialog = false;
+        this.reload(); this.pricesLoaded.set(false); },
+      error: () => { this.saving.set(false); alert('No se pudo guardar.'); },
+    });
   }
 
   openPrices(): void { this.tab.set(4); if (!this.pricesLoaded()) this.loadPrices(); }

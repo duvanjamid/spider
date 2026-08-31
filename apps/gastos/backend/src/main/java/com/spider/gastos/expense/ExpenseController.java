@@ -150,6 +150,17 @@ public final class ExpenseController {
         // Comparativa de precios por producto y tienda.
         app.get("/prices", ctx -> ctx.json(svc.prices(email(ctx.header("Cookie")))));
 
+        app.put("/expenses/{id}", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            long id = Long.parseLong(ctx.pathParam("id"));
+            ExpenseInput in = ctx.body(ExpenseInput.class);
+            if (in == null) { ctx.status(400).json(Map.of("error", "cuerpo vacío")); return; }
+            Long catId = in.categoryId() == null ? null : categories.resolveCategoryId(user, in.categoryId(), null);
+            svc.update(user, id, in.amount(), in.currency(), catId,
+                    nz(in.merchant()), nz(in.description()), in.spentOn(), in.spentAt(), nz(in.nit()));
+            ctx.json(Map.of("status", "updated"));
+        });
+
         app.delete("/expenses/{id}", ctx -> {
             svc.delete(email(ctx.header("Cookie")), Long.parseLong(ctx.pathParam("id")));
             ctx.json(Map.of("status", "deleted"));
