@@ -1033,7 +1033,8 @@ export class AppComponent implements OnInit {
           error: () => { this.loadBudgets(); this.reload(); },
         });
       },
-      error: () => { this.loadCategories(); this.loadBudgets(); this.reload(); },
+      // Sin sesión válida (401): ya no hay invitados → al login de la plataforma.
+      error: () => { window.location.href = '/admin/'; },
     });
   }
 

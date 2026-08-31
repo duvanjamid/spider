@@ -22,7 +22,8 @@ public final class HealthController {
                 "status", "UP",
                 "app", Env.appName(),
                 "schema", Env.dbSchema(),
-                "env", Env.environment()
+                "env", Env.environment(),
+                "devLogin", Env.devLoginEnabled()
         )));
     }
 }
