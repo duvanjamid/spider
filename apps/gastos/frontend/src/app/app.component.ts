@@ -1,4 +1,4 @@
-import { Component, ElementRef, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, OnDestroy, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { NgFor, NgIf } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { timeout } from 'rxjs';
@@ -465,6 +465,57 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
         </div>
       </section>
 
+      <!-- ═══ Página: Mi cuenta ═══ -->
+      <section class="page" *ngIf="tab() === 5">
+        <div class="account">
+          <!-- Tarjeta de perfil (nombre/foto de Google) -->
+          <div class="profile">
+            <div class="pf-cover"></div>
+            <div class="pf-body">
+              <div class="pf-avatar">
+                <img *ngIf="me()?.picture && !avatarBroken" [src]="me()?.picture" alt=""
+                     (error)="avatarBroken = true" referrerpolicy="no-referrer" />
+                <span *ngIf="!me()?.picture || avatarBroken">{{ initials() }}</span>
+              </div>
+              <div class="pf-name">{{ displayName() }}</div>
+              <div class="pf-mail" *ngIf="me()?.email && !isGuest()">{{ me()?.email }}</div>
+              <div class="pf-chip" *ngIf="!isGuest()"><i class="fa-brands fa-google"></i> Conectado con Google</div>
+              <div class="pf-chip guest" *ngIf="isGuest()"><i class="fa-solid fa-user-clock"></i> Modo invitado</div>
+            </div>
+          </div>
+
+          <!-- Invitado: entrar con Google -->
+          <div class="acc-cta" *ngIf="isGuest()">
+            <a href="/admin/" style="text-decoration:none">
+              <p-button label="Entrar con Google" icon="fa-brands fa-google" [style]="{ width: '100%' }" />
+            </a>
+            <p class="muted" style="text-align:center;font-size:.82rem;margin:8px 4px 0">
+              Inicia sesión para guardar tus gastos y compartir con tu hogar.</p>
+          </div>
+
+          <!-- Herramientas -->
+          <div class="acc-group">
+            <div class="acc-title">Gestión</div>
+            <div class="menu">
+              <button (click)="openHome()"><i class="fa-solid fa-house-user"></i><span>Hogar (compartir)</span>
+                <span class="badge" *ngIf="conns()?.incoming?.length">{{ conns()?.incoming?.length }}</span>
+                <i class="fa-solid fa-chevron-right go"></i></button>
+              <button (click)="fromMore('cats')"><i class="fa-solid fa-tags"></i><span>Mis categorías</span><i class="fa-solid fa-chevron-right go"></i></button>
+              <button (click)="fromMore('recurring')"><i class="fa-solid fa-rotate"></i><span>Gastos recurrentes</span><i class="fa-solid fa-chevron-right go"></i></button>
+              <button (click)="fromMore('compare')"><i class="fa-solid fa-code-compare"></i><span>Comparar meses</span><i class="fa-solid fa-chevron-right go"></i></button>
+              <button (click)="fromMore('csv')"><i class="fa-solid fa-file-csv"></i><span>Exportar CSV</span><i class="fa-solid fa-chevron-right go"></i></button>
+            </div>
+          </div>
+
+          <!-- Cerrar sesión -->
+          <div class="acc-group" *ngIf="!isGuest()">
+            <button class="logout" (click)="logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Cerrar sesión</button>
+          </div>
+
+          <div class="acc-foot">Gastos · Spider<span *ngIf="isTest()"> · entorno test</span></div>
+        </div>
+      </section>
+
       <!-- ═══ Navegación inferior + botón central de escaneo ═══ -->
       <nav class="bnav">
         <button class="bnav-item" [class.on]="tab() === 0" (click)="tab.set(0)">
@@ -475,7 +526,7 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
           <i class="fa-solid fa-plus"></i></button>
         <button class="bnav-item" [class.on]="tab() === 4" (click)="openPrices()">
           <i class="fa-solid fa-tags"></i><span>Precios</span></button>
-        <button class="bnav-item" (click)="moreVisible = true" aria-label="Mi cuenta">
+        <button class="bnav-item" [class.on]="tab() === 5" (click)="goTab(5)" aria-label="Mi cuenta">
           <span class="bnav-ava" *ngIf="me()?.picture && !avatarBroken">
             <img [src]="me()?.picture" alt="" (error)="avatarBroken = true" referrerpolicy="no-referrer" /></span>
           <i class="fa-solid fa-circle-user" *ngIf="!me()?.picture || avatarBroken"></i>
@@ -495,58 +546,6 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
           <i class="fa-solid fa-camera"></i><b>Tomar foto</b><small>Cámara</small></button>
         <button (click)="uploadImage()" [disabled]="!aiEnabled()">
           <i class="fa-solid fa-image"></i><b>Subir imagen</b><small>Galería · hasta 3</small></button>
-      </div>
-    </p-dialog>
-
-    <!-- ═══ Hoja «Mi cuenta»: perfil + herramientas + salir ═══ -->
-    <p-dialog [(visible)]="moreVisible" [modal]="true" [position]="'bottom'" [dismissableMask]="true"
-              [style]="{ width: '100%', maxWidth: '600px' }" header="Mi cuenta">
-      <div class="account">
-        <!-- Tarjeta de perfil (nombre/foto de Google) -->
-        <div class="profile">
-          <div class="pf-cover"></div>
-          <div class="pf-body">
-            <div class="pf-avatar">
-              <img *ngIf="me()?.picture && !avatarBroken" [src]="me()?.picture" alt=""
-                   (error)="avatarBroken = true" referrerpolicy="no-referrer" />
-              <span *ngIf="!me()?.picture || avatarBroken">{{ initials() }}</span>
-            </div>
-            <div class="pf-name">{{ displayName() }}</div>
-            <div class="pf-mail" *ngIf="me()?.email && !isGuest()">{{ me()?.email }}</div>
-            <div class="pf-chip" *ngIf="!isGuest()"><i class="fa-brands fa-google"></i> Conectado con Google</div>
-            <div class="pf-chip guest" *ngIf="isGuest()"><i class="fa-solid fa-user-clock"></i> Modo invitado</div>
-          </div>
-        </div>
-
-        <!-- Invitado: entrar con Google -->
-        <div class="acc-cta" *ngIf="isGuest()">
-          <a href="/admin/" style="text-decoration:none">
-            <p-button label="Entrar con Google" icon="fa-brands fa-google" [style]="{ width: '100%' }" />
-          </a>
-          <p class="muted" style="text-align:center;font-size:.82rem;margin:8px 4px 0">
-            Inicia sesión para guardar tus gastos y compartir con tu hogar.</p>
-        </div>
-
-        <!-- Herramientas -->
-        <div class="acc-group">
-          <div class="acc-title">Gestión</div>
-          <div class="menu">
-            <button (click)="openHome()"><i class="fa-solid fa-house-user"></i><span>Hogar (compartir)</span>
-              <span class="badge" *ngIf="conns()?.incoming?.length">{{ conns()?.incoming?.length }}</span>
-              <i class="fa-solid fa-chevron-right go"></i></button>
-            <button (click)="fromMore('cats')"><i class="fa-solid fa-tags"></i><span>Mis categorías</span><i class="fa-solid fa-chevron-right go"></i></button>
-            <button (click)="fromMore('recurring')"><i class="fa-solid fa-rotate"></i><span>Gastos recurrentes</span><i class="fa-solid fa-chevron-right go"></i></button>
-            <button (click)="fromMore('compare')"><i class="fa-solid fa-code-compare"></i><span>Comparar meses</span><i class="fa-solid fa-chevron-right go"></i></button>
-            <button (click)="fromMore('csv')"><i class="fa-solid fa-file-csv"></i><span>Exportar CSV</span><i class="fa-solid fa-chevron-right go"></i></button>
-          </div>
-        </div>
-
-        <!-- Cerrar sesión -->
-        <div class="acc-group" *ngIf="!isGuest()">
-          <button class="logout" (click)="logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Cerrar sesión</button>
-        </div>
-
-        <div class="acc-foot">Gastos · Spider<span *ngIf="isTest()"> · entorno test</span></div>
       </div>
     </p-dialog>
 
@@ -849,7 +848,7 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
     </p-dialog>
   `,
 })
-export class AppComponent implements OnInit {
+export class AppComponent implements OnInit, OnDestroy {
   private api = inject(GastosService);
   @ViewChild('file') fileInput!: ElementRef<HTMLInputElement>;
   @ViewChild('camera') cameraInput!: ElementRef<HTMLInputElement>;
@@ -872,12 +871,11 @@ export class AppComponent implements OnInit {
   readonly templates = signal<CategoryTemplate[]>([]);
   readonly chosen = signal<string[]>([]);
 
-  // Navegación inferior (0=Resumen, 1=Categorías, 2=Tendencia, 3=Movimientos)
+  // Navegación inferior (0=Estatus, 3=Movimientos, 4=Precios, 5=Mi cuenta)
   readonly tab = signal(0);
-  // Hoja «Registrar gasto» (manual / texto / cámara / galería) y menú «Más».
+  // Hoja «Registrar gasto» (manual / texto / cámara / galería).
   // Campos planos para el two-way [(visible)] del p-dialog (como el resto de diálogos).
   pickerVisible = false;
-  moreVisible = false;
 
   // Hogar / compartir
   readonly household = signal<string[]>([]);     // correos conectados (aceptados)
@@ -1112,7 +1110,47 @@ export class AppComponent implements OnInit {
       // Sin sesión válida (401): ya no hay invitados → al login de la plataforma.
       error: () => { window.location.href = '/admin/'; },
     });
+
+    // Navegación por gestos: el botón/gesto «atrás» del móvil cierra diálogos o
+    // vuelve a Estatus en vez de cerrar la app. Mantenemos un estado «centinela».
+    if (typeof window !== 'undefined') {
+      history.pushState({ spider: true }, '');
+      window.addEventListener('popstate', this.onPopState);
+    }
   }
+
+  ngOnDestroy(): void {
+    if (typeof window !== 'undefined') window.removeEventListener('popstate', this.onPopState);
+  }
+
+  /** Empuja un estado centinela para «consumir» el próximo gesto de atrás. */
+  private pushGuard(): void { try { history.pushState({ spider: true }, ''); } catch { /* noop */ } }
+
+  /** Cierra el diálogo/hoja abierto de más «arriba»; true si cerró alguno. */
+  private closeTopOverlay(): boolean {
+    if (this.cmpDialog) { this.cmpDialog = false; return true; }
+    if (this.recDialog) { this.recDialog = false; return true; }
+    if (this.catDialog) { this.catDialog = false; return true; }
+    if (this.textDialog) { this.textDialog = false; return true; }
+    if (this.detailDialog) { this.detailDialog = false; return true; }
+    if (this.sheetVisible) { this.sheetVisible = false; return true; }
+    if (this.homeDialog) { this.homeDialog = false; return true; }
+    if (this.pickerVisible) { this.pickerVisible = false; return true; }
+    return false;
+  }
+
+  /**
+   * Gesto/botón atrás del móvil: cierra el diálogo abierto o vuelve a Estatus,
+   * en vez de cerrar la app. Siempre re-armamos el centinela para que el gesto
+   * nunca cierre la PWA (el usuario sale con el botón de inicio del sistema).
+   */
+  private onPopState = (): void => {
+    if (!this.closeTopOverlay() && this.tab() !== 0) this.tab.set(0);
+    this.pushGuard();
+  };
+
+  /** Cambia de pestaña inferior (Estatus/Movimientos/Precios/Cuenta). */
+  goTab(n: number): void { this.tab.set(n); }
 
   // ── Onboarding ──
   private startOnboarding(): void {
@@ -1297,9 +1335,8 @@ export class AppComponent implements OnInit {
   uploadImage(): void { this.pickerVisible = false; this.fileInput?.nativeElement.click(); }
   // "Otra foto": cierra la hoja de resultado y vuelve a ofrecer las opciones.
   pickAgain(): void { this.sheetVisible = false; this.openRegister(); }
-  // Menú «Más»: cierra la hoja y ejecuta la acción elegida.
+  // Herramientas de la página «Mi cuenta»: abre el diálogo correspondiente.
   fromMore(action: 'cats' | 'recurring' | 'compare' | 'csv'): void {
-    this.moreVisible = false;
     if (action === 'cats') this.openCats();
     else if (action === 'recurring') this.openRecurring();
     else if (action === 'compare') this.openCompare();
@@ -1324,7 +1361,6 @@ export class AppComponent implements OnInit {
     return (a + b).toUpperCase() || '·';
   }
   logout(): void {
-    this.moreVisible = false;
     this.api.logout().subscribe({
       next: () => (window.location.href = '/admin/'),
       error: () => (window.location.href = '/admin/'),
@@ -1423,7 +1459,7 @@ export class AppComponent implements OnInit {
     this.api.sharedInCategories().subscribe({ next: (s) => this.sharedInCats.set(s), error: () => {} });
   }
   openHome(): void {
-    this.moreVisible = false; this.homeDialog = true; this.inviteEmail = '';
+    this.homeDialog = true; this.inviteEmail = '';
     this.api.connections().subscribe({ next: (c) => this.conns.set(c), error: () => {} });
   }
   private reloadConns(): void {
