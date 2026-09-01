@@ -41,7 +41,10 @@ x-common-env: &common-env
   GEMINI_API_KEY: ${GEMINI_API_KEY:-}
   GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
   PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://spider.muvatec.com}
-  JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
+  # Zona horaria de la app (por defecto Colombia, GMT-5). Así LocalDate.now()/
+  # YearMonth.now() del backend siguen la hora del usuario y no la UTC del server.
+  TZ: ${TZ:-America/Bogota}
+  JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0 -Duser.timezone=${TZ:-America/Bogota}"
 
 services:
   # ── Gateway: ÚNICO servicio expuesto. Enruta /<app> y /<app>-api. ──
