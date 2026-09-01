@@ -51,8 +51,15 @@ html, body {
 img, svg, canvas, table { max-width: 100%; }
 h3 { margin: 18px 0 10px; }
 
-// ── Mapa (Leaflet) — estilo moderno ──
+// ── Mapa (Leaflet) — estilo moderno + tinte verde temático ──
 .leaflet-container { background: var(--bg-2); font: inherit; }
+// Teselas más vivas y con el color de la app (mezcla suave sobre las calles).
+.leaflet-tile-pane { filter: saturate(1.18) contrast(1.02); }
+.leaflet-container::after {
+  content: ''; position: absolute; inset: 0; z-index: 250; pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 0%, #22c55e, #0f766e 72%);
+  mix-blend-mode: soft-light; opacity: .5;
+}
 .leaflet-control-zoom a { background: var(--panel) !important; color: var(--fg) !important; border-color: var(--border) !important; }
 .leaflet-bar { border: none !important; box-shadow: var(--shadow) !important; border-radius: 12px !important; overflow: hidden; }
 
