@@ -173,6 +173,15 @@ type Sheet = 'none' | 'report' | 'detail' | 'profile';
     /* Mapa: z-index:0 confina los z-index internos de Leaflet (hasta 1000). */
     .map { position: absolute; inset: 0; z-index: 0; }
     :host ::ng-deep .leaflet-container { background: var(--bg); font-family: inherit; }
+    /* Mapa temático «estilo Waze»: teselas más vivas + tinte rojo de la app. */
+    :host ::ng-deep .leaflet-tile-pane { filter: saturate(1.2) contrast(1.03); }
+    :host ::ng-deep .leaflet-container::after {
+      content: ''; position: absolute; inset: 0; z-index: 250; pointer-events: none;
+      background: radial-gradient(120% 90% at 50% 0%, #ef4444, #b91c1c 70%);
+      mix-blend-mode: soft-light; opacity: .58;
+    }
+    :host.dark ::ng-deep .leaflet-container::after,
+    :host ::ng-deep .app.dark .leaflet-container::after { opacity: .5; }
 
     .chip { display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 12px; border: none;
       border-radius: 999px; background: var(--panel); color: var(--ink); box-shadow: var(--shadow); cursor: pointer;
@@ -490,9 +499,11 @@ export class AppComponent implements OnInit, AfterViewInit {
 
   // ─── helpers de presentación ───
   private tileUrl(): string {
+    // Mapa "estilo Waze": calles coloridas (voyager) de día, oscuro de noche.
+    // El tinte rojo temático se aplica por CSS sobre las teselas.
     return this.dark()
       ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+      : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
   }
   private prefersDark(): boolean {
     return typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
