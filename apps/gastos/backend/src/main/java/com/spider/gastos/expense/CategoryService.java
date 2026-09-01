@@ -199,6 +199,19 @@ public class CategoryService {
 
     private static boolean blank(String s) { return s == null || s.isBlank(); }
 
+    /** Devuelve [slug, name] de una categoría del usuario (por id o slug); null si no existe. */
+    public String[] slugAndName(String email, Long id, String slug) {
+        String sql = "SELECT slug, name FROM category WHERE owner_email = ? AND (id = ? OR slug = ?) LIMIT 1";
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, email);
+            ps.setObject(2, id);
+            ps.setString(3, slug);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? new String[]{ rs.getString("slug"), rs.getString("name") } : null;
+            }
+        } catch (Exception e) { throw new RuntimeException("Error resolviendo categoría", e); }
+    }
+
     /** Valida que la categoría pertenezca al usuario; devuelve su id o null. */
     public Long resolveCategoryId(String email, Long categoryId, String slug) {
         String sql = "SELECT id FROM category WHERE owner_email = ? AND (id = ? OR slug = ?) LIMIT 1";
