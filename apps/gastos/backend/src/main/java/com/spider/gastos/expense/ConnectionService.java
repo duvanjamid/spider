@@ -49,6 +49,16 @@ public class ConnectionService {
         } catch (Exception e) { throw new RuntimeException("Error aceptando", e); }
     }
 
+    /** Correo de la otra parte de una conexión (para notificar); null si no aplica. */
+    public String partnerEmail(long id, String user) {
+        String sql = "SELECT CASE WHEN requester_email = ? THEN addressee_email ELSE requester_email END "
+                + "FROM connection WHERE id = ? AND (requester_email = ? OR addressee_email = ?)";
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, user); ps.setLong(2, id); ps.setString(3, user); ps.setString(4, user);
+            try (ResultSet rs = ps.executeQuery()) { return rs.next() ? rs.getString(1) : null; }
+        } catch (Exception e) { throw new RuntimeException("Error consultando conexión", e); }
+    }
+
     /** Acepta una invitación recibida (solo el destinatario puede). */
     public void accept(String user, long id) {
         String sql = "UPDATE connection SET status='accepted', responded_at=now() "
