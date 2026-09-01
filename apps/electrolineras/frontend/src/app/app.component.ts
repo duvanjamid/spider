@@ -259,7 +259,7 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
             </div>
             <p class="muted" style="font-size:.86rem">El estado en vivo no está en datos abiertos; lo construimos entre todos. Cuando uses una estación, reporta si está activa/ocupada y comenta.</p>
             <div class="note" *ngIf="meta() && !meta().openChargeMap" style="margin-top:12px">
-              <b>Cobertura nacional pendiente.</b> Hoy solo hay estaciones de EPM (Antioquia). Con una API key gratuita de Open Charge Map se agregan Bogotá, Bucaramanga y el resto del país.
+              <b>Cobertura nacional activa</b> vía OpenStreetMap (comunidad) + EPM. ¿Quieres aún más estaciones? Es opcional: con una API key gratuita de Open Charge Map (<code>OPENCHARGEMAP_KEY</code>) se añade su catálogo. No hace falta para usar la app.
             </div>
           </div>
         </section>

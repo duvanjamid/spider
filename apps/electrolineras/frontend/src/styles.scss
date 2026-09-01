@@ -51,14 +51,19 @@ html, body {
 img, svg, canvas, table { max-width: 100%; }
 h3 { margin: 18px 0 10px; }
 
-// ── Mapa (Leaflet) — estilo moderno + tinte verde temático ──
+// ── Mapa (Leaflet) — tinte VERDE temático, aplicado con filter ──
 .leaflet-container { background: var(--bg-2); font: inherit; }
-// Teselas más vivas y con el color de la app (mezcla suave sobre las calles).
-.leaflet-tile-pane { filter: saturate(1.18) contrast(1.02); }
+// Tinte fiable sobre las teselas: los paneles de Leaflet usan transform y
+// aíslan el stacking, así que mix-blend-mode apenas se veía. sepia+hue-rotate
+// lleva el mapa hacia el verde de la app; saturate/contrast lo hacen vivo.
+.leaflet-tile-pane { filter: saturate(1.3) contrast(1.04) brightness(1.02) sepia(.3) hue-rotate(58deg); }
+@media (prefers-color-scheme: dark) {
+  .leaflet-tile-pane { filter: saturate(1.28) contrast(1.02) brightness(1.02) sepia(.34) hue-rotate(58deg); }
+}
+// Viñeta sutil hacia el verde en los bordes (sin depender de blend).
 .leaflet-container::after {
   content: ''; position: absolute; inset: 0; z-index: 250; pointer-events: none;
-  background: radial-gradient(120% 90% at 50% 0%, #22c55e, #0f766e 72%);
-  mix-blend-mode: soft-light; opacity: .5;
+  background: radial-gradient(130% 100% at 50% 0%, transparent 55%, rgba(15,118,110,.16));
 }
 .leaflet-control-zoom a { background: var(--panel) !important; color: var(--fg) !important; border-color: var(--border) !important; }
 .leaflet-bar { border: none !important; box-shadow: var(--shadow) !important; border-radius: 12px !important; overflow: hidden; }
