@@ -421,9 +421,11 @@ export class AppComponent implements OnInit, AfterViewInit {
   private tiles?: L.TileLayer;
   private isDark(): boolean { return typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)').matches : false; }
   private tileUrl(): string {
+    // Calles coloridas (voyager) de día, oscuro de noche. El tinte verde
+    // temático se aplica por CSS sobre las teselas.
     return this.isDark()
       ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+      : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
   }
 
   ngAfterViewInit(): void {
