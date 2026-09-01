@@ -9,7 +9,7 @@ import { DialogModule } from 'primeng/dialog';
 import { TagModule } from 'primeng/tag';
 import {
   Budget, CategoryShare, Category, CategoryTemplate, Connections, Expense, ExpenseItem, GastosService, Me, Monto, PriceProduct, SharedInCategory,
-  Recurring, Region, Scan, ScanItem, Summary, Trend,
+  Notif, Recurring, Region, Scan, ScanItem, Summary, Trend,
 } from './gastos.service';
 
 type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
@@ -270,8 +270,25 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
     .logout:active { background: color-mix(in srgb, #ef4444 10%, transparent); }
     .acc-cta { margin: 14px 0 2px; }
     .acc-foot { text-align: center; color: var(--muted); font-size: .76rem; margin: 18px 0 2px; }
+    .link-btn { background: none; border: none; color: var(--accent); font: inherit; font-size: .74rem; font-weight: 700; cursor: pointer; padding: 0; }
+    .notif-list { border: 1px solid var(--border); border-radius: 14px; background: var(--panel); overflow: hidden; }
+    .notif { width: 100%; display: flex; align-items: flex-start; gap: 12px; padding: 13px 14px; text-align: left;
+             background: none; border: none; border-bottom: 1px solid var(--border); color: var(--fg); font: inherit; cursor: pointer; }
+    .notif:last-child { border-bottom: none; }
+    .notif.unread { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+    .notif:active { background: var(--panel-2); }
+    .notif-ic { width: 34px; height: 34px; border-radius: 10px; flex: none; display: grid; place-items: center; color: #fff; font-size: .95rem; }
+    .notif-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .notif-body b { font-size: .92rem; }
+    .notif-body small { color: var(--muted); font-size: .82rem; }
+    .notif-time { font-size: .72rem !important; opacity: .8; }
+    .notif-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; margin-top: 6px; }
     .bnav-ava { width: 24px; height: 24px; border-radius: 50%; overflow: hidden; display: inline-block; }
     .bnav-ava img { width: 100%; height: 100%; object-fit: cover; }
+    .bnav-icwrap { position: relative; display: inline-flex; }
+    .bnav-badge { position: absolute; top: -6px; right: -10px; min-width: 16px; height: 16px; padding: 0 4px;
+                  border-radius: 999px; background: #ef4444; color: #fff; font-size: .64rem; font-weight: 800;
+                  line-height: 16px; text-align: center; box-shadow: 0 0 0 2px var(--panel); }
   `],
   template: `
     <!-- ═══════════════ ONBOARDING (primera vez) ═══════════════ -->
@@ -493,6 +510,30 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
               Inicia sesión para guardar tus gastos y compartir con tu hogar.</p>
           </div>
 
+          <!-- Notificaciones -->
+          <div class="acc-group" *ngIf="!isGuest()">
+            <div class="acc-title" style="display:flex;align-items:center;gap:8px">
+              Notificaciones
+              <span class="pf-chip" *ngIf="unread() > 0" style="margin:0;padding:2px 8px;font-size:.66rem">{{ unread() }} nueva(s)</span>
+              <span class="spacer" style="flex:1"></span>
+              <button *ngIf="notifs().length" class="link-btn" (click)="markAllNotifs()">Marcar leídas</button>
+            </div>
+            <div class="notif-list" *ngIf="notifs().length; else noNotifs">
+              <button class="notif" *ngFor="let n of notifs()" [class.unread]="!n.read" (click)="onNotif(n)">
+                <span class="notif-ic" [style.background]="notifTint(n.kind)"><i [class]="notifIcon(n.kind)"></i></span>
+                <span class="notif-body">
+                  <b>{{ n.title }}</b>
+                  <small>{{ n.body }}</small>
+                  <small class="notif-time">{{ notifWhen(n.createdAt) }}</small>
+                </span>
+                <span class="notif-dot" *ngIf="!n.read"></span>
+              </button>
+            </div>
+            <ng-template #noNotifs>
+              <p class="muted" style="text-align:center;padding:14px 0;font-size:.86rem">Sin notificaciones por ahora.</p>
+            </ng-template>
+          </div>
+
           <!-- Herramientas -->
           <div class="acc-group">
             <div class="acc-title">Gestión</div>
@@ -527,9 +568,12 @@ type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
         <button class="bnav-item" [class.on]="tab() === 4" (click)="openPrices()">
           <i class="fa-solid fa-tags"></i><span>Precios</span></button>
         <button class="bnav-item" [class.on]="tab() === 5" (click)="goTab(5)" aria-label="Mi cuenta">
-          <span class="bnav-ava" *ngIf="me()?.picture && !avatarBroken">
-            <img [src]="me()?.picture" alt="" (error)="avatarBroken = true" referrerpolicy="no-referrer" /></span>
-          <i class="fa-solid fa-circle-user" *ngIf="!me()?.picture || avatarBroken"></i>
+          <span class="bnav-icwrap">
+            <span class="bnav-ava" *ngIf="me()?.picture && !avatarBroken">
+              <img [src]="me()?.picture" alt="" (error)="avatarBroken = true" referrerpolicy="no-referrer" /></span>
+            <i class="fa-solid fa-circle-user" *ngIf="!me()?.picture || avatarBroken"></i>
+            <span class="bnav-badge" *ngIf="unread() > 0">{{ unread() > 9 ? '9+' : unread() }}</span>
+          </span>
           <span>Cuenta</span></button>
       </nav>
     </div>
@@ -857,6 +901,8 @@ export class AppComponent implements OnInit, OnDestroy {
     ? window.matchMedia('(prefers-color-scheme: dark)').matches : true);
   readonly isTest = signal(false);
   readonly me = signal<Me | null>(null);   // usuario actual (perfil de Google)
+  readonly notifs = signal<Notif[]>([]);    // notificaciones in-app
+  readonly unread = signal<number>(0);      // no leídas (badge)
 
   readonly month = signal<string>(new Date().toISOString().slice(0, 7));
   readonly categories = signal<Category[]>([]);
@@ -1098,6 +1144,11 @@ export class AppComponent implements OnInit, OnDestroy {
     this.api.me().subscribe({
       next: (me: Me) => {
         this.me.set(me);
+        this.loadNotifCount();
+        // Refresco periódico del contador de notificaciones (badge).
+        if (!me.guest && !this.notifTimer) {
+          this.notifTimer = setInterval(() => { if (this.tab() !== 5) this.loadNotifCount(); }, 45000);
+        }
         this.api.categories().subscribe({
           next: (cats) => {
             this.categories.set(cats);
@@ -1121,6 +1172,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     if (typeof window !== 'undefined') window.removeEventListener('popstate', this.onPopState);
+    if (this.notifTimer) clearInterval(this.notifTimer);
   }
 
   /** Empuja un estado centinela para «consumir» el próximo gesto de atrás. */
@@ -1150,7 +1202,62 @@ export class AppComponent implements OnInit, OnDestroy {
   };
 
   /** Cambia de pestaña inferior (Estatus/Movimientos/Precios/Cuenta). */
-  goTab(n: number): void { this.tab.set(n); }
+  goTab(n: number): void {
+    this.tab.set(n);
+    if (n === 5) this.openNotifs();   // al entrar a Cuenta, carga y marca leídas
+  }
+
+  // ── Notificaciones ──
+  private notifTimer: ReturnType<typeof setInterval> | null = null;
+
+  private loadNotifCount(): void {
+    if (this.isGuest()) return;
+    this.api.notifCount().subscribe({ next: (r) => this.unread.set(r.unread || 0), error: () => {} });
+  }
+  /** Abre la bandeja: trae la lista y marca todo como leído (limpia el badge). */
+  private openNotifs(): void {
+    if (this.isGuest()) return;
+    this.api.notifications().subscribe({
+      next: (r) => {
+        this.notifs.set(r.items || []);
+        if ((r.unread || 0) > 0) this.api.markAllNotifRead().subscribe({ next: () => this.unread.set(0), error: () => {} });
+        else this.unread.set(0);
+      },
+      error: () => {},
+    });
+  }
+  markAllNotifs(): void {
+    this.api.markAllNotifRead().subscribe({
+      next: () => { this.unread.set(0); this.notifs.set(this.notifs().map((n) => ({ ...n, read: true }))); },
+      error: () => {},
+    });
+  }
+  /** Al tocar una notificación, abre lo relevante. */
+  onNotif(n: Notif): void {
+    if (n.kind === 'connection_invite' || n.kind === 'connection_accepted') this.openHome();
+    else if (n.kind === 'category_shared') this.openCats();
+    else if (n.kind === 'shared_expense') { this.tab.set(3); this.movFilter.set('shared'); }
+  }
+  notifIcon(kind: string): string {
+    return kind === 'connection_invite' ? 'fa-solid fa-user-plus'
+      : kind === 'connection_accepted' ? 'fa-solid fa-user-check'
+      : kind === 'category_shared' ? 'fa-solid fa-tags'
+      : 'fa-solid fa-cart-shopping';
+  }
+  notifTint(kind: string): string {
+    return kind === 'connection_invite' ? '#6c8cff'
+      : kind === 'connection_accepted' ? '#10b981'
+      : kind === 'category_shared' ? '#f59e0b'
+      : '#8b5cf6';
+  }
+  notifWhen(iso: string): string {
+    const d = new Date(iso); const diff = (Date.now() - d.getTime()) / 1000;
+    if (isNaN(diff)) return '';
+    if (diff < 60) return 'ahora';
+    if (diff < 3600) return `hace ${Math.floor(diff / 60)} min`;
+    if (diff < 86400) return `hace ${Math.floor(diff / 3600)} h`;
+    return d.toLocaleDateString();
+  }
 
   // ── Onboarding ──
   private startOnboarding(): void {

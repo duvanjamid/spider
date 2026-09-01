@@ -49,6 +49,10 @@ export interface ExpenseItem { name: string; quantity: number | null; unitPrice:
 export interface PriceStore { store: string; minPrice: number; avgPrice: number; lastPrice: number; lastOn: string; count: number; shared?: boolean; }
 export interface PriceProduct { name: string; categorySlug: string; categoryName: string; stores: PriceStore[]; minPrice: number; maxPrice: number; storeCount: number; cheapestStore: string; shared?: boolean; }
 export interface Me { email: string; guest: boolean; onboarded: boolean; name?: string; picture?: string; }
+export interface Notif {
+  id: number; kind: string; title: string; body: string;
+  actor: string; ref: string; createdAt: string; read: boolean;
+}
 export interface CategoryTemplate { slug: string; name: string; color: string; icon: string; }
 export interface NewExpense {
   amount: number; currency?: string; categoryId?: number | null;
@@ -122,4 +126,14 @@ export class GastosService {
   categoryShares(): Observable<CategoryShare[]> { return this.http.get<CategoryShare[]>(`${this.base}/categories/shares`, this.opts); }
   sharedInCategories(): Observable<SharedInCategory[]> { return this.http.get<SharedInCategory[]>(`${this.base}/categories/shared-in`, this.opts); }
   shareCategory(slug: string, emails: string[]): Observable<unknown> { return this.http.put(`${this.base}/categories/share`, { slug, emails }, this.opts); }
+
+  // ── Notificaciones ──
+  notifications(): Observable<{ items: Notif[]; unread: number }> {
+    return this.http.get<{ items: Notif[]; unread: number }>(`${this.base}/notifications`, this.opts);
+  }
+  notifCount(): Observable<{ unread: number }> {
+    return this.http.get<{ unread: number }>(`${this.base}/notifications/count`, this.opts);
+  }
+  markNotifRead(id: number): Observable<unknown> { return this.http.post(`${this.base}/notifications/${id}/read`, {}, this.opts); }
+  markAllNotifRead(): Observable<unknown> { return this.http.post(`${this.base}/notifications/read-all`, {}, this.opts); }
 }

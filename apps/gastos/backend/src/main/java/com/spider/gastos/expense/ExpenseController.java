@@ -68,16 +68,19 @@ public final class ExpenseController {
     private final RecurringService recurring;
     private final GeminiScanner scanner;
     private final ConnectionService connections;
+    private final NotificationService notifications;
     private final Identity identity = new Identity();
 
     public ExpenseController(ExpenseService svc, CategoryService categories, BudgetService budgets,
-                             RecurringService recurring, GeminiScanner scanner, ConnectionService connections) {
+                             RecurringService recurring, GeminiScanner scanner, ConnectionService connections,
+                             NotificationService notifications) {
         this.svc = svc;
         this.categories = categories;
         this.budgets = budgets;
         this.recurring = recurring;
         this.scanner = scanner;
         this.connections = connections;
+        this.notifications = notifications;
     }
 
     /** Filtra los correos a solo los que están conectados (aceptados) con el usuario. */
@@ -91,6 +94,17 @@ public final class ExpenseController {
             for (String f : fam) if (f.equalsIgnoreCase(norm)) { out.add(f); break; }
         }
         return out;
+    }
+
+    /** Notifica una nueva compra compartida (por categoría compartida y/o gasto puntual). */
+    private void notifyExpense(String user, Long catId, long expenseId, List<String> shareWith, String merchant) {
+        String slug = null, name = null;
+        if (catId != null) {
+            String[] cat = categories.slugAndName(user, catId, null);
+            if (cat != null) { slug = cat[0]; name = cat[1]; }
+        }
+        String label = merchant == null || merchant.isBlank() ? null : "«" + merchant + "»";
+        notifications.sharedExpense(user, slug, name, expenseId, shareWith, label);
     }
 
     private static final String GUEST = "invitado@spider";
@@ -173,6 +187,7 @@ public final class ExpenseController {
                 svc.addItems(id, items);
             }
             if (in.shareWith() != null) svc.shareExpense(user, id, onlyConnected(user, in.shareWith()));
+            notifyExpense(user, catId, id, onlyConnected(user, in.shareWith()), nz(in.merchant()));
             ctx.status(201).json(Map.of("id", id));
         });
 
@@ -192,6 +207,7 @@ public final class ExpenseController {
             svc.update(user, id, in.amount(), in.currency(), catId,
                     nz(in.merchant()), nz(in.description()), in.spentOn(), in.spentAt(), nz(in.nit()));
             if (in.shareWith() != null) svc.shareExpense(user, id, onlyConnected(user, in.shareWith()));
+            notifyExpense(user, catId, id, onlyConnected(user, in.shareWith()), nz(in.merchant()));
             ctx.json(Map.of("status", "updated"));
         });
 
@@ -219,7 +235,26 @@ public final class ExpenseController {
             if (in == null || in.slug() == null || in.slug().isBlank()) {
                 ctx.status(400).json(Map.of("error", "slug requerido")); return;
             }
-            svc.shareCategory(user, in.slug(), onlyConnected(user, in.emails()));
+            List<String> targets = onlyConnected(user, in.emails());
+            svc.shareCategory(user, in.slug(), targets);
+            String[] cat = categories.slugAndName(user, null, in.slug());
+            notifications.categoryShared(user, targets, cat != null ? cat[1] : in.slug(), in.slug());
+            ctx.json(Map.of("status", "ok"));
+        });
+
+        // ── Notificaciones in-app ──
+        app.get("/notifications", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            ctx.json(Map.of("items", notifications.list(user, 50), "unread", notifications.unreadCount(user)));
+        });
+        app.get("/notifications/count", ctx ->
+                ctx.json(Map.of("unread", notifications.unreadCount(email(ctx.header("Cookie"))))));
+        app.post("/notifications/{id}/read", ctx -> {
+            notifications.markRead(email(ctx.header("Cookie")), Long.parseLong(ctx.pathParam("id")));
+            ctx.json(Map.of("status", "ok"));
+        });
+        app.post("/notifications/read-all", ctx -> {
+            notifications.markAllRead(email(ctx.header("Cookie")));
             ctx.json(Map.of("status", "ok"));
         });
 
@@ -233,11 +268,20 @@ public final class ExpenseController {
             if (in == null || in.email() == null || in.email().isBlank()) {
                 ctx.status(400).json(Map.of("error", "correo requerido")); return;
             }
-            try { connections.invite(user, in.email()); ctx.json(Map.of("status", "invited")); }
-            catch (IllegalArgumentException e) { ctx.status(400).json(Map.of("error", e.getMessage())); }
+            try {
+                connections.invite(user, in.email());
+                String other = in.email().trim().toLowerCase();
+                if (connections.isConnected(user, other)) notifications.connectionAccepted(user, other);
+                else notifications.connectionInvite(user, other);
+                ctx.json(Map.of("status", "invited"));
+            } catch (IllegalArgumentException e) { ctx.status(400).json(Map.of("error", e.getMessage())); }
         });
         app.post("/connections/{id}/accept", ctx -> {
-            connections.accept(email(ctx.header("Cookie")), Long.parseLong(ctx.pathParam("id")));
+            String user = email(ctx.header("Cookie"));
+            long id = Long.parseLong(ctx.pathParam("id"));
+            String partner = connections.partnerEmail(id, user);
+            connections.accept(user, id);
+            if (partner != null) notifications.connectionAccepted(user, partner);
             ctx.json(Map.of("status", "accepted"));
         });
         app.delete("/connections/{id}", ctx -> {
