@@ -14,6 +14,16 @@ import {
 
 type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
 
+// Fechas en la ZONA LOCAL del navegador (no UTC). `toISOString()` devuelve UTC,
+// lo que a partir de las 7pm en GMT-5 ya marca el día/mes siguiente. Estos
+// helpers usan los componentes locales para que todo siga la hora del usuario.
+function localYM(d: Date = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+function localYMD(d: Date = new Date()): string {
+  return `${localYM(d)}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 @Component({
   selector: 'app-root',
   standalone: true,
@@ -858,7 +868,7 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly isTest = signal(false);
   readonly me = signal<Me | null>(null);   // usuario actual (perfil de Google)
 
-  readonly month = signal<string>(new Date().toISOString().slice(0, 7));
+  readonly month = signal<string>(localYM());
   readonly categories = signal<Category[]>([]);
   readonly expenses = signal<Expense[]>([]);
   readonly summary = signal<Summary | null>(null);
@@ -945,8 +955,8 @@ export class AppComponent implements OnInit, OnDestroy {
   query = '';
   filterCat = '';
   cmpDialog = false;
-  cmpA = new Date().toISOString().slice(0, 7);
-  cmpB = new Date().toISOString().slice(0, 7);
+  cmpA = localYM();
+  cmpB = localYM();
   readonly cmpSummA = signal<Summary | null>(null);
   readonly cmpSummB = signal<Summary | null>(null);
 
@@ -1187,7 +1197,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   shiftMonth(delta: number): void {
     const [y, m] = this.month().split('-').map(Number);
-    this.month.set(new Date(y, m - 1 + delta, 1).toISOString().slice(0, 7));
+    this.month.set(localYM(new Date(y, m - 1 + delta, 1)));
     this.reload();
   }
   monthLabel(): string {
@@ -1244,7 +1254,7 @@ export class AppComponent implements OnInit, OnDestroy {
   openCompare(): void {
     const [y, m] = this.month().split('-').map(Number);
     this.cmpA = this.month();
-    this.cmpB = new Date(y, m - 2, 1).toISOString().slice(0, 7);
+    this.cmpB = localYM(new Date(y, m - 2, 1));
     this.loadCompare();
     this.cmpDialog = true;
   }
@@ -1395,7 +1405,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.regiones.set(s.regiones ?? []);
     this.scanItems.set(s.productos ?? []);
     this.suggested.set(s.categoriaId ? null : s.categoriaSugerida);
-    const fecha = this.validDate(s.fecha) ? s.fecha! : new Date().toISOString().slice(0, 10);
+    const fecha = this.validDate(s.fecha) ? s.fecha! : localYMD();
     const hora = this.validTime(s.hora) ? s.hora! : '';
     this.form = { amount: s.montos[0]?.valor ?? null, currency: 'COP', categoryId: s.categoriaId ?? null,
       merchant: s.establecimiento ?? '', nit: s.nit ?? '', description: s.descripcion ?? '', spentOn: fecha,
@@ -1448,7 +1458,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private emptyForm() {
     return { amount: null as number | null, currency: 'COP', categoryId: null as number | null,
-      merchant: '', nit: '', description: '', spentOn: new Date().toISOString().slice(0, 10), spentTime: '',
+      merchant: '', nit: '', description: '', spentOn: localYMD(), spentTime: '',
       shareWith: [] as string[] };
   }
 
