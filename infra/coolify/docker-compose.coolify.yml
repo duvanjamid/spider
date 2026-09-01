@@ -22,6 +22,14 @@
 #  --project-directory = raíz). MEMORIA: mem_limit por servicio; los backends
 #  Java capan heap al 70% (JAVA_TOOL_OPTIONS + SerialGC). ~2.6 GB con 4 apps.
 #  Cada entorno tiene su BD → schemas planos (SCHEMA_PREFIX por defecto vacío).
+#
+#  IMPORTANTE (aislamiento de red): cada backend/frontend publica en la red
+#  compartida `coolify` un alias ÚNICO por entorno `${NS}-<servicio>` (ver los
+#  bloques `networks.coolify.aliases`). El gateway enruta a esos alias, así el
+#  entorno `test` NO choca con `prod` (ambos tienen el nombre corto homónimo en
+#  `coolify`). Si Coolify muestra el compose "renderizado" sin esos `aliases:`,
+#  hay que RE-PARSEAR el compose (Reload/Save) para que se regeneren; si no, el
+#  gateway no resuelve `${NS}-<servicio>` y responde 502.
 # ══════════════════════════════════════════════════════════════
 
 # ── Env COMPARTIDA por todos los backends (se define una vez en Coolify). ──
