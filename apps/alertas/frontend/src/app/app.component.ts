@@ -383,15 +383,16 @@ export class AppComponent implements OnInit, AfterViewInit {
           : { url },
     }).addTo(this.map);
     this.tiles = gl;
+    // Solo las VÍAS PRINCIPALES (autopista/troncal/primaria/secundaria) se pintan
+    // del color de la app; las calles menores/residenciales quedan neutras, para
+    // un mapa limpio estilo Waze (sin saturar todo de color).
+    const major = /_(mot|trunk|pri|sec)(_|$)/;
     const applyRoads = () => {
       const m = gl.getMaplibreMap();
       for (const lyr of (m.getStyle()?.layers || [])) {
-        const isRoad = lyr.type === 'line' &&
-          ((lyr['source-layer'] === 'transportation') || /road|street|highway|bridge|tunnel|motorway/i.test(lyr.id));
-        if (isRoad) {
-          const c = /case|outline/i.test(lyr.id) ? roadCase : road;
-          try { m.setPaintProperty(lyr.id, 'line-color', c); } catch { }
-        }
+        if (lyr.type !== 'line' || lyr['source-layer'] !== 'transportation' || !major.test(lyr.id)) continue;
+        const c = /_case/.test(lyr.id) ? roadCase : road;
+        try { m.setPaintProperty(lyr.id, 'line-color', c); } catch { }
       }
     };
     const m = gl.getMaplibreMap();
