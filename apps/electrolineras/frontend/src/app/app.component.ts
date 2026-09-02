@@ -434,7 +434,10 @@ export class AppComponent implements OnInit, AfterViewInit {
     const road = dark ? '#34d399' : '#16a34a';     // relleno de la vía (verde app)
     const roadCase = dark ? '#0f766e' : '#0f766e'; // contorno de la vía (verde oscuro)
     if (this.tiles) { try { this.map.removeLayer(this.tiles); } catch { } this.tiles = undefined; }
-    const gl = (L as any).maplibreGL({
+    // El plugin añade `maplibreGL` al Leaflet en runtime (window.L); el namespace
+    // `import * as L` puede no exponerlo, así que se toma del global.
+    const LL: any = (window as any).L || (L as any);
+    const gl = LL.maplibreGL({
       style,
       attribution: '© OpenStreetMap © CARTO',
       // Añade la API key de CARTO (si está) a TODAS las peticiones a su CDN.
