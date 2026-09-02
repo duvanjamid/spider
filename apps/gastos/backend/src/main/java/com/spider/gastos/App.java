@@ -40,10 +40,10 @@ public final class App {
         var budgets = new BudgetService(ds);
         var recurring = new RecurringService(ds);
         var connections = new ConnectionService(ds);
-        var notifications = new NotificationService(ds);
         var income = new IncomeService(ds);
         var push = new PushService(ds);
-        var alerts = new AlertService(ds, income, notifications, push);
+        var notifications = new NotificationService(ds, push);   // cada notificación in-app dispara push
+        var alerts = new AlertService(ds, income, notifications);
         var scanner = new GeminiScanner();
 
         Ligero app = Ligero.create(Env.port());

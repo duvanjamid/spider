@@ -19,9 +19,11 @@ import java.util.Set;
 public class NotificationService {
 
     private final DataSource ds;
+    private final com.spider.gastos.push.PushService push;
 
-    public NotificationService(DataSource ds) {
+    public NotificationService(DataSource ds, com.spider.gastos.push.PushService push) {
         this.ds = ds;
+        this.push = push;
     }
 
     // ── Escritura ──────────────────────────────────────────────
@@ -40,12 +42,16 @@ public class NotificationService {
                     WHERE recipient_email = ? AND kind = ? AND read_at IS NULL
                       AND ref IS NOT DISTINCT FROM ?)
                 """;
+        int inserted;
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setString(1, recipient); ps.setString(2, kind); ps.setString(3, title);
             ps.setString(4, body); ps.setString(5, actor); ps.setString(6, ref);
             ps.setString(7, recipient); ps.setString(8, kind); ps.setString(9, ref);
-            ps.executeUpdate();
+            inserted = ps.executeUpdate();
         } catch (Exception e) { throw new RuntimeException("Error creando notificación", e); }
+        // Toda notificación in-app nueva dispara también un push (async, best-effort):
+        // invitaciones, categorías compartidas, compras en categoría compartida y topes.
+        if (inserted > 0 && push != null) push.sendToUser(recipient, title, body, "/gastos/");
     }
 
     /** Alguien invitó a {@code recipient} a conectar (debe aceptar). */
