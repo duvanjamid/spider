@@ -1,108 +1,38 @@
 // ══════════════════════════════════════════════════════════════
-//  Sistema de tema de «gastos».
-//  · Claro / oscuro automático (prefers-color-scheme), en TODOS los estilos.
-//  · Estilo de superficie elegible (data-theme): flat · modern · glass · bold.
-//  · Color de acento inyectado inline (--accent). El acento TIÑE de verdad:
-//    fondo, superficies, bordes, barra, nav, botones y cabeceras de tarjeta.
+//  Tema único de «gastos»: sobrio y elegante, estilo Waze.
+//  · Un solo color de marca: lemongrass (verde claro limón).
+//  · Claro / oscuro automático (prefers-color-scheme). Sin personalización.
+//  · Superficies limpias, esquinas redondeadas, sombras suaves, sin degradados.
 // ══════════════════════════════════════════════════════════════
-
-// Tokens derivados del acento (se recalculan solos al cambiar --accent).
-@mixin accent-tokens {
-  --accent-2: color-mix(in srgb, var(--accent), #6366f1 42%);         // pareja para degradados
-  --accent-weak: color-mix(in srgb, var(--accent) 15%, transparent);
-  --accent-soft: color-mix(in srgb, var(--accent) 10%, var(--panel));
-  --accent-line: color-mix(in srgb, var(--accent) 34%, var(--border));
-  --accent-grad: linear-gradient(135deg, var(--accent), var(--accent-2));
-  --on-accent: #ffffff;
-}
-
 :root {
-  --bg: #f4f6fb;
-  --panel: #ffffff;
-  --panel-2: #eef1f7;
-  --fg: #1e2330;
-  --muted: #5b6472;
-  --accent: #10b981;
-  --border: #e2e6ef;
-  --shadow: 0 1px 3px rgba(20, 26, 40, .08), 0 8px 24px rgba(20, 26, 40, .06);
+  --bg: #f4f6f1;            // fondo claro cálido
+  --panel: #ffffff;         // superficie de tarjetas
+  --panel-2: #eef1e9;       // superficie sutil / campos
+  --fg: #1e261c;            // texto principal (verde-gris muy oscuro)
+  --muted: #6b7466;         // texto secundario
+  --border: #e4e8dd;        // bordes / divisores
+  --accent: #8db63c;        // lemongrass (marca)
+  --accent-strong: #5f7d24; // acento con contraste (texto/iconos sobre claro)
+  --accent-weak: color-mix(in srgb, var(--accent) 16%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  --accent-line: color-mix(in srgb, var(--accent) 32%, var(--border));
+  --on-accent: #16250a;     // texto sobre relleno de acento (verde muy oscuro)
+  --shadow: 0 1px 2px rgba(24, 32, 20, .05), 0 6px 18px rgba(24, 32, 20, .06);
   --radius: 16px;
-  @include accent-tokens;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0f1115;
-    --panel: #161922;
-    --panel-2: #1d212b;
-    --fg: #e6e8ee;
-    --muted: #9aa3b2;
-    --accent: #34d399;
-    --border: #262a33;
-    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 30px rgba(0, 0, 0, .35);
-    --on-accent: #071410;
-  }
-}
-
-// ══ Estilos de superficie (ortogonales a claro/oscuro). ══
-
-// ── FLAT: sin sombras, esquinas suaves, superficies TEÑIDAS por el acento
-//    (nada de gris plano). Bordes con color de acento. ──
-:root[data-theme="flat"] {
-  --shadow: none;
-  --radius: 14px;
-  --bg: color-mix(in srgb, var(--accent) 9%, #eef1f6);
-  --panel: color-mix(in srgb, var(--accent) 5%, #ffffff);
-  --panel-2: color-mix(in srgb, var(--accent) 14%, #ffffff);
-  --border: color-mix(in srgb, var(--accent) 24%, #e2e6ef);
-}
-@media (prefers-color-scheme: dark) {
-  :root[data-theme="flat"] {
-    --bg: color-mix(in srgb, var(--accent) 12%, #0d0f13);
-    --panel: color-mix(in srgb, var(--accent) 8%, #171a21);
-    --panel-2: color-mix(in srgb, var(--accent) 16%, #1d212b);
-    --border: color-mix(in srgb, var(--accent) 28%, #2a2f39);
-  }
-}
-
-// ── MODERN: superficies limpias, sombras suaves, cabeceras con degradado de
-//    acento. Es el equilibrado. ──
-:root[data-theme="modern"] { --radius: 18px; }
-
-// ── GLASS: translúcido con desenfoque y brillo de acento. ──
-:root[data-theme="glass"] {
-  --panel: color-mix(in srgb, #ffffff 62%, transparent);
-  --panel-2: color-mix(in srgb, var(--accent) 14%, rgba(255,255,255,.35));
-  --border: color-mix(in srgb, var(--accent) 30%, rgba(255,255,255,.5));
-  --shadow: 0 10px 34px color-mix(in srgb, var(--accent) 18%, rgba(20,26,40,.14));
-  --blur: 14px;
-  --radius: 22px;
-}
-@media (prefers-color-scheme: dark) {
-  :root[data-theme="glass"] {
-    --panel: color-mix(in srgb, #1e222c 58%, transparent);
-    --panel-2: color-mix(in srgb, var(--accent) 16%, rgba(40,45,58,.4));
-    --border: color-mix(in srgb, var(--accent) 26%, rgba(255,255,255,.14));
-    --shadow: 0 10px 34px rgba(0, 0, 0, .5);
-  }
-}
-
-// ── BOLD: alto contraste, muy dirigido por el acento. Tarjetas con cinta de
-//    acento arriba, superficies teñidas y radios amplios. ──
-:root[data-theme="bold"] {
-  --radius: 20px;
-  --bg: color-mix(in srgb, var(--accent) 12%, #eef0f5);
-  --panel: #ffffff;
-  --panel-2: color-mix(in srgb, var(--accent) 16%, #ffffff);
-  --border: color-mix(in srgb, var(--accent) 30%, #dfe3ec);
-  --shadow: 0 6px 20px color-mix(in srgb, var(--accent) 22%, transparent);
-}
-@media (prefers-color-scheme: dark) {
-  :root[data-theme="bold"] {
-    --bg: color-mix(in srgb, var(--accent) 16%, #0c0e12);
-    --panel: color-mix(in srgb, var(--accent) 6%, #161a22);
-    --panel-2: color-mix(in srgb, var(--accent) 20%, #1c212b);
-    --border: color-mix(in srgb, var(--accent) 34%, #2a2f39);
-    --shadow: 0 8px 26px rgba(0, 0, 0, .5);
+    --bg: #10130e;
+    --panel: #191d15;
+    --panel-2: #22271d;
+    --fg: #e7ebe0;
+    --muted: #9aa392;
+    --border: #2a2f24;
+    --accent: #a6cc4e;
+    --accent-strong: #bcdc71;
+    --on-accent: #10200a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .35);
   }
 }
 
@@ -111,41 +41,18 @@
 html, body {
   margin: 0;
   min-height: 100%;
+  background: var(--bg);
   color: var(--fg);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow-x: clip;
-}
-
-// Lavado de acento en el fondo (siempre presente; más intenso en glass/bold).
-body {
-  background:
-    radial-gradient(115% 80% at 6% -8%, var(--accent-weak), transparent 52%),
-    radial-gradient(120% 80% at 100% 0%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 48%),
-    var(--bg);
-  background-attachment: fixed;
-}
-:root[data-theme="glass"] body,
-:root[data-theme="bold"] body {
-  background:
-    radial-gradient(120% 90% at 8% -10%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 55%),
-    radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 50%),
-    var(--bg);
-  background-attachment: fixed;
-}
-
-// Superficies translúcidas con desenfoque (solo glass).
-:root[data-theme="glass"] :is(.kpi, .row, .pcard, .notif-list, .profile, .seg,
-    .acc-group .menu, .bnav, .bar, .toggle-row, .cat-card, .p-card) {
-  backdrop-filter: blur(var(--blur, 12px));
-  -webkit-backdrop-filter: blur(var(--blur, 12px));
+  letter-spacing: -.01em;
 }
 
 img, svg, canvas, table { max-width: 100%; }
 h3 { margin: 18px 0 10px; }
 
-// ══ PrimeNG toma los tokens del tema (si no, las tarjetas y botones se
-//    quedan grises y el acento no se nota). ══
+// ── PrimeNG toma los tokens del tema (tarjetas y botones sobrios). ──
 .p-card {
   background: var(--panel) !important;
   color: var(--fg) !important;
@@ -153,24 +60,20 @@ h3 { margin: 18px 0 10px; }
   border-radius: var(--radius) !important;
   box-shadow: var(--shadow) !important;
 }
-.p-card .p-card-title { color: var(--fg); font-size: 1.02rem; }
+.p-card .p-card-title { color: var(--fg); font-size: 1.02rem; font-weight: 800; }
 .p-card .p-card-subtitle { color: var(--muted); }
-// Cabecera de tarjeta con acento en modern/bold.
-:root[data-theme="modern"] .p-card .p-card-title,
-:root[data-theme="bold"] .p-card .p-card-title {
-  color: var(--accent);
-}
-:root[data-theme="bold"] .p-card { border-top: 3px solid var(--accent); }
+.p-card .p-card-body { padding: 1rem 1.15rem; }
 
-// Botones primarios siguen el acento (danger/secondary conservan su color).
+// Botón primario: relleno lemongrass, texto oscuro (claro y legible, sin degradado).
 .p-button:not(.p-button-outlined):not(.p-button-text):not(.p-button-danger):not(.p-button-secondary):not(.p-button-success) {
-  background: var(--accent-grad) !important;
-  border-color: transparent !important;
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
   color: var(--on-accent) !important;
+  font-weight: 700;
 }
 .p-button.p-button-text:not(.p-button-danger):not(.p-button-secondary),
 .p-button.p-button-outlined:not(.p-button-danger):not(.p-button-secondary) {
-  color: var(--accent) !important;
+  color: var(--accent-strong) !important;
 }
 .p-button.p-button-outlined:not(.p-button-danger):not(.p-button-secondary) {
   border-color: var(--accent-line) !important;
