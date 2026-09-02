@@ -1,0 +1,508 @@
+package com.spider.electrolineras.station;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.spider.electrolineras.config.Env;
+import com.spider.electrolineras.util.Json;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.sql.DataSource;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Catálogo de estaciones. La base se sincroniza desde datos abiertos del
+ * gobierno (datos.gov.co / Socrata). El estado en vivo no está en datos
+ * abiertos; se resuelve con reportes de la comunidad (ver ReportService).
+ */
+public class StationService {
+
+    private static final Logger log = LoggerFactory.getLogger(StationService.class);
+    private final DataSource ds;
+    private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+
+    public StationService(DataSource ds) { this.ds = ds; }
+
+    // ── Sincronización de TODAS las fuentes (idempotente) ──
+    public int sync() {
+        int n = syncDatosGov();
+        if (Env.overpassEnabled()) n += syncOverpass();           // OSM · nacional · sin key
+        if (Env.openChargeMapEnabled()) n += syncOpenChargeMap(); // OCM · nacional · con key
+        return n;
+    }
+
+    // ── OpenStreetMap / Overpass (nacional, crowdsourced, SIN key) ──
+    private static final String OVERPASS_UA = "spider-electrolineras/1.0 (https://claude.ai/code)";
+
+    public int syncOverpass() {
+        String country = Env.overpassCountry();
+        String query = "[out:json][timeout:90];area[\"ISO3166-1\"=\"" + country + "\"][admin_level=2]->.co;"
+                + "node[\"amenity\"=\"charging_station\"](area.co);out tags center;";
+        String body = "data=" + URLEncoder.encode(query, StandardCharsets.UTF_8);
+        String[] endpoints = {
+                Env.overpassUrl(),
+                "https://overpass.private.coffee/api/interpreter",
+                "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+                "https://overpass.kumi.systems/api/interpreter",
+        };
+        for (String url : endpoints) {
+            try {
+                HttpRequest req = HttpRequest.newBuilder(URI.create(url))
+                        .header("content-type", "application/x-www-form-urlencoded")
+                        .header("accept", "application/json")
+                        .header("User-Agent", OVERPASS_UA)
+                        .timeout(Duration.ofSeconds(95))
+                        .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+                HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+                if (res.statusCode() / 100 != 2 || !res.body().trim().startsWith("{")) {
+                    log.warn("Overpass {} en {} → {}", res.statusCode(), url, res.body().substring(0, Math.min(160, res.body().length())));
+                    continue;
+                }
+                JsonNode root = Json.MAPPER.readTree(res.body());
+                int n = 0;
+                for (JsonNode el : root.path("elements")) n += upsertFromOsm(el) ? 1 : 0;
+                log.info("Sync OpenStreetMap ({}): {} estaciones procesadas", url, n);
+                return n;
+            } catch (Exception e) {
+                log.warn("Overpass falló en {}: {}", url, e.getMessage());
+            }
+        }
+        log.warn("Overpass: ningún servidor respondió; se omite OSM esta vez");
+        return 0;
+    }
+
+    private boolean upsertFromOsm(JsonNode el) {
+        double lat = el.has("lat") ? el.path("lat").asDouble() : el.path("center").path("lat").asDouble(Double.NaN);
+        double lon = el.has("lon") ? el.path("lon").asDouble() : el.path("center").path("lon").asDouble(Double.NaN);
+        if (Double.isNaN(lat) || Double.isNaN(lon) || (lat == 0 && lon == 0)) return false;
+        JsonNode t = el.path("tags");
+        String extId = "osm-" + el.path("type").asText("node") + "-" + el.path("id").asLong();
+        String operator = firstNonBlank(text(t, "operator"), text(t, "network"), text(t, "brand"));
+        String name = firstNonBlank(text(t, "name"), operator, "Estación de carga");
+        String city = firstNonBlank(text(t, "addr:city"), text(t, "addr:state"), "");
+        String address = (text(t, "addr:street") == null ? "" : text(t, "addr:street")
+                + (text(t, "addr:housenumber") == null ? "" : " " + text(t, "addr:housenumber"))).trim();
+
+        // Conectores desde tags socket:*
+        List<String[]> sockets = new ArrayList<>(); // [connectorType, powerKw|null]
+        double maxKw = 0;
+        StringBuilder conn = new StringBuilder();
+        for (Iterator<String> it = t.fieldNames(); it.hasNext(); ) {
+            String k = it.next();
+            if (!k.startsWith("socket:") || k.indexOf(':', 7) > 0) continue; // solo base socket:<tipo>
+            String base = k.substring(7);
+            String type = socketName(base);
+            Double kw = parsePower(text(t, "socket:" + base + ":output"));
+            if (kw == null) kw = parsePower(text(t, "maxpower"));
+            if (kw != null) maxKw = Math.max(maxKw, kw);
+            sockets.add(new String[]{ type, kw == null ? null : String.valueOf(kw) });
+            if (conn.length() > 0) conn.append(", ");
+            conn.append(type);
+        }
+        if (conn.length() == 0 && text(t, "socket") != null) conn.append(text(t, "socket"));
+        String speed = maxKw >= 50 ? "Rápida" : maxKw >= 22 ? "Semi-rápida" : maxKw > 0 ? "Lenta" : null;
+
+        String sql = """
+                INSERT INTO station (source, external_id, name, operator, city, address, lat, lon,
+                                     connectors, speed, hours, website, source_active, raw, updated_at)
+                VALUES ('openstreetmap', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, now())
+                ON CONFLICT (source, external_id) DO UPDATE SET
+                    name = EXCLUDED.name, operator = EXCLUDED.operator, city = EXCLUDED.city,
+                    address = EXCLUDED.address, lat = EXCLUDED.lat, lon = EXCLUDED.lon,
+                    connectors = EXCLUDED.connectors, speed = EXCLUDED.speed, hours = EXCLUDED.hours,
+                    website = EXCLUDED.website, raw = EXCLUDED.raw, updated_at = now()
+                RETURNING id
+                """;
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, extId);
+            ps.setString(2, name);
+            ps.setString(3, operator);
+            ps.setString(4, city);
+            ps.setString(5, address.isBlank() ? null : address);
+            ps.setDouble(6, lat);
+            ps.setDouble(7, lon);
+            ps.setString(8, conn.length() > 0 ? conn.toString() : null);
+            ps.setString(9, speed);
+            ps.setString(10, text(t, "opening_hours"));
+            ps.setString(11, firstBlankNull(text(t, "website"), text(t, "contact:website")));
+            ps.setString(12, el.toString());
+            long stationId;
+            try (ResultSet rs = ps.executeQuery()) { rs.next(); stationId = rs.getLong(1); }
+            int idx = 0;
+            for (String[] s : sockets) {
+                idx++;
+                Double kw = s[1] == null ? null : Double.parseDouble(s[1]);
+                insertCharger(c, stationId, s[0] + " #" + idx, s[0], kw);
+            }
+            return true;
+        } catch (Exception e) { log.debug("Nodo OSM ignorado: {}", e.getMessage()); return false; }
+    }
+
+    private static String socketName(String base) {
+        switch (base) {
+            case "type2": case "type2_cable": return "Tipo 2";
+            case "type2_combo": case "ccs": return "CCS2";
+            case "chademo": return "CHAdeMO";
+            case "type1": case "type1_cable": case "type1_combo": return "Tipo 1";
+            case "tesla_supercharger": case "tesla_supercharger_ccs": return "Tesla";
+            case "gb_dc": case "gb_ac": return "GB/T";
+            case "schuko": return "Schuko";
+            default: return base;
+        }
+    }
+    private static Double parsePower(String s) {
+        if (s == null) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("([0-9]+(?:[.,][0-9]+)?)").matcher(s);
+        try { return m.find() ? Double.parseDouble(m.group(1).replace(",", ".")) : null; } catch (Exception e) { return null; }
+    }
+    private static String firstBlankNull(String... xs) { for (String x : xs) if (x != null && !x.isBlank()) return x; return null; }
+
+    // ── datos.gov.co (EPM · Antioquia) ──
+    public int syncDatosGov() {
+        String url = Env.datosGovBase().replaceAll("/+$", "") + "/" + Env.datosGovResource() + ".json?$limit=5000";
+        String token = Env.datosGovAppToken();
+        try {
+            HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(url))
+                    .header("accept", "application/json").timeout(Duration.ofSeconds(30)).GET();
+            if (!token.isBlank()) req.header("X-App-Token", token);
+            HttpResponse<String> res = http.send(req.build(), HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() / 100 != 2) {
+                log.warn("datos.gov.co {} → {}", res.statusCode(), res.body());
+                return 0;
+            }
+            JsonNode rows = Json.MAPPER.readTree(res.body());
+            int n = 0;
+            for (JsonNode row : rows) n += upsertFromGov(row) ? 1 : 0;
+            log.info("Sync datos.gov.co: {} estaciones procesadas", n);
+            return n;
+        } catch (Exception e) {
+            log.warn("Sync falló (se continúa): {}", e.getMessage());
+            return 0;
+        }
+    }
+
+    private boolean upsertFromGov(JsonNode row) {
+        String coords = text(row, "coordenadas");           // "6.17938000,-75.44224100"
+        double[] ll = parseCoords(coords, text(row, "latitud"), text(row, "longitud"));
+        if (ll == null) return false;
+        String extId = coords != null && !coords.isBlank() ? coords : (text(row, "estaci_n") + "|" + text(row, "ciudad"));
+        String name = firstNonBlank(text(row, "estaci_n"), text(row, "tipo_de_estacion"), "Estación de carga");
+        String connectors = text(row, "est_ndar_cargador");
+        String website = row.path("ubicaci_n_o_sitio_web").path("url").asText(null);
+
+        String sql = """
+                INSERT INTO station (source, external_id, name, operator, city, address, lat, lon,
+                                     connectors, speed, hours, website, source_active, raw, updated_at)
+                VALUES ('datos_gov_epm', ?, ?, 'EPM', ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, now())
+                ON CONFLICT (source, external_id) DO UPDATE SET
+                    name = EXCLUDED.name, city = EXCLUDED.city, address = EXCLUDED.address,
+                    lat = EXCLUDED.lat, lon = EXCLUDED.lon, connectors = EXCLUDED.connectors,
+                    speed = EXCLUDED.speed, hours = EXCLUDED.hours, website = EXCLUDED.website,
+                    raw = EXCLUDED.raw, updated_at = now()
+                RETURNING id
+                """;
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, extId);
+            ps.setString(2, name);
+            ps.setString(3, text(row, "ciudad"));
+            ps.setString(4, text(row, "direcci_n"));
+            ps.setDouble(5, ll[0]);
+            ps.setDouble(6, ll[1]);
+            ps.setString(7, connectors);
+            ps.setString(8, text(row, "tipo"));
+            ps.setString(9, text(row, "horario"));
+            ps.setString(10, website);
+            ps.setString(11, row.toString());
+            long stationId;
+            try (ResultSet rs = ps.executeQuery()) { rs.next(); stationId = rs.getLong(1); }
+            ensureChargers(c, stationId, connectors);
+            return true;
+        } catch (Exception e) {
+            log.debug("Fila ignorada: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /** Crea un cargador por cada estándar de conector detectado (no duplica). */
+    private void ensureChargers(Connection c, long stationId, String connectors) throws Exception {
+        if (connectors == null || connectors.isBlank()) return;
+        Set<String> tokens = new LinkedHashSet<>();
+        for (String t : connectors.split("[,/;\\-]| y ")) {
+            String label = t.trim().replaceAll("\\s+", " ");
+            if (label.length() >= 2) tokens.add(label);
+        }
+        String sql = """
+                INSERT INTO charger (station_id, label, connector_type)
+                VALUES (?, ?, ?) ON CONFLICT (station_id, label) DO NOTHING
+                """;
+        try (PreparedStatement ps = c.prepareStatement(sql)) {
+            for (String label : tokens) {
+                ps.setLong(1, stationId);
+                ps.setString(2, label);
+                ps.setString(3, normalizeConnector(label));
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        }
+    }
+
+    static String normalizeConnector(String s) {
+        String u = s.toUpperCase();
+        if (u.contains("CCS") || u.contains("COMBO")) return "CCS2";
+        if (u.contains("CHADEMO")) return "CHAdeMO";
+        if (u.contains("MENNEKES") || u.contains("TIPO 2") || u.contains("TYPE 2") || u.contains("EUROPEO")) return "Tipo 2";
+        if (u.contains("GBT") || u.contains("GB/T") || u.contains("GB T")) return "GB/T";
+        if (u.contains("TIPO 1") || u.contains("TYPE 1") || u.contains("J1772")) return "Tipo 1";
+        return s;
+    }
+
+    // ── Open Charge Map (cobertura nacional, crowdsourced) ──
+    public int syncOpenChargeMap() {
+        String key = Env.openChargeMapKey();
+        String url = "https://api.openchargemap.io/v3/poi?output=json&countrycode=" + Env.openChargeMapCountry()
+                + "&maxresults=" + Env.openChargeMapMax() + "&key=" + key;
+        try {
+            HttpRequest req = HttpRequest.newBuilder(URI.create(url))
+                    .header("accept", "application/json").header("X-API-Key", key)
+                    .timeout(Duration.ofSeconds(40)).GET().build();
+            HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() / 100 != 2) {
+                log.warn("Open Charge Map {} → {}", res.statusCode(), res.body());
+                return 0;
+            }
+            JsonNode pois = Json.MAPPER.readTree(res.body());
+            int n = 0;
+            for (JsonNode poi : pois) n += upsertFromOcm(poi) ? 1 : 0;
+            log.info("Sync Open Charge Map: {} estaciones procesadas", n);
+            return n;
+        } catch (Exception e) {
+            log.warn("Sync OCM falló (se continúa): {}", e.getMessage());
+            return 0;
+        }
+    }
+
+    private boolean upsertFromOcm(JsonNode poi) {
+        JsonNode ai = poi.path("AddressInfo");
+        if (ai.path("Latitude").isMissingNode() || ai.path("Longitude").isMissingNode()) return false;
+        double lat = ai.path("Latitude").asDouble();
+        double lon = ai.path("Longitude").asDouble();
+        if (lat == 0 && lon == 0) return false;
+        String extId = "ocm-" + poi.path("ID").asLong();
+        String name = firstNonBlank(text(ai, "Title"), "Estación de carga");
+        String city = firstNonBlank(text(ai, "Town"), text(ai, "StateOrProvince"), "");
+        String address = text(ai, "AddressLine1");
+        String operator = text(poi.path("OperatorInfo"), "Title");
+
+        StringBuilder conn = new StringBuilder();
+        double maxKw = 0;
+        for (JsonNode cn : poi.path("Connections")) {
+            String t = text(cn.path("ConnectionType"), "Title");
+            if (t != null && !t.isBlank()) { if (conn.length() > 0) conn.append(", "); conn.append(t); }
+            if (cn.path("PowerKW").isNumber()) maxKw = Math.max(maxKw, cn.path("PowerKW").asDouble());
+        }
+        String speed = maxKw >= 50 ? "Rápida" : maxKw >= 22 ? "Semi-rápida" : maxKw > 0 ? "Lenta" : null;
+        boolean operational = poi.path("StatusType").path("IsOperational").asBoolean(true);
+
+        String sql = """
+                INSERT INTO station (source, external_id, name, operator, city, address, lat, lon,
+                                     connectors, speed, hours, website, source_active, raw, updated_at)
+                VALUES ('openchargemap', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, now())
+                ON CONFLICT (source, external_id) DO UPDATE SET
+                    name = EXCLUDED.name, operator = EXCLUDED.operator, city = EXCLUDED.city,
+                    address = EXCLUDED.address, lat = EXCLUDED.lat, lon = EXCLUDED.lon,
+                    connectors = EXCLUDED.connectors, speed = EXCLUDED.speed,
+                    source_active = EXCLUDED.source_active, raw = EXCLUDED.raw, updated_at = now()
+                RETURNING id
+                """;
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, extId);
+            ps.setString(2, name);
+            ps.setString(3, operator);
+            ps.setString(4, city);
+            ps.setString(5, address);
+            ps.setDouble(6, lat);
+            ps.setDouble(7, lon);
+            ps.setString(8, conn.length() > 0 ? conn.toString() : null);
+            ps.setString(9, speed);
+            ps.setBoolean(10, operational);
+            ps.setString(11, poi.toString());
+            long stationId;
+            try (ResultSet rs = ps.executeQuery()) { rs.next(); stationId = rs.getLong(1); }
+            // cargadores con conector + potencia explícitos
+            int idx = 0;
+            for (JsonNode cn : poi.path("Connections")) {
+                idx++;
+                String t = firstNonBlank(text(cn.path("ConnectionType"), "Title"), "Conector " + idx);
+                Double kw = cn.path("PowerKW").isNumber() ? cn.path("PowerKW").asDouble() : null;
+                insertCharger(c, stationId, t + " #" + idx, normalizeConnector(t), kw);
+            }
+            return true;
+        } catch (Exception e) {
+            log.debug("POI OCM ignorado: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    private void insertCharger(Connection c, long stationId, String label, String connectorType, Double powerKw) throws Exception {
+        try (PreparedStatement ps = c.prepareStatement("""
+                INSERT INTO charger (station_id, label, connector_type, power_kw)
+                VALUES (?, ?, ?, ?) ON CONFLICT (station_id, label) DO NOTHING""")) {
+            ps.setLong(1, stationId);
+            ps.setString(2, label);
+            ps.setString(3, connectorType);
+            if (powerKw == null) ps.setNull(4, java.sql.Types.NUMERIC); else ps.setBigDecimal(4, java.math.BigDecimal.valueOf(powerKw));
+            ps.executeUpdate();
+        }
+    }
+
+    // ── Listado para el mapa (ligero) ──
+    public List<Map<String, Object>> list() {
+        String sql = """
+                SELECT s.id, s.name, s.operator, s.city, s.address, s.lat, s.lon, s.connectors, s.speed,
+                  (SELECT r.status FROM status_report r WHERE r.station_id = s.id AND r.charger_id IS NULL
+                     ORDER BY r.created_at DESC LIMIT 1) AS community_status,
+                  (SELECT count(*) FROM station_comment k WHERE k.station_id = s.id) AS comments,
+                  (SELECT count(*) FROM charger ch WHERE ch.station_id = s.id) AS chargers
+                FROM station s
+                WHERE s.lat IS NOT NULL AND s.lon IS NOT NULL
+                ORDER BY s.city, s.name
+                """;
+        List<Map<String, Object>> out = new ArrayList<>();
+        try (Connection c = ds.getConnection(); Statement st = c.createStatement(); ResultSet rs = st.executeQuery(sql)) {
+            while (rs.next()) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", rs.getLong("id"));
+                m.put("name", rs.getString("name"));
+                m.put("operator", nz(rs.getString("operator")));
+                m.put("city", nz(rs.getString("city")));
+                m.put("address", nz(rs.getString("address")));
+                m.put("lat", rs.getObject("lat"));
+                m.put("lon", rs.getObject("lon"));
+                m.put("connectors", nz(rs.getString("connectors")));
+                m.put("speed", nz(rs.getString("speed")));
+                m.put("communityStatus", rs.getString("community_status"));
+                m.put("comments", rs.getInt("comments"));
+                m.put("chargers", rs.getInt("chargers"));
+                out.add(m);
+            }
+        } catch (Exception e) { throw new RuntimeException("Error listando estaciones", e); }
+        return out;
+    }
+
+    // ── Totales del catálogo (para saber qué cargamos) ──
+    public Map<String, Object> stats() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Map<String, Object>> bySource = new ArrayList<>();
+        long total = 0;
+        try (Connection c = ds.getConnection(); Statement st = c.createStatement()) {
+            try (ResultSet rs = st.executeQuery("SELECT source, count(*) AS n FROM station GROUP BY source ORDER BY n DESC")) {
+                while (rs.next()) { bySource.add(Map.of("source", rs.getString("source"), "count", rs.getLong("n"))); total += rs.getLong("n"); }
+            }
+            long cities = 0;
+            try (ResultSet rs = st.executeQuery("SELECT count(DISTINCT city) AS n FROM station WHERE city <> ''")) { if (rs.next()) cities = rs.getLong("n"); }
+            out.put("total", total);
+            out.put("bySource", bySource);
+            out.put("cities", cities);
+        } catch (Exception e) { throw new RuntimeException("Error en stats", e); }
+        return out;
+    }
+
+    // ── Detalle de una estación (con cargadores y su último estado) ──
+    public Map<String, Object> detail(long id) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        try (Connection c = ds.getConnection()) {
+            try (PreparedStatement ps = c.prepareStatement("SELECT * FROM station WHERE id = ?")) {
+                ps.setLong(1, id);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) return null;
+                    out.put("id", rs.getLong("id"));
+                    out.put("name", rs.getString("name"));
+                    out.put("operator", nz(rs.getString("operator")));
+                    out.put("city", nz(rs.getString("city")));
+                    out.put("address", nz(rs.getString("address")));
+                    out.put("lat", rs.getObject("lat"));
+                    out.put("lon", rs.getObject("lon"));
+                    out.put("connectors", nz(rs.getString("connectors")));
+                    out.put("speed", nz(rs.getString("speed")));
+                    out.put("hours", nz(rs.getString("hours")));
+                    out.put("website", rs.getString("website"));
+                    out.put("source", rs.getString("source"));
+                    out.put("updatedAt", String.valueOf(rs.getObject("updated_at")));
+                }
+            }
+            // estado comunitario de la estación
+            try (PreparedStatement ps = c.prepareStatement(
+                    "SELECT status, created_at FROM status_report WHERE station_id = ? AND charger_id IS NULL ORDER BY created_at DESC LIMIT 1")) {
+                ps.setLong(1, id);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) { out.put("communityStatus", rs.getString("status"));
+                        out.put("communityStatusAt", String.valueOf(rs.getObject("created_at"))); }
+                    else out.put("communityStatus", null);
+                }
+            }
+            // cargadores con su último estado
+            List<Map<String, Object>> chargers = new ArrayList<>();
+            try (PreparedStatement ps = c.prepareStatement("""
+                    SELECT ch.id, ch.label, ch.connector_type, ch.power_kw,
+                      (SELECT r.status FROM status_report r WHERE r.charger_id = ch.id ORDER BY r.created_at DESC LIMIT 1) AS status,
+                      (SELECT r.created_at FROM status_report r WHERE r.charger_id = ch.id ORDER BY r.created_at DESC LIMIT 1) AS status_at
+                    FROM charger ch WHERE ch.station_id = ? ORDER BY ch.label""")) {
+                ps.setLong(1, id);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        Map<String, Object> ch = new LinkedHashMap<>();
+                        ch.put("id", rs.getLong("id"));
+                        ch.put("label", rs.getString("label"));
+                        ch.put("connectorType", nz(rs.getString("connector_type")));
+                        ch.put("powerKw", rs.getObject("power_kw"));
+                        ch.put("status", rs.getString("status"));
+                        ch.put("statusAt", rs.getObject("status_at") == null ? null : String.valueOf(rs.getObject("status_at")));
+                        chargers.add(ch);
+                    }
+                }
+            }
+            out.put("chargers", chargers);
+        } catch (Exception e) { throw new RuntimeException("Error consultando estación", e); }
+        return out;
+    }
+
+    // ── Helpers ──
+    private static double[] parseCoords(String coords, String lat, String lon) {
+        try {
+            if (coords != null && coords.contains(",")) {
+                String[] p = coords.split(",", 2);
+                return new double[]{ Double.parseDouble(p[0].trim()), Double.parseDouble(p[1].trim()) };
+            }
+            if (lat != null && lon != null) {
+                return new double[]{ Double.parseDouble(lat.replace(",", ".").trim()),
+                        Double.parseDouble(lon.replace(",", ".").trim()) };
+            }
+        } catch (Exception ignore) { }
+        return null;
+    }
+    private static String text(JsonNode n, String f) {
+        JsonNode v = n.path(f);
+        return v.isMissingNode() || v.isNull() ? null : v.asText();
+    }
+    private static String firstNonBlank(String... xs) {
+        for (String x : xs) if (x != null && !x.isBlank()) return x;
+        return "";
+    }
+    private static String nz(String s) { return s == null ? "" : s; }
+}

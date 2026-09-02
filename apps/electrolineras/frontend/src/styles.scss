@@ -1,0 +1,76 @@
+// ── Tokens de tema. Claro por defecto; oscuro según el dispositivo. ──
+:root {
+  --bg: #eef2f9;
+  --bg-2: #e6ebf5;
+  --panel: #ffffff;
+  --panel-2: #eef1f7;
+  --fg: #141922;
+  --muted: #5b6472;
+  --accent: #16a34a;
+  --accent-2: #06b6d4;
+  --border: #e3e8f0;
+  --shadow: 0 1px 2px rgba(20, 26, 40, .05), 0 10px 30px rgba(20, 26, 40, .07);
+  --glow: 0 10px 34px rgba(22, 163, 74, .18);
+  --grad: linear-gradient(135deg, #16a34a, #06b6d4);
+  --grad-soft: linear-gradient(160deg, #16a34a14, #06b6d40a);
+  --glass: rgba(255, 255, 255, .68);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0e14;
+    --bg-2: #0e131b;
+    --panel: #141a24;
+    --panel-2: #1b222e;
+    --fg: #e8ebf2;
+    --muted: #94a0b2;
+    --accent: #34d399;
+    --accent-2: #22d3ee;
+    --border: #232c3a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 14px 40px rgba(0, 0, 0, .45);
+    --glow: 0 12px 40px rgba(52, 211, 153, .22);
+    --grad: linear-gradient(135deg, #34d399, #22d3ee);
+    --grad-soft: linear-gradient(160deg, #34d39918, #22d3ee0d);
+    --glass: rgba(20, 26, 36, .62);
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+  letter-spacing: -.01em;
+}
+
+img, svg, canvas, table { max-width: 100%; }
+h3 { margin: 18px 0 10px; }
+
+// ── Mapa (Leaflet) — mapa limpio de OpenStreetMap, SIN teñir el conjunto ──
+.leaflet-container { background: var(--bg-2); font: inherit; }
+.leaflet-control-zoom a { background: var(--panel) !important; color: var(--fg) !important; border-color: var(--border) !important; }
+.leaflet-bar { border: none !important; box-shadow: var(--shadow) !important; border-radius: 12px !important; overflow: hidden; }
+
+// Marcador de estación (pin en forma de gota)
+.pin { width: 30px; height: 30px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
+  border: 2px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,.35); display: grid; place-items: center; }
+.pin i { transform: rotate(45deg); color: #fff; font-size: .8rem; }
+// Pulso "en vivo" para estaciones activas
+.pin.live::after { content: ''; position: absolute; inset: -6px; border-radius: 50% 50% 50% 0;
+  border: 2px solid currentColor; opacity: .6; animation: ping 1.8s cubic-bezier(0,0,.2,1) infinite; }
+@keyframes ping { 0% { transform: scale(.7); opacity: .7; } 100% { transform: scale(1.6); opacity: 0; } }
+
+// Mi ubicación
+.me { width: 18px; height: 18px; border-radius: 50%; background: #3b82f6; border: 3px solid #fff; box-shadow: 0 0 0 4px rgba(59,130,246,.35); }
+.me::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid #3b82f6; opacity: .5; animation: ping 2s ease-out infinite; }
+
+// Origen / destino del viaje
+.od { width: 16px; height: 16px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,.4); }
+.od.o { background: #3b82f6; } .od.d { background: #16a34a; }
+
+@media (prefers-reduced-motion: reduce) { .pin.live::after, .me::after { animation: none; } }

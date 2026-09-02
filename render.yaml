@@ -1,0 +1,389 @@
+# ══════════════════════════════════════════════════════════════
+#  Spider · Render Blueprint (ÚNICO archivo, dos entornos)
+#
+#  Un solo render.yaml es la fuente de verdad. Los "dos entornos"
+#  se expresan por servicio, con la rama + el schema:
+#     production → servicios sin sufijo, branch main,    schema <app>
+#     test       → servicios con sufijo -test, branch develop, schema test_<app>
+#
+#  Test valida el MISMO código/imagen que se promociona a main; entre
+#  entornos solo cambia rama, nombre de servicio y schema de BD.
+#
+#  Base de datos: una sola instancia `spider-db` y una sola
+#  `DATABASE_URL` para ambos (aislados por schema). La BD vive solo en
+#  prod; test reutiliza esa conexión.
+#
+#  ⚠️ dockerfilePath y dockerContext son relativos a la RAÍZ del repo.
+#
+#  El generador (skill scaffold-app) inyecta servicios entre los
+#  marcadores SCAFFOLD:*. No borres esas líneas.
+# ══════════════════════════════════════════════════════════════
+services:
+  # ═════════════════ APP: admin · PRODUCTION (main) ═════════════════
+  - type: web
+    name: admin-backend
+    runtime: docker
+    branch: main
+    dockerfilePath: apps/admin/backend/Dockerfile
+    dockerContext: apps/admin/backend
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: admin
+      - key: DB_SCHEMA
+        value: admin
+      - key: DATABASE_URL          # URL de spider-db (secreto)
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: AUTH_JWT_SECRET
+        generateValue: true
+      - key: PUBLIC_BASE_URL
+        sync: false
+
+  - type: web
+    name: admin-frontend
+    runtime: docker
+    branch: main
+    dockerfilePath: apps/admin/frontend/Dockerfile
+    dockerContext: apps/admin/frontend
+    plan: free
+    region: oregon
+    autoDeploy: true
+
+  # ═══════════════════ APP: admin · TEST (develop) ═══════════════════
+  - type: web
+    name: admin-backend-test
+    runtime: docker
+    branch: develop
+    dockerfilePath: apps/admin/backend/Dockerfile
+    dockerContext: apps/admin/backend
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: admin
+      - key: DB_SCHEMA
+        value: test_admin
+      - key: DATABASE_URL          # misma spider-db que production (secreto)
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: AUTH_JWT_SECRET
+        generateValue: true
+      - key: PUBLIC_BASE_URL
+        sync: false
+
+  - type: web
+    name: admin-frontend-test
+    runtime: docker
+    branch: develop
+    dockerfilePath: apps/admin/frontend/Dockerfile
+    dockerContext: apps/admin/frontend
+    plan: free
+    region: oregon
+    autoDeploy: true
+
+  # ═════════════════ GATEWAY (punto de entrada único) ═════════════════
+  # Enruta /<app> y /<app>-api a cada servicio por la red interna de Render.
+  - type: web
+    name: spider-gateway
+    runtime: docker
+    branch: main
+    dockerfilePath: infra/gateway/Dockerfile
+    dockerContext: infra/gateway
+    plan: free
+    region: oregon
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: ADMIN_FRONTEND
+        value: https://admin-frontend-kwyh.onrender.com
+      - key: ADMIN_BACKEND
+        value: https://admin-backend-ejrr.onrender.com
+      - key: GASTOS_FRONTEND
+        value: https://gastos-frontend-35qp.onrender.com
+      - key: GASTOS_BACKEND
+        value: https://gastos-backend-xfii.onrender.com
+      # ⚠️ prod: reemplaza por las URLs reales cuando se desplieguen los servicios.
+      - key: ELECTROLINERAS_FRONTEND
+        value: https://electrolineras-frontend.onrender.com
+      - key: ELECTROLINERAS_BACKEND
+        value: https://electrolineras-backend.onrender.com
+      - key: ALERTAS_FRONTEND
+        value: https://alertas-frontend.onrender.com
+      - key: ALERTAS_BACKEND
+        value: https://alertas-backend.onrender.com
+
+  - type: web
+    name: spider-gateway-test
+    runtime: docker
+    branch: develop
+    dockerfilePath: infra/gateway/Dockerfile
+    dockerContext: infra/gateway
+    plan: free
+    region: oregon
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: ADMIN_FRONTEND
+        value: https://admin-frontend-test.onrender.com
+      - key: ADMIN_BACKEND
+        value: https://admin-backend-test.onrender.com
+      - key: GASTOS_FRONTEND
+        value: https://gastos-frontend-test.onrender.com
+      - key: GASTOS_BACKEND
+        value: https://gastos-backend-test.onrender.com
+      - key: ELECTROLINERAS_FRONTEND
+        value: https://electrolineras-frontend-test.onrender.com
+      - key: ELECTROLINERAS_BACKEND
+        value: https://electrolineras-backend-test.onrender.com
+      - key: ALERTAS_FRONTEND
+        value: https://alertas-frontend-test.onrender.com
+      - key: ALERTAS_BACKEND
+        value: https://alertas-backend-test.onrender.com
+  # ─────────────────────────────────────────────────────────
+  # ═════════════════════ APP: gastos ═════════════════════════
+  - type: web
+    name: gastos-backend
+    runtime: docker
+    branch: main
+    dockerfilePath: apps/gastos/backend/Dockerfile
+    dockerContext: apps/gastos/backend
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: gastos
+      - key: DB_SCHEMA
+        value: gastos
+      - key: DATABASE_URL
+        sync: false
+
+  - type: web
+    name: gastos-frontend
+    runtime: docker
+    branch: main
+    dockerfilePath: apps/gastos/frontend/Dockerfile
+    dockerContext: apps/gastos/frontend
+    plan: free
+    region: oregon
+    autoDeploy: true
+
+  - type: web
+    name: gastos-backend-test
+    runtime: docker
+    branch: develop
+    dockerfilePath: apps/gastos/backend/Dockerfile
+    dockerContext: apps/gastos/backend
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: gastos
+      - key: DB_SCHEMA
+        value: test_gastos
+      - key: DATABASE_URL
+        sync: false
+
+  - type: web
+    name: gastos-frontend-test
+    runtime: docker
+    branch: develop
+    dockerfilePath: apps/gastos/frontend/Dockerfile
+    dockerContext: apps/gastos/frontend
+    plan: free
+    region: oregon
+    autoDeploy: true
+
+  # ═════════════════════ APP: electrolineras ═════════════════════════
+  - type: web
+    name: electrolineras-backend
+    runtime: docker
+    branch: main
+    dockerfilePath: apps/electrolineras/backend/Dockerfile
+    dockerContext: apps/electrolineras/backend
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: electrolineras
+      - key: DB_SCHEMA
+        value: electrolineras
+      # BD, secreto de sesión y token: se heredan del admin (set once ahí).
+      - key: DATABASE_URL
+        fromService:
+          type: web
+          name: admin-backend
+          envVarKey: DATABASE_URL
+      - key: AUTH_JWT_SECRET
+        fromService:
+          type: web
+          name: admin-backend
+          envVarKey: AUTH_JWT_SECRET
+      - key: REGISTRY_TOKEN
+        fromService:
+          type: web
+          name: admin-backend
+          envVarKey: REGISTRY_TOKEN
+      - key: ADMIN_REGISTRY_URL
+        value: https://admin-backend-ejrr.onrender.com
+
+  - type: web
+    name: electrolineras-frontend
+    runtime: docker
+    branch: main
+    dockerfilePath: apps/electrolineras/frontend/Dockerfile
+    dockerContext: apps/electrolineras/frontend
+    plan: free
+    region: oregon
+    autoDeploy: true
+
+  - type: web
+    name: electrolineras-backend-test
+    runtime: docker
+    branch: develop
+    dockerfilePath: apps/electrolineras/backend/Dockerfile
+    dockerContext: apps/electrolineras/backend
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: electrolineras
+      - key: DB_SCHEMA
+        value: test_electrolineras
+      # BD, secreto de sesión y token: se heredan del admin (set once ahí).
+      - key: DATABASE_URL
+        fromService:
+          type: web
+          name: admin-backend-test
+          envVarKey: DATABASE_URL
+      - key: AUTH_JWT_SECRET
+        fromService:
+          type: web
+          name: admin-backend-test
+          envVarKey: AUTH_JWT_SECRET
+      - key: REGISTRY_TOKEN
+        fromService:
+          type: web
+          name: admin-backend-test
+          envVarKey: REGISTRY_TOKEN
+      - key: ADMIN_REGISTRY_URL
+        value: https://admin-backend-test.onrender.com
+
+  - type: web
+    name: electrolineras-frontend-test
+    runtime: docker
+    branch: develop
+    dockerfilePath: apps/electrolineras/frontend/Dockerfile
+    dockerContext: apps/electrolineras/frontend
+    plan: free
+    region: oregon
+    autoDeploy: true
+
+  # ═════════════════════ APP: alertas ═════════════════════════
+  - type: web
+    name: alertas-backend
+    runtime: docker
+    branch: main
+    dockerfilePath: apps/alertas/backend/Dockerfile
+    dockerContext: apps/alertas/backend
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: alertas
+      - key: DB_SCHEMA
+        value: alertas
+      - key: DATABASE_URL
+        fromService:
+          type: web
+          name: admin-backend
+          envVarKey: DATABASE_URL
+      - key: AUTH_JWT_SECRET
+        fromService:
+          type: web
+          name: admin-backend
+          envVarKey: AUTH_JWT_SECRET
+      - key: REGISTRY_TOKEN
+        fromService:
+          type: web
+          name: admin-backend
+          envVarKey: REGISTRY_TOKEN
+      - key: ADMIN_REGISTRY_URL
+        value: https://admin-backend-ejrr.onrender.com
+
+  - type: web
+    name: alertas-frontend
+    runtime: docker
+    branch: main
+    dockerfilePath: apps/alertas/frontend/Dockerfile
+    dockerContext: apps/alertas/frontend
+    plan: free
+    region: oregon
+    autoDeploy: true
+
+  - type: web
+    name: alertas-backend-test
+    runtime: docker
+    branch: develop
+    dockerfilePath: apps/alertas/backend/Dockerfile
+    dockerContext: apps/alertas/backend
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: alertas
+      - key: DB_SCHEMA
+        value: test_alertas
+      - key: DATABASE_URL
+        fromService:
+          type: web
+          name: admin-backend-test
+          envVarKey: DATABASE_URL
+      - key: AUTH_JWT_SECRET
+        fromService:
+          type: web
+          name: admin-backend-test
+          envVarKey: AUTH_JWT_SECRET
+      - key: REGISTRY_TOKEN
+        fromService:
+          type: web
+          name: admin-backend-test
+          envVarKey: REGISTRY_TOKEN
+      - key: ADMIN_REGISTRY_URL
+        value: https://admin-backend-test.onrender.com
+
+  - type: web
+    name: alertas-frontend-test
+    runtime: docker
+    branch: develop
+    dockerfilePath: apps/alertas/frontend/Dockerfile
+    dockerContext: apps/alertas/frontend
+    plan: free
+    region: oregon
+    autoDeploy: true
+
+  # SCAFFOLD:SERVICES  ← no borrar; el generador inyecta apps aquí
+  # SCAFFOLD:END

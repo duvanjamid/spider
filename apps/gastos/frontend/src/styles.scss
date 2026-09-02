@@ -1,0 +1,81 @@
+// ── Tokens de tema. Claro por defecto; oscuro según el dispositivo. ──
+:root {
+  --bg: #f4f6fb;
+  --panel: #ffffff;
+  --panel-2: #eef1f7;
+  --fg: #1e2330;
+  --muted: #5b6472;
+  --accent: #10b981;            /* verde de gastos (coherente con logo/tema) */
+  --border: #e2e6ef;
+  --shadow: 0 1px 3px rgba(20, 26, 40, .08), 0 8px 24px rgba(20, 26, 40, .06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --panel: #161922;
+    --panel-2: #1d212b;
+    --fg: #e6e8ee;
+    --muted: #9aa3b2;
+    --accent: #34d399;          /* verde de gastos (oscuro) */
+    --border: #262a33;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 30px rgba(0, 0, 0, .35);
+  }
+}
+
+// ══ Estilo de superficie (ortogonal a claro/oscuro). Se elige en el perfil y
+//    se aplica con data-theme en <html>. El color de acento se inyecta inline. ══
+:root[data-theme="flat"] {
+  --shadow: none;
+  --radius: 12px;
+}
+:root[data-theme="modern"] {
+  --radius: 16px;
+}
+:root[data-theme="glass"] {
+  --panel: rgba(255, 255, 255, .60);
+  --panel-2: rgba(255, 255, 255, .40);
+  --border: rgba(255, 255, 255, .55);
+  --shadow: 0 8px 32px rgba(20, 26, 40, .14);
+  --blur: 14px;
+  --radius: 20px;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="glass"] {
+    --panel: rgba(30, 34, 44, .55);
+    --panel-2: rgba(40, 45, 58, .45);
+    --border: rgba(255, 255, 255, .12);
+    --shadow: 0 8px 32px rgba(0, 0, 0, .45);
+  }
+}
+// Fondo con un toque de acento para que el «glass» tenga algo que difuminar.
+:root[data-theme="glass"] body {
+  background:
+    radial-gradient(120% 90% at 8% -10%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 55%),
+    radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 50%),
+    var(--bg);
+  background-attachment: fixed;
+}
+// Superficies translúcidas con desenfoque (solo en glass).
+:root[data-theme="glass"] :is(.kpi, .row, .pcard, .notif-list, .profile, .seg,
+    .acc-group .menu, .bnav, .bar) {
+  backdrop-filter: blur(var(--blur, 12px));
+  -webkit-backdrop-filter: blur(var(--blur, 12px));
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;          // nunca scroll horizontal a nivel de página
+}
+
+// Los medios nunca desbordan su contenedor.
+img, svg, canvas, table { max-width: 100%; }
+
+h3 { margin: 18px 0 10px; }

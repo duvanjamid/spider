@@ -1,0 +1,253 @@
+package com.spider.gastos.ai;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.spider.gastos.config.Env;
+import com.spider.gastos.util.Json;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Lee una factura/recibo con Gemini (Google AI Studio) y extrae:
+ * NIT, establecimiento, posibles totales (neto, con IVA, con propina…),
+ * descripción, fecha, la categoría (de la lista del usuario) o una sugerida,
+ * y —cuando es una imagen— las REGIONES de dónde salió cada dato para
+ * resaltarlas sobre la foto.
+ */
+public class GeminiScanner {
+
+    private static final Logger log = LoggerFactory.getLogger(GeminiScanner.class);
+
+    private final HttpClient http = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10)).build();
+
+    /** Escaneo de una sola imagen (conveniencia). */
+    public Map<String, Object> scan(String base64Image, String mediaType,
+                                    List<Map<String, Object>> categories) throws Exception {
+        Map<String, Object> one = new LinkedHashMap<>();
+        one.put("image", base64Image);
+        one.put("mediaType", mediaType);
+        return scan(List.of(one), categories);
+    }
+
+    /**
+     * Escaneo de 1..N fotos de la MISMA factura (facturas grandes: varias tomas).
+     * Se combinan en un único resultado. Las regiones solo aplican con una imagen.
+     */
+    public Map<String, Object> scan(List<Map<String, Object>> images,
+                                    List<Map<String, Object>> categories) throws Exception {
+        if (!Env.aiEnabled()) throw new IllegalStateException("IA no configurada (falta GEMINI_API_KEY)");
+        ObjectNode root = Json.MAPPER.createObjectNode();
+        ArrayNode parts = root.putArray("contents").addObject().putArray("parts");
+        int n = 0;
+        for (Map<String, Object> img : images) {
+            Object data = img.get("image");
+            if (data == null || String.valueOf(data).isBlank()) continue;
+            Object mt = img.get("mediaType");
+            ObjectNode inline = parts.addObject().putObject("inline_data");
+            inline.put("mime_type", mt == null || String.valueOf(mt).isBlank() ? "image/jpeg" : String.valueOf(mt));
+            inline.put("data", String.valueOf(data));
+            n++;
+        }
+        String note = n > 1
+                ? "Estas son " + n + " fotos de la MISMA factura (distintas partes de un solo comprobante). "
+                  + "Combínalas en UN ÚNICO resultado: junta TODOS los productos de todas las fotos y usa el "
+                  + "total real del comprobante (no sumes totales repetidos que aparezcan en varias fotos).\n\n"
+                : "";
+        parts.addObject().put("text", note + prompt(categories, n <= 1));
+        return call(root);
+    }
+
+    /** Escaneo desde texto pegado (SMS, correo, nota…). Sin regiones. */
+    public Map<String, Object> scanText(String text, List<Map<String, Object>> categories) throws Exception {
+        if (!Env.aiEnabled()) throw new IllegalStateException("IA no configurada (falta GEMINI_API_KEY)");
+        ObjectNode root = Json.MAPPER.createObjectNode();
+        ArrayNode parts = root.putArray("contents").addObject().putArray("parts");
+        parts.addObject().put("text", prompt(categories, false)
+                + "\n\nTEXTO DEL COMPROBANTE:\n\"\"\"\n" + text + "\n\"\"\"");
+        return call(root);
+    }
+
+    private Map<String, Object> call(ObjectNode root) throws Exception {
+        String model = Env.geminiModel();
+        ObjectNode gen = root.putObject("generationConfig");
+        gen.put("temperature", 0.1);
+        gen.put("responseMimeType", "application/json");
+        // "Thinking" es EXCLUSIVO de los modelos Gemini 2.5: enviar thinkingConfig a
+        // un 2.0/1.5 devuelve 400 (por eso "fallaba de la nada" con gemini-2.0-flash).
+        // Solo cuando el modelo lo soporta le damos un presupuesto ACOTADO de
+        // pensamiento (unos segundos, GEMINI_THINKING_BUDGET) para que lea bien la
+        // imagen sin dispararse a 20-40s. Con GEMINI_THINKING_BUDGET<0 se omite.
+        int budget = Env.geminiThinkingBudget();
+        if (budget >= 0 && supportsThinking(model)) {
+            gen.putObject("thinkingConfig").put("thinkingBudget", budget);
+        }
+
+        String url = "https://generativelanguage.googleapis.com/v1beta/models/"
+                + model + ":generateContent?key=" + Env.geminiApiKey();
+        HttpRequest req = HttpRequest.newBuilder(URI.create(url))
+                .header("content-type", "application/json")
+                .timeout(Duration.ofSeconds(Env.geminiTimeoutSeconds()))
+                .POST(HttpRequest.BodyPublishers.ofString(Json.MAPPER.writeValueAsString(root)))
+                .build();
+        HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+        if (res.statusCode() / 100 != 2) {
+            log.warn("Gemini {} → {}", res.statusCode(), res.body());
+            throw new RuntimeException("La IA respondió " + res.statusCode());
+        }
+        return parse(res.body());
+    }
+
+    private String prompt(List<Map<String, Object>> categories, boolean withImage) {
+        StringBuilder cats = new StringBuilder();
+        for (Map<String, Object> c : categories) {
+            cats.append(c.get("id")).append(": ").append(c.get("name")).append("; ");
+        }
+        String regionsSpec = withImage
+                ? """
+                  ,
+                  "regiones": [ { "campo": "nit|establecimiento|monto|descripcion|fecha",
+                                  "etiqueta": string, "box": [ymin, xmin, ymax, xmax] } ]
+                  """
+                : "";
+        String regionsRule = withImage
+                ? """
+                  - "regiones": por cada dato que hayas extraído, indica la región de la imagen de
+                    donde lo tomaste. "box" son 4 enteros 0-1000 = [ymin, xmin, ymax, xmax] normalizados
+                    al tamaño de la imagen. Incluye al menos el establecimiento y cada monto candidato.
+                  """
+                : "";
+        return """
+                Analiza el comprobante de compra (factura/recibo) y devuelve SOLO un objeto JSON
+                (sin markdown) con exactamente esta forma:
+                {
+                  "identificado": true|false,
+                  "nit": string|null,
+                  "establecimiento": string|null,
+                  "montos": [ { "etiqueta": string, "valor": number } ],
+                  "descripcion": string|null,
+                  "fecha": string|null,
+                  "hora": string|null,
+                  "categoriaId": number|null,
+                  "categoriaNombre": string|null,
+                  "categoriaSugerida": string|null,
+                  "productos": [ { "nombre": string, "cantidad": number|null,
+                                   "precioUnitario": number|null, "total": number|null } ]%s
+                }
+                Reglas:
+                - "montos": lista TODOS los totales candidatos que veas (p. ej. "Subtotal/Neto",
+                  "Total con IVA", "Total con propina/servicio", "Total a pagar"). Valores numéricos
+                  sin separador de miles.
+                - "descripcion": un resumen NUTRIDO de la compra en 1-2 frases: qué se compró
+                  (menciona los ítems o productos principales que veas en el detalle), el
+                  establecimiento y el contexto (p. ej. "Almuerzo para 2: bandeja paisa y jugos
+                  en Restaurante La Fonda" o "Mercado semanal: frutas, lácteos y aseo en Éxito").
+                  Evita algo genérico como "compra" o solo el nombre del comercio.
+                - "fecha": SIEMPRE intenta extraer la fecha de la compra del comprobante en formato
+                  YYYY-MM-DD (busca "Fecha", "Date", el sello de la caja, etc.); deja null solo si de
+                  verdad no aparece en la imagen/texto.
+                - "hora": hora de la compra en formato HH:MM (24h) si aparece en el comprobante, si no null.
+                - "productos": si la factura lista ítems, extrae CADA línea con "nombre" (corto, el
+                  producto en sí, sin códigos), "cantidad", "precioUnitario" (precio por unidad) y
+                  "total" de la línea. Números sin separador de miles. Si no hay detalle de productos, deja [].
+                - "categoriaId"/"categoriaNombre": elige de la lista del usuario SOLO si hay una que
+                  encaje ESPECÍFICAMENTE con la compra (id: nombre): %s
+                  NUNCA uses una categoría genérica de cajón ("Otros", "Varios", "General",
+                  "Misceláneos") como coincidencia: son el último recurso, no una respuesta.
+                - Si NINGUNA categoría específica aplica, deja categoriaId y categoriaNombre en null y
+                  SIEMPRE propón en "categoriaSugerida" un nombre corto y específico para el tipo de
+                  compra (p. ej. "Mascotas", "Farmacia", "Gasolina", "Restaurantes", "Papelería"),
+                  en vez de mandarla a "Otros".
+                - Si NO es un comprobante legible o no hay montos, pon "identificado": false.
+                %s""".formatted(regionsSpec, cats.toString().trim(), regionsRule);
+    }
+
+    private Map<String, Object> parse(String responseBody) throws Exception {
+        JsonNode root = Json.MAPPER.readTree(responseBody);
+        String text = root.path("candidates").path(0).path("content").path("parts").path(0)
+                .path("text").asText("");
+        JsonNode ex = Json.MAPPER.readTree(extractJson(text));
+
+        List<Map<String, Object>> montos = new ArrayList<>();
+        for (JsonNode m : ex.path("montos")) {
+            if (m.path("valor").isNumber()) {
+                montos.add(Map.of(
+                        "etiqueta", m.path("etiqueta").asText("Total"),
+                        "valor", m.path("valor").asDouble()));
+            }
+        }
+        boolean identificado = ex.path("identificado").asBoolean(false) && !montos.isEmpty();
+
+        List<Map<String, Object>> regiones = new ArrayList<>();
+        for (JsonNode r : ex.path("regiones")) {
+            JsonNode box = r.path("box");
+            if (box.isArray() && box.size() == 4) {
+                List<Integer> b = new ArrayList<>(4);
+                for (JsonNode n : box) b.add(clamp(n.asInt(0)));
+                regiones.add(Map.of(
+                        "campo", r.path("campo").asText(""),
+                        "etiqueta", r.path("etiqueta").asText(""),
+                        "box", b));
+            }
+        }
+
+        List<Map<String, Object>> productos = new ArrayList<>();
+        for (JsonNode p : ex.path("productos")) {
+            String nombre = p.path("nombre").asText("").trim();
+            if (nombre.isEmpty()) continue;
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("nombre", nombre);
+            item.put("cantidad", p.path("cantidad").isNumber() ? p.path("cantidad").asDouble() : null);
+            item.put("precioUnitario", p.path("precioUnitario").isNumber() ? p.path("precioUnitario").asDouble() : null);
+            item.put("total", p.path("total").isNumber() ? p.path("total").asDouble() : null);
+            productos.add(item);
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("identificado", identificado);
+        out.put("nit", asText(ex, "nit"));
+        out.put("establecimiento", asText(ex, "establecimiento"));
+        out.put("montos", montos);
+        out.put("descripcion", asText(ex, "descripcion"));
+        out.put("fecha", asText(ex, "fecha"));
+        out.put("hora", asText(ex, "hora"));
+        out.put("categoriaId", ex.path("categoriaId").isNumber() ? ex.path("categoriaId").asLong() : null);
+        out.put("categoriaNombre", asText(ex, "categoriaNombre"));
+        out.put("categoriaSugerida", asText(ex, "categoriaSugerida"));
+        out.put("productos", productos);
+        out.put("regiones", regiones);
+        return out;
+    }
+
+    /**
+     * ¿El modelo soporta "thinking"? Solo la familia Gemini 2.5 (incluidos los
+     * alias *-latest, que apuntan a 2.5). Los 2.0/1.5 rechazan thinkingConfig.
+     */
+    private static boolean supportsThinking(String model) {
+        String m = model == null ? "" : model.toLowerCase();
+        return m.contains("2.5") || m.contains("-latest");
+    }
+
+    private static int clamp(int v) { return v < 0 ? 0 : (v > 1000 ? 1000 : v); }
+
+    private static String extractJson(String s) {
+        int a = s.indexOf('{'), b = s.lastIndexOf('}');
+        return (a >= 0 && b > a) ? s.substring(a, b + 1) : "{}";
+    }
+
+    private static String asText(JsonNode n, String field) {
+        JsonNode v = n.path(field);
+        return v.isMissingNode() || v.isNull() ? null : v.asText();
+    }
+}

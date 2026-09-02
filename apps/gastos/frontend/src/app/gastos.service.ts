@@ -1,0 +1,172 @@
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+import { environment } from '../environments/environment';
+
+export interface Category { id: number; slug: string; name: string; color: string; icon: string; }
+export interface Expense {
+  id: number; amount: number; currency: string; merchant: string; description: string; nit: string;
+  spentOn: string; spentAt: string; registeredAt: string; source: string;
+  categorySlug: string; categoryName: string; categoryColor: string;
+  shared?: boolean; sharedWith?: string[]; sharedCategory?: boolean; mine?: boolean; sharedBy?: string;
+}
+export interface SharedInCategory { id: number; slug: string; name: string; color: string; icon: string; owner: string; }
+export interface ConnRow { id: number; email: string; }
+export interface Connections { accepted: ConnRow[]; incoming: ConnRow[]; outgoing: ConnRow[]; }
+export interface CategoryShare { slug: string; emails: string[]; }
+export interface CatTotal { slug: string; name: string; color: string; total: number; budget: number; }
+export interface Budget { categoryId: number; slug: string; name: string; color: string; amount: number; }
+export interface Recurring {
+  id: number; amount: number; currency: string; merchant: string; description: string;
+  dayOfMonth: number; active: boolean; categoryId: number | null; categoryName: string; categoryColor: string;
+}
+export interface Summary {
+  month: string; total: number; byCategory: CatTotal[];
+  count: number; daysInMonth: number; daysElapsed: number;
+  dailyAverage: number; projectedEndOfMonth: number; previousMonthTotal: number;
+  income: number;   // ingresos del mes = tope global de gasto
+}
+export interface TrendPoint { month: string; total: number; }
+export interface Trend { series: TrendPoint[]; forecastNext: number; average: number; }
+export interface Income { id: number; amount: number; source: string; receivedOn: string; }
+export interface AntGroup { label: string; color: string; count: number; total: number; avg: number; }
+export interface AntReport { month: string; threshold: number; total: number; count: number; groups: AntGroup[]; }
+export interface BurnPoint { day: number; cumulative: number; }
+export interface PushStatus { enabled: boolean; key: string; subscribed: boolean; }
+
+export interface Monto { etiqueta: string; valor: number; }
+export interface Region { campo: string; etiqueta: string; box: number[]; }
+export interface ScanItem { nombre: string; cantidad: number | null; precioUnitario: number | null; total: number | null; }
+export interface Scan {
+  identificado: boolean;
+  nit: string | null;
+  establecimiento: string | null;
+  montos: Monto[];
+  descripcion: string | null;
+  fecha: string | null;
+  hora: string | null;
+  categoriaId: number | null;
+  categoriaNombre: string | null;
+  categoriaSugerida: string | null;
+  productos: ScanItem[];
+  regiones: Region[];
+}
+export interface ExpenseItem { name: string; quantity: number | null; unitPrice: number | null; lineTotal: number | null; }
+export interface PriceStore { store: string; minPrice: number; avgPrice: number; lastPrice: number; lastOn: string; count: number; shared?: boolean; }
+export interface PriceProduct { name: string; categorySlug: string; categoryName: string; stores: PriceStore[]; minPrice: number; maxPrice: number; storeCount: number; cheapestStore: string; shared?: boolean; }
+export interface Me { email: string; guest: boolean; onboarded: boolean; name?: string; picture?: string; }
+export interface Notif {
+  id: number; kind: string; title: string; body: string;
+  actor: string; ref: string; createdAt: string; read: boolean;
+}
+export interface CategoryTemplate { slug: string; name: string; color: string; icon: string; }
+export interface NewExpense {
+  amount: number; currency?: string; categoryId?: number | null;
+  merchant?: string; description?: string; spentOn?: string; spentAt?: string; nit?: string; source?: string;
+  items?: ScanItem[]; shareWith?: string[];
+}
+
+@Injectable({ providedIn: 'root' })
+export class GastosService {
+  private http = inject(HttpClient);
+  private base = environment.apiBase;
+  private opts = { withCredentials: true };
+
+  me(): Observable<Me> { return this.http.get<Me>(`${this.base}/me`, this.opts); }
+  /** Cierra la sesión de la plataforma (cookie compartida que emite admin). */
+  logout(): Observable<unknown> { return this.http.post(`/admin-api/auth/logout`, {}, this.opts); }
+  categoryTemplates(): Observable<CategoryTemplate[]> {
+    return this.http.get<CategoryTemplate[]>(`${this.base}/category-templates`, this.opts);
+  }
+  onboarding(slugs: string[]): Observable<{ count: number }> {
+    return this.http.post<{ count: number }>(`${this.base}/onboarding`, { slugs }, this.opts);
+  }
+  categories(): Observable<Category[]> { return this.http.get<Category[]>(`${this.base}/categories`, this.opts); }
+  createCategory(name: string, color: string, icon: string): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(`${this.base}/categories`, { name, color, icon }, this.opts);
+  }
+  updateCategory(id: number, body: { name?: string; color?: string; icon?: string }): Observable<unknown> {
+    return this.http.put(`${this.base}/categories/${id}`, body, this.opts);
+  }
+  deleteCategory(id: number): Observable<unknown> { return this.http.delete(`${this.base}/categories/${id}`, this.opts); }
+
+  budgets(): Observable<Budget[]> { return this.http.get<Budget[]>(`${this.base}/budgets`, this.opts); }
+  setBudget(categoryId: number, amount: number): Observable<unknown> {
+    return this.http.put(`${this.base}/budgets`, { categoryId, amount }, this.opts);
+  }
+  recurring(): Observable<Recurring[]> { return this.http.get<Recurring[]>(`${this.base}/recurring`, this.opts); }
+  createRecurring(body: Partial<Recurring>): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(`${this.base}/recurring`, body, this.opts);
+  }
+  deleteRecurring(id: number): Observable<unknown> { return this.http.delete(`${this.base}/recurring/${id}`, this.opts); }
+  applyRecurring(month: string): Observable<{ created: number }> {
+    return this.http.post<{ created: number }>(`${this.base}/recurring/apply?month=${month}`, {}, this.opts);
+  }
+  expenses(month: string): Observable<Expense[]> { return this.http.get<Expense[]>(`${this.base}/expenses?month=${month}`, this.opts); }
+  create(e: NewExpense): Observable<{ id: number }> { return this.http.post<{ id: number }>(`${this.base}/expenses`, e, this.opts); }
+  update(id: number, e: NewExpense): Observable<unknown> { return this.http.put(`${this.base}/expenses/${id}`, e, this.opts); }
+  remove(id: number): Observable<unknown> { return this.http.delete(`${this.base}/expenses/${id}`, this.opts); }
+  itemsOf(id: number): Observable<ExpenseItem[]> { return this.http.get<ExpenseItem[]>(`${this.base}/expenses/${id}/items`, this.opts); }
+  prices(): Observable<PriceProduct[]> { return this.http.get<PriceProduct[]>(`${this.base}/prices`, this.opts); }
+  summary(month: string): Observable<Summary> { return this.http.get<Summary>(`${this.base}/summary?month=${month}`, this.opts); }
+  trend(months = 6): Observable<Trend> { return this.http.get<Trend>(`${this.base}/trend?months=${months}`, this.opts); }
+
+  // ── Ingresos (tope global) ──
+  income(month: string): Observable<{ items: Income[]; total: number }> {
+    return this.http.get<{ items: Income[]; total: number }>(`${this.base}/income?month=${month}`, this.opts);
+  }
+  addIncome(amount: number, source: string, receivedOn: string): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(`${this.base}/income`, { amount, source, receivedOn }, this.opts);
+  }
+  deleteIncome(id: number): Observable<unknown> { return this.http.delete(`${this.base}/income/${id}`, this.opts); }
+
+  // ── Gastos hormiga / quema de presupuesto ──
+  ant(month: string, max?: number): Observable<AntReport> {
+    const q = max ? `&max=${max}` : '';
+    return this.http.get<AntReport>(`${this.base}/ant?month=${month}${q}`, this.opts);
+  }
+  burndown(month: string): Observable<BurnPoint[]> {
+    return this.http.get<BurnPoint[]>(`${this.base}/burndown?month=${month}`, this.opts);
+  }
+
+  // ── Web Push ──
+  pushStatus(): Observable<PushStatus> { return this.http.get<PushStatus>(`${this.base}/push/status`, this.opts); }
+  pushSubscribe(sub: { endpoint: string; p256dh: string; auth: string }): Observable<unknown> {
+    return this.http.post(`${this.base}/push/subscribe`, sub, this.opts);
+  }
+  pushUnsubscribe(endpoint: string): Observable<unknown> {
+    return this.http.post(`${this.base}/push/unsubscribe`, { endpoint }, this.opts);
+  }
+  aiStatus(): Observable<{ enabled: boolean }> { return this.http.get<{ enabled: boolean }>(`${this.base}/ai-status`, this.opts); }
+  scan(image: string, mediaType: string): Observable<Scan> {
+    return this.http.post<Scan>(`${this.base}/scan`, { image, mediaType }, this.opts);
+  }
+  scanImages(images: { image: string; mediaType: string }[]): Observable<Scan> {
+    return this.http.post<Scan>(`${this.base}/scan`, { images }, this.opts);
+  }
+  scanText(text: string): Observable<Scan> {
+    return this.http.post<Scan>(`${this.base}/scan-text`, { text }, this.opts);
+  }
+  health(): Observable<{ env: string }> { return this.http.get<{ env: string }>(`${this.base}/health`, this.opts); }
+
+  // ── Hogar / compartir ──
+  connections(): Observable<Connections> { return this.http.get<Connections>(`${this.base}/connections`, this.opts); }
+  household(): Observable<string[]> { return this.http.get<string[]>(`${this.base}/household`, this.opts); }
+  invite(email: string): Observable<unknown> { return this.http.post(`${this.base}/connections`, { email }, this.opts); }
+  acceptConn(id: number): Observable<unknown> { return this.http.post(`${this.base}/connections/${id}/accept`, {}, this.opts); }
+  removeConn(id: number): Observable<unknown> { return this.http.delete(`${this.base}/connections/${id}`, this.opts); }
+  shareExpense(id: number, emails: string[]): Observable<unknown> { return this.http.put(`${this.base}/expenses/${id}/share`, { emails }, this.opts); }
+  categoryShares(): Observable<CategoryShare[]> { return this.http.get<CategoryShare[]>(`${this.base}/categories/shares`, this.opts); }
+  sharedInCategories(): Observable<SharedInCategory[]> { return this.http.get<SharedInCategory[]>(`${this.base}/categories/shared-in`, this.opts); }
+  shareCategory(slug: string, emails: string[]): Observable<unknown> { return this.http.put(`${this.base}/categories/share`, { slug, emails }, this.opts); }
+
+  // ── Notificaciones ──
+  notifications(): Observable<{ items: Notif[]; unread: number }> {
+    return this.http.get<{ items: Notif[]; unread: number }>(`${this.base}/notifications`, this.opts);
+  }
+  notifCount(): Observable<{ unread: number }> {
+    return this.http.get<{ unread: number }>(`${this.base}/notifications/count`, this.opts);
+  }
+  markNotifRead(id: number): Observable<unknown> { return this.http.post(`${this.base}/notifications/${id}/read`, {}, this.opts); }
+  markAllNotifRead(): Observable<unknown> { return this.http.post(`${this.base}/notifications/read-all`, {}, this.opts); }
+}
