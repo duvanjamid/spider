@@ -29,6 +29,14 @@ public class PushService {
 
     private final DataSource ds;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+    // Envío fuera del hilo de la petición: crear un gasto o invitar no debe
+    // esperar a los POST de push (uno por dispositivo).
+    private final java.util.concurrent.ExecutorService pool =
+            java.util.concurrent.Executors.newFixedThreadPool(2, r -> {
+                Thread t = new Thread(r, "push-sender");
+                t.setDaemon(true);
+                return t;
+            });
 
     public PushService(DataSource ds) { this.ds = ds; }
 
@@ -96,9 +104,14 @@ public class PushService {
         } catch (Exception ignore) { /* limpieza best-effort */ }
     }
 
-    /** Envía una notificación a todos los dispositivos del usuario (best-effort). */
+    /** Envía una notificación a todos los dispositivos del usuario (async, best-effort). */
     public void sendToUser(String email, String title, String body, String url) {
-        if (!enabled()) return;
+        if (!enabled() || email == null || email.isBlank()) return;
+        try { pool.submit(() -> deliver(email, title, body, url)); }
+        catch (Exception e) { log.warn("No se pudo encolar push: {}", e.getMessage()); }
+    }
+
+    private void deliver(String email, String title, String body, String url) {
         List<Sub> subs = subscriptions(email);
         if (subs.isEmpty()) return;
         String payload = "{\"title\":" + json(title) + ",\"body\":" + json(body)

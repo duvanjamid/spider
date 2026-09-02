@@ -1,7 +1,5 @@
 package com.spider.gastos.expense;
 
-import com.spider.gastos.push.PushService;
-
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -24,13 +22,11 @@ public class AlertService {
     private final DataSource ds;
     private final IncomeService income;
     private final NotificationService notifications;
-    private final PushService push;
 
-    public AlertService(DataSource ds, IncomeService income, NotificationService notifications, PushService push) {
+    public AlertService(DataSource ds, IncomeService income, NotificationService notifications) {
         this.ds = ds;
         this.income = income;
         this.notifications = notifications;
-        this.push = push;
     }
 
     private record Cross(long categoryId, String name, double spent, double budget) {}
@@ -105,8 +101,8 @@ public class AlertService {
     }
 
     private void notify(String email, String ref, String title, String body) {
+        // NotificationService ya envía el push al insertar la notificación in-app.
         notifications.push(email, "budget_exceeded", title, body, null, ref);
-        push.sendToUser(email, title, body, "/gastos/");
     }
 
     private static String money(double v) {

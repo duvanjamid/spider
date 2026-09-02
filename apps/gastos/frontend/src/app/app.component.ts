@@ -33,10 +33,18 @@ function localYMD(d: Date = new Date()): string {
 
     /* App bar */
     .bar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 10px;
-           padding: 14px 4px; background: color-mix(in srgb, var(--bg) 86%, transparent);
-           backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+           padding: 14px 12px; margin: 0 -12px 4px; border-radius: 0 0 18px 18px;
+           background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 16%, var(--bg)),
+                                        color-mix(in srgb, var(--accent) 7%, var(--bg)));
+           backdrop-filter: blur(10px); border-bottom: 1px solid var(--accent-line); flex-wrap: wrap; }
     .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.2rem; }
-    .brand .blogo { width: 28px; height: 28px; color: #10b981; }
+    .brand .blogo { width: 28px; height: 28px; color: var(--accent); }
+    .brand .wm { background: var(--accent-grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .month b { color: var(--fg); }
+    .mnav { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--accent-line);
+            background: var(--accent-soft); color: var(--accent); cursor: pointer; display: grid; place-items: center;
+            font-size: .9rem; transition: transform .06s, background .15s; }
+    .mnav:active { transform: scale(.92); }
     .env { font-size: .66rem; font-weight: 800; letter-spacing: .5px; padding: 3px 7px; border-radius: 6px;
            background: #f59e0b; color: #1a1200; text-transform: uppercase; }
     .spacer { flex: 1; }
@@ -126,6 +134,51 @@ function localYMD(d: Date = new Date()): string {
     .cat-add { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
     .cat-add input[type=color] { width: 44px; height: 40px; border: none; background: none; padding: 0; }
     .cat-row { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--border); }
+
+    /* Editor de categoría (crear / editar con icono, color y monto) */
+    .cat-editor { border: 1px solid var(--accent-line); border-radius: 16px; padding: 14px;
+                  background: var(--accent-soft); margin-bottom: 16px; }
+    .ce-top { display: flex; align-items: center; gap: 12px; }
+    .ce-preview { width: 56px; height: 56px; border-radius: 15px; display: grid; place-items: center; color: #fff;
+                  font-size: 1.45rem; flex: none; box-shadow: 0 8px 18px rgba(0,0,0,.2); }
+    .ce-name { flex: 1; }
+    .ce-title { font-weight: 800; font-size: 1.02rem; }
+    .ce-label { font-size: .7rem; font-weight: 800; letter-spacing: .5px; text-transform: uppercase;
+                color: var(--muted); margin: 13px 2px 7px; }
+    .ico-row, .col-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+    .ico-pick { width: 42px; height: 42px; border-radius: 12px; flex: none; display: grid; place-items: center; cursor: pointer;
+                border: 1px solid var(--border); background: var(--panel); color: var(--fg); font-size: 1.02rem; }
+    .ico-pick.on { border-color: var(--accent); background: var(--accent-weak); color: var(--accent); }
+    .col-pick { width: 34px; height: 34px; border-radius: 50%; flex: none; cursor: pointer; border: 3px solid transparent; }
+    .col-pick.on { border-color: var(--fg); }
+    .col-pick.custom { position: relative; display: grid; place-items: center; background: var(--panel);
+                       color: var(--muted); overflow: hidden; border-color: var(--border); }
+    .col-pick.custom input { position: absolute; inset: -8px; opacity: 0; cursor: pointer; }
+    .ce-amount { position: relative; }
+    .ce-amount .cur { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 700; }
+    .ce-amount input { padding-left: 26px; }
+    .ce-hint { font-size: .78rem; color: var(--muted); margin: 6px 2px 0; }
+    .ce-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+
+    /* Grid de categorías (tarjetas) */
+    .cat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (min-width: 480px) { .cat-grid { grid-template-columns: 1fr 1fr 1fr; } }
+    .cat-card { position: relative; display: flex; flex-direction: column; gap: 9px; padding: 12px;
+                border-radius: 15px; border: 1px solid var(--border); background: var(--panel); cursor: pointer;
+                box-shadow: var(--shadow); transition: transform .06s, border-color .12s; }
+    .cat-card:hover { border-color: var(--accent); }
+    .cat-card:active { transform: scale(.98); }
+    .cat-card .cc-ic { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center;
+                       color: #fff; font-size: 1.1rem; }
+    .cat-card .cc-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cat-card .cc-bud { font-size: .78rem; color: var(--muted); }
+    .cat-card .cc-bud b { color: var(--accent); font-weight: 800; }
+    .cat-card .cc-actions { position: absolute; top: 6px; right: 6px; display: flex; gap: 2px; opacity: .85; }
+    .cat-card .cc-btn { width: 28px; height: 28px; border-radius: 8px; border: none; background: transparent;
+                        color: var(--muted); cursor: pointer; display: grid; place-items: center; font-size: .82rem; }
+    .cat-card .cc-btn:hover { background: var(--panel-2); }
+    .cat-card .cc-btn.shared { color: var(--accent); }
+    .cat-card .cc-btn.del:hover { color: #ef4444; }
 
     /* Segmented (sub-tabs de la hoja) */
     .seg { display: inline-flex; background: var(--panel-2); border-radius: 10px; padding: 3px; gap: 3px; margin-bottom: 10px; }
@@ -300,6 +353,13 @@ function localYMD(d: Date = new Date()): string {
                   border-radius: 999px; background: #ef4444; color: #fff; font-size: .64rem; font-weight: 800;
                   line-height: 16px; text-align: center; box-shadow: 0 0 0 2px var(--panel); }
 
+    /* Cabecera de tarjeta con acción (p.ej. toggle de gráfico) */
+    .card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .card-title { font-size: 1.02rem; font-weight: 800; color: var(--accent); }
+    .seg.mini { padding: 2px; }
+    .seg.mini button { padding: 6px 10px; }
+    .seg.mini button i { font-size: .9rem; }
+
     /* Donut central con labels DEBAJO */
     .donut-hero { display: flex; flex-direction: column; align-items: center; gap: 14px; }
     .donut-ring { position: relative; width: 210px; max-width: 62vw; aspect-ratio: 1/1; }
@@ -325,15 +385,17 @@ function localYMD(d: Date = new Date()): string {
     .ant-item .at { font-weight: 700; white-space: nowrap; }
 
     /* Apariencia: temas + acento */
-    .theme-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .theme-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); gap: 10px; }
     .theme-opt { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 8px; cursor: pointer;
                  border: 2px solid var(--border); border-radius: 14px; background: var(--panel); color: var(--fg); font: inherit; }
-    .theme-opt.on { border-color: var(--accent); }
-    .theme-opt .prev { width: 100%; height: 42px; border-radius: 9px; border: 1px solid var(--border); position: relative; overflow: hidden; }
-    .theme-opt .prev.flat { background: var(--panel-2); }
-    .theme-opt .prev.modern { background: var(--panel); box-shadow: 0 4px 12px rgba(20,26,40,.18); }
-    .theme-opt .prev.glass { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 40%, transparent), transparent);
+    .theme-opt.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+    .theme-opt .prev { width: 100%; height: 42px; border-radius: 9px; border: 1px solid var(--accent-line); position: relative; overflow: hidden; }
+    .theme-opt .prev.flat { background: var(--accent-soft); }
+    .theme-opt .prev.modern { background: var(--panel); box-shadow: inset 0 -14px 16px -12px var(--accent-weak), 0 4px 12px rgba(20,26,40,.16); }
+    .theme-opt .prev.modern::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 12px; background: var(--accent-grad); opacity: .85; }
+    .theme-opt .prev.glass { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 50%, transparent), transparent);
                              backdrop-filter: blur(6px); }
+    .theme-opt .prev.bold { background: var(--accent-grad); }
     .theme-opt small { font-weight: 700; }
     .swatches { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
     .swatch { width: 30px; height: 30px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; position: relative; }
@@ -383,13 +445,13 @@ function localYMD(d: Date = new Date()): string {
             <path d="M4 14 H24 a4 4 0 0 1 4 4 v0 h-7 a3 3 0 0 0 0 6 h7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" />
             <circle cx="22" cy="21" r="1.7" fill="currentColor" />
           </svg>
-          Gastos <span class="env" *ngIf="isTest()">test</span>
+          <span class="wm">Gastos</span> <span class="env" *ngIf="isTest()">test</span>
         </div>
         <span class="spacer"></span>
         <div class="month">
-          <p-button icon="pi pi-chevron-left" [text]="true" (onClick)="shiftMonth(-1)" aria-label="Mes anterior" />
+          <button class="mnav" (click)="shiftMonth(-1)" aria-label="Mes anterior"><i class="fa-solid fa-chevron-left"></i></button>
           <b>{{ monthLabel() }}</b>
-          <p-button icon="pi pi-chevron-right" [text]="true" (onClick)="shiftMonth(1)" aria-label="Mes siguiente" />
+          <button class="mnav" (click)="shiftMonth(1)" aria-label="Mes siguiente"><i class="fa-solid fa-chevron-right"></i></button>
         </div>
       </div>
 
@@ -458,11 +520,19 @@ function localYMD(d: Date = new Date()): string {
             </div>
 
             <div class="grid2">
-              <p-card header="Distribución por categoría">
+              <p-card>
+                <div class="card-head">
+                  <span class="card-title">Distribución por categoría</span>
+                  <span class="spacer" style="flex:1"></span>
+                  <div class="seg mini">
+                    <button [class.on]="distMode() === 'doughnut'" (click)="setDist('doughnut')" title="Disco"><i class="fa-solid fa-circle-notch"></i></button>
+                    <button [class.on]="distMode() === 'pie'" (click)="setDist('pie')" title="Torta"><i class="fa-solid fa-chart-pie"></i></button>
+                  </div>
+                </div>
                 <div class="donut-hero" *ngIf="(summary()?.byCategory?.length || 0) > 0; else noData">
                   <div class="donut-ring">
-                    <p-chart type="doughnut" [data]="pieData()" [options]="pieHeroOptions()" />
-                    <div class="donut-center"><b>{{ fmt(summary()?.total || 0) }}</b><small>total</small></div>
+                    <p-chart [type]="distMode()" [data]="pieData()" [options]="pieHeroOptions()" />
+                    <div class="donut-center" *ngIf="distMode() === 'doughnut'"><b>{{ fmt(summary()?.total || 0) }}</b><small>total</small></div>
                   </div>
                   <div class="donut-labels">
                     <span class="dl" *ngFor="let c of (summary()?.byCategory || [])">
@@ -688,6 +758,8 @@ function localYMD(d: Date = new Date()): string {
                 <span class="prev modern"></span><small>Moderno</small></button>
               <button class="theme-opt" [class.on]="theme() === 'glass'" (click)="setTheme('glass')">
                 <span class="prev glass"></span><small>Glass</small></button>
+              <button class="theme-opt" [class.on]="theme() === 'bold'" (click)="setTheme('bold')">
+                <span class="prev bold"></span><small>Bold</small></button>
             </div>
             <div class="acc-title" style="margin-top:14px">Color de acento</div>
             <div class="swatches">
@@ -703,7 +775,7 @@ function localYMD(d: Date = new Date()): string {
             <div class="toggle-row">
               <i class="fa-solid fa-bell" style="color:var(--accent);font-size:1.1rem"></i>
               <div class="tr-body">
-                <b>Avisos al superar topes</b>
+                <b>Notificaciones en este dispositivo</b>
                 <small>{{ pushHint() }}</small>
               </div>
               <button class="sw-toggle" [class.on]="pushOn()" [disabled]="pushBusy() || !pushSupported()"
@@ -981,33 +1053,72 @@ function localYMD(d: Date = new Date()): string {
     </p-dialog>
 
     <!-- ═══ Categorías ═══ -->
-    <p-dialog [(visible)]="catDialog" [modal]="true" header="Mis categorías" [style]="{ width: '92%', maxWidth: '460px' }">
-      <div class="cat-add">
-        <input class="inp" style="flex:1;min-width:140px" type="text" [(ngModel)]="catForm.name" placeholder="Nombre de categoría" />
-        <input type="color" [(ngModel)]="catForm.color" />
-        <p-button [label]="catForm.id ? 'Guardar' : 'Añadir'" icon="pi pi-check" size="small" (onClick)="saveCat()" [disabled]="!catForm.name" />
-        <p-button *ngIf="catForm.id" label="Cancelar" [text]="true" size="small" (onClick)="resetCatForm()" />
-      </div>
-      <div class="cat-row" *ngFor="let c of categories()">
-        <span class="dot" [style.background]="c.color" style="width:12px;height:12px;border-radius:50%"></span>
-        <span style="flex:1">{{ c.name }}</span>
-        <input class="inp" style="width:120px" type="number" [value]="budgetFor(c.id)" (change)="setBudget(c.id, $any($event.target).value)"
-               placeholder="Presup." title="Presupuesto mensual" />
-        <p-button [icon]="isCategoryShared(c.slug) ? 'pi pi-users' : 'pi pi-user'" [text]="true" size="small"
-                  [severity]="isCategoryShared(c.slug) ? 'success' : 'secondary'"
-                  [disabled]="!household().length" (onClick)="toggleCategoryShare(c.slug)"
-                  [title]="household().length ? (isCategoryShared(c.slug) ? 'Compartida — clic para dejar de compartir' : 'Compartir con el hogar') : 'Conecta a alguien en Hogar para compartir'" />
-        <p-button icon="pi pi-pencil" [text]="true" size="small" (onClick)="editCat(c)" />
-        <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="delCat(c)" />
+    <p-dialog [(visible)]="catDialog" [modal]="true" header="Mis categorías" [dismissableMask]="true" [style]="{ width: '94%', maxWidth: '520px' }">
+      <!-- Editor: icono + nombre, color y monto (presupuesto) -->
+      <div class="cat-editor">
+        <div class="ce-top">
+          <span class="ce-preview" [style.background]="catForm.color"><i [class]="catForm.icon"></i></span>
+          <div class="ce-name">
+            <div class="ce-title">{{ catForm.id ? 'Editar categoría' : 'Nueva categoría' }}</div>
+            <input class="inp" type="text" [(ngModel)]="catForm.name" placeholder="Nombre (p.ej. Mercado)" (keyup.enter)="saveCat()" />
+          </div>
+        </div>
+
+        <div class="ce-label">Icono</div>
+        <div class="ico-row">
+          <button type="button" class="ico-pick" *ngFor="let ic of catIcons" [class.on]="catForm.icon === ic" (click)="catForm.icon = ic">
+            <i [class]="ic"></i>
+          </button>
+        </div>
+
+        <div class="ce-label">Color</div>
+        <div class="col-row">
+          <span class="col-pick" *ngFor="let col of catColors" [style.background]="col" [class.on]="catForm.color === col" (click)="catForm.color = col"></span>
+          <label class="col-pick custom" title="Color personalizado"><i class="fa-solid fa-eye-dropper"></i>
+            <input type="color" [(ngModel)]="catForm.color" /></label>
+        </div>
+
+        <div class="ce-label">Presupuesto mensual (opcional)</div>
+        <div class="ce-amount">
+          <span class="cur">$</span>
+          <input class="inp" type="number" [(ngModel)]="catForm.amount" placeholder="0" min="0" />
+        </div>
+        <div class="ce-hint">Te avisamos cuando el gasto del mes se acerque o supere este monto.</div>
+
+        <div class="ce-actions">
+          <p-button *ngIf="catForm.id" label="Cancelar" [text]="true" (onClick)="resetCatForm()" />
+          <p-button [label]="catForm.id ? 'Guardar cambios' : 'Crear categoría'" icon="pi pi-check"
+                    (onClick)="saveCat()" [disabled]="!catForm.name.trim()" />
+        </div>
       </div>
 
-      <!-- Categorías compartidas conmigo (creadas por el hogar): solo lectura -->
+      <!-- Tus categorías (tocar una tarjeta para editarla) -->
+      <div class="cat-grid">
+        <div class="cat-card" *ngFor="let c of categories()" (click)="editCat(c)">
+          <div class="cc-actions">
+            <button class="cc-btn" [class.shared]="isCategoryShared(c.slug)" [disabled]="!household().length"
+                    (click)="$event.stopPropagation(); toggleCategoryShare(c.slug)"
+                    [title]="household().length ? (isCategoryShared(c.slug) ? 'Compartida — clic para dejar de compartir' : 'Compartir con el hogar') : 'Conecta a alguien en Hogar para compartir'">
+              <i class="fa-solid" [class.fa-users]="isCategoryShared(c.slug)" [class.fa-user]="!isCategoryShared(c.slug)"></i>
+            </button>
+            <button class="cc-btn del" (click)="$event.stopPropagation(); delCat(c)" title="Borrar"><i class="fa-solid fa-trash"></i></button>
+          </div>
+          <span class="cc-ic" [style.background]="c.color"><i [class]="c.icon || 'fa-solid fa-wallet'"></i></span>
+          <span class="cc-name">{{ c.name }}</span>
+          <span class="cc-bud" *ngIf="budgetFor(c.id) as b; else noBud"><b>{{ fmt(b) }}</b> / mes</span>
+          <ng-template #noBud><span class="cc-bud">Sin tope</span></ng-template>
+        </div>
+      </div>
+
+      <!-- Categorías compartidas conmigo (del hogar): solo lectura -->
       <ng-container *ngIf="sharedInCats().length">
         <h3>Compartidas conmigo</h3>
-        <div class="cat-row" *ngFor="let c of sharedInCats()">
-          <span class="dot" [style.background]="c.color" style="width:12px;height:12px;border-radius:50%"></span>
-          <span style="flex:1">{{ c.name }} <small class="muted">· de {{ c.owner }}</small></span>
-          <i class="fa-solid fa-eye" style="color:var(--muted)" title="Solo lectura (no es tuya)"></i>
+        <div class="cat-grid">
+          <div class="cat-card" *ngFor="let c of sharedInCats()" style="cursor:default">
+            <span class="cc-ic" [style.background]="c.color"><i [class]="c.icon || 'fa-solid fa-wallet'"></i></span>
+            <span class="cc-name">{{ c.name }}</span>
+            <span class="cc-bud">de {{ c.owner }}</span>
+          </div>
         </div>
       </ng-container>
     </p-dialog>
@@ -1165,7 +1276,21 @@ export class AppComponent implements OnInit, OnDestroy {
   });
 
   catDialog = false;
-  catForm: { id: number | null; name: string; color: string } = { id: null, name: '', color: '#6c8cff' };
+  catForm: { id: number | null; name: string; color: string; icon: string; amount: number | null } =
+    { id: null, name: '', color: '#10b981', icon: 'fa-solid fa-wallet', amount: null };
+  // Iconos y colores sugeridos para el editor de categorías.
+  readonly catIcons = [
+    'fa-solid fa-cart-shopping', 'fa-solid fa-utensils', 'fa-solid fa-house', 'fa-solid fa-car',
+    'fa-solid fa-bolt', 'fa-solid fa-heart-pulse', 'fa-solid fa-graduation-cap', 'fa-solid fa-plane',
+    'fa-solid fa-gift', 'fa-solid fa-shirt', 'fa-solid fa-mobile-screen', 'fa-solid fa-gamepad',
+    'fa-solid fa-dumbbell', 'fa-solid fa-paw', 'fa-solid fa-mug-hot', 'fa-solid fa-gas-pump',
+    'fa-solid fa-bus', 'fa-solid fa-wifi', 'fa-solid fa-tv', 'fa-solid fa-book',
+    'fa-solid fa-pills', 'fa-solid fa-scissors', 'fa-solid fa-tree', 'fa-solid fa-futbol',
+    'fa-solid fa-credit-card', 'fa-solid fa-piggy-bank', 'fa-solid fa-baby', 'fa-solid fa-music',
+    'fa-solid fa-film', 'fa-solid fa-wallet',
+  ];
+  readonly catColors = ['#10b981', '#6c8cff', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899',
+    '#14b8a6', '#0ea5e9', '#f97316', '#84cc16', '#a855f7', '#64748b'];
 
   readonly budgets = signal<Budget[]>([]);
   readonly recurring = signal<Recurring[]>([]);
@@ -1193,9 +1318,11 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly burn = signal<BurnPoint[]>([]);
 
   // ── Apariencia: estilo de superficie + color de acento (persistidos) ──
-  readonly theme = signal<'flat' | 'modern' | 'glass'>('modern');
+  readonly theme = signal<'flat' | 'modern' | 'glass' | 'bold'>('modern');
   readonly accentColor = signal<string>('');
   readonly accentSwatches = ['#10b981', '#6c8cff', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#0ea5e9'];
+  // Modo del gráfico de distribución: disco (doughnut) o torta (pie).
+  readonly distMode = signal<'doughnut' | 'pie'>('doughnut');
 
   // ── Web Push ──
   readonly pushState = signal<PushStatus | null>(null);
@@ -1261,9 +1388,14 @@ export class AppComponent implements OnInit, OnDestroy {
     plugins: { legend: { display: false } } }));
   abs(n: number): number { return Math.abs(n); }
 
-  // Donut principal centrado (labels van debajo, en HTML).
-  readonly pieHeroOptions = computed(() => ({ maintainAspectRatio: false, cutout: '68%',
-    plugins: { legend: { display: false } } }));
+  // Donut/torta principal (labels van debajo, en HTML). El hueco depende del modo.
+  readonly pieHeroOptions = computed(() => ({ maintainAspectRatio: false,
+    cutout: this.distMode() === 'pie' ? '0%' : '66%',
+    plugins: { legend: { display: false }, tooltip: { enabled: true } } }));
+  setDist(m: 'doughnut' | 'pie'): void {
+    this.distMode.set(m);
+    try { localStorage.setItem('gastos.dist', m); } catch { /* noop */ }
+  }
 
   // % de una categoría sobre el total del mes.
   pctOf(total: number): number {
@@ -1364,7 +1496,8 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly pieData = computed(() => {
     const bc = this.summary()?.byCategory ?? [];
     return { labels: bc.map((c) => c.name),
-      datasets: [{ data: bc.map((c) => c.total), backgroundColor: bc.map((c) => c.color), borderWidth: 0 }] };
+      datasets: [{ data: bc.map((c) => c.total), backgroundColor: bc.map((c) => c.color),
+        borderColor: this.dark() ? '#161922' : '#ffffff', borderWidth: 2, hoverOffset: 8, spacing: 2 }] };
   });
   readonly barData = computed(() => {
     const bc = this.summary()?.byCategory ?? [];
@@ -1583,10 +1716,12 @@ export class AppComponent implements OnInit, OnDestroy {
   private loadAppearance(): void {
     if (typeof localStorage === 'undefined') return;
     try {
-      const t = localStorage.getItem('gastos.theme') as 'flat' | 'modern' | 'glass' | null;
-      if (t === 'flat' || t === 'modern' || t === 'glass') this.theme.set(t);
+      const t = localStorage.getItem('gastos.theme');
+      if (t === 'flat' || t === 'modern' || t === 'glass' || t === 'bold') this.theme.set(t);
       const a = localStorage.getItem('gastos.accent');
       if (a) this.accentColor.set(a);
+      const d = localStorage.getItem('gastos.dist');
+      if (d === 'pie' || d === 'doughnut') this.distMode.set(d);
     } catch { /* almacenamiento no disponible */ }
     this.applyAppearance();
   }
@@ -1597,7 +1732,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (a) document.documentElement.style.setProperty('--accent', a);
     else document.documentElement.style.removeProperty('--accent');
   }
-  setTheme(t: 'flat' | 'modern' | 'glass'): void {
+  setTheme(t: 'flat' | 'modern' | 'glass' | 'bold'): void {
     this.theme.set(t);
     try { localStorage.setItem('gastos.theme', t); } catch { /* noop */ }
     this.applyAppearance();
@@ -1636,15 +1771,24 @@ export class AppComponent implements OnInit, OnDestroy {
 
   // ── Categorías ──
   openCats(): void { this.resetCatForm(); this.loadBudgets(); this.loadHome(); this.catDialog = true; }
-  resetCatForm(): void { this.catForm = { id: null, name: '', color: '#6c8cff' }; }
-  editCat(c: Category): void { this.catForm = { id: c.id, name: c.name, color: c.color }; }
+  resetCatForm(): void { this.catForm = { id: null, name: '', color: '#10b981', icon: 'fa-solid fa-wallet', amount: null }; }
+  editCat(c: Category): void {
+    this.catForm = { id: c.id, name: c.name, color: c.color, icon: c.icon || 'fa-solid fa-wallet', amount: this.budgetFor(c.id) };
+  }
   saveCat(): void {
-    if (!this.catForm.name) return;
-    const done = () => { this.resetCatForm(); this.loadCategories(); this.reload(); };
-    if (this.catForm.id) {
-      this.api.updateCategory(this.catForm.id, { name: this.catForm.name, color: this.catForm.color }).subscribe(done);
+    const f = this.catForm;
+    if (!f.name.trim()) return;
+    const amount = Number(f.amount) || 0;
+    const finish = () => { this.resetCatForm(); this.loadCategories(); this.loadBudgets(); this.reload(); };
+    if (f.id) {
+      const id = f.id;
+      this.api.updateCategory(id, { name: f.name.trim(), color: f.color, icon: f.icon })
+        .subscribe(() => this.api.setBudget(id, amount).subscribe({ next: finish, error: finish }));
     } else {
-      this.api.createCategory(this.catForm.name, this.catForm.color, 'fa-solid fa-wallet').subscribe(done);
+      this.api.createCategory(f.name.trim(), f.color, f.icon).subscribe((c) => {
+        if (amount > 0) this.api.setBudget(c.id, amount).subscribe({ next: finish, error: finish });
+        else finish();
+      });
     }
   }
   delCat(c: Category): void {
@@ -2002,7 +2146,9 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!this.pushState()?.enabled) return 'No disponible en este servidor.';
     if (typeof Notification !== 'undefined' && Notification.permission === 'denied')
       return 'Bloqueadas por el navegador. Actívalas en los ajustes del sitio.';
-    return this.pushOn() ? 'Activadas en este dispositivo.' : 'Recibe un aviso cuando superes un tope.';
+    return this.pushOn()
+      ? 'Activadas: topes, invitaciones y compras compartidas.'
+      : 'Recibe avisos de topes, invitaciones de hogar y compras compartidas.';
   }
   private loadPushStatus(): void {
     if (this.isGuest() || typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
