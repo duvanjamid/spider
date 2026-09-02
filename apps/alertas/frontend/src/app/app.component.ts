@@ -4,6 +4,7 @@ import {
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import * as L from 'leaflet';
+import '@maplibre/maplibre-gl-leaflet'; // añade L.maplibreGL (capa base vectorial)
 import { AlertasService, Alert, Category, Me } from './alertas.service';
 
 type Sheet = 'none' | 'report' | 'detail' | 'profile';
@@ -336,7 +337,7 @@ export class AppComponent implements OnInit, AfterViewInit {
   desc = '';
 
   private map!: L.Map;
-  private tiles!: L.TileLayer;
+  private tiles?: any; // capa base MapLibre GL (vectorial)
   private userPos: [number, number] | null = null;
   private meMarker: L.Marker | null = null;
   private layer = L.layerGroup();
@@ -354,16 +355,50 @@ export class AppComponent implements OnInit, AfterViewInit {
     this.api.categories().subscribe(c => this.categories.set(c));
     this.api.me().subscribe(m => this.me.set(m));
     window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', e => {
-      this.dark.set(e.matches); this.tiles?.setUrl(this.tileUrl());
+      this.dark.set(e.matches); this.addThemedBase();
     });
+  }
+
+  // Capa base VECTORIAL (MapLibre + CARTO). Mapa limpio (positron/dark-matter) y
+  // las VÍAS recoloreadas al rojo temático de la app; el resto queda neutro.
+  private addThemedBase(): void {
+    if (!this.map) return;
+    const dark = this.prefersDark();
+    const key = (window as any).__CARTO_KEY || '';
+    const style = dark
+      ? 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+      : 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+    const road = dark ? '#f87171' : '#ef4444';     // relleno de la vía (rojo app)
+    const roadCase = dark ? '#b91c1c' : '#b91c1c'; // contorno de la vía (rojo oscuro)
+    if (this.tiles) { try { this.map.removeLayer(this.tiles); } catch { } this.tiles = undefined; }
+    const gl = (L as any).maplibreGL({
+      style,
+      attribution: '© OpenStreetMap © CARTO',
+      transformRequest: (url: string) =>
+        key && url.includes('cartocdn.com')
+          ? { url: url + (url.includes('?') ? '&' : '?') + 'key=' + key }
+          : { url },
+    }).addTo(this.map);
+    this.tiles = gl;
+    const applyRoads = () => {
+      const m = gl.getMaplibreMap();
+      for (const lyr of (m.getStyle()?.layers || [])) {
+        const isRoad = lyr.type === 'line' &&
+          ((lyr['source-layer'] === 'transportation') || /road|street|highway|bridge|tunnel|motorway/i.test(lyr.id));
+        if (isRoad) {
+          const c = /case|outline/i.test(lyr.id) ? roadCase : road;
+          try { m.setPaintProperty(lyr.id, 'line-color', c); } catch { }
+        }
+      }
+    };
+    const m = gl.getMaplibreMap();
+    if (m.isStyleLoaded?.()) applyRoads(); else m.on('load', applyRoads);
   }
 
   ngAfterViewInit(): void {
     this.map = L.map(this.mapEl.nativeElement, { zoomControl: false, attributionControl: false })
       .setView([4.65, -74.1], 12);
-    this.tiles = L.tileLayer(this.tileUrl(), {
-      maxZoom: 19, subdomains: 'abc', attribution: '© OpenStreetMap',
-    }).addTo(this.map);
+    this.addThemedBase();
     this.layer.addTo(this.map);
     L.control.zoom({ position: 'bottomright' }).addTo(this.map);
     this.locate(true);
@@ -490,11 +525,6 @@ export class AppComponent implements OnInit, AfterViewInit {
   }
 
   // ─── helpers de presentación ───
-  private tileUrl(): string {
-    // OpenStreetMap estándar (SIN API key). CARTO empezó a exigir key y devolvía
-    // teselas "API KEY REQUIRED". El tinte rojo temático se aplica por CSS.
-    return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-  }
   private prefersDark(): boolean {
     return typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   }

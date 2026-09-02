@@ -6,6 +6,7 @@ import { DialogModule } from 'primeng/dialog';
 import { TabViewModule } from 'primeng/tabview';
 import { TagModule } from 'primeng/tag';
 import * as L from 'leaflet';
+import '@maplibre/maplibre-gl-leaflet'; // añade L.maplibreGL (capa base vectorial)
 import { Charger, Comment, ElectrolinerasService, Report, Station, StationFull } from './electrolineras.service';
 
 type Tab = 'map' | 'near' | 'trip' | 'info';
@@ -418,19 +419,51 @@ export class AppComponent implements OnInit, AfterViewInit {
     });
   }
 
-  private tiles?: L.TileLayer;
+  private tiles?: any; // capa base MapLibre GL (vectorial)
   private isDark(): boolean { return typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)').matches : false; }
-  private tileUrl(): string {
-    // OpenStreetMap estándar (SIN API key). CARTO empezó a exigir key y devolvía
-    // teselas "API KEY REQUIRED". El tinte verde temático se aplica por CSS.
-    return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+  // Capa base VECTORIAL (MapLibre + CARTO). Mapa limpio (positron/dark-matter) y
+  // las VÍAS recoloreadas al verde temático de la app; el resto queda neutro.
+  private addThemedBase(): void {
+    if (!this.map) return;
+    const dark = this.isDark();
+    const key = (window as any).__CARTO_KEY || '';
+    const style = dark
+      ? 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+      : 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+    const road = dark ? '#34d399' : '#16a34a';     // relleno de la vía (verde app)
+    const roadCase = dark ? '#0f766e' : '#0f766e'; // contorno de la vía (verde oscuro)
+    if (this.tiles) { try { this.map.removeLayer(this.tiles); } catch { } this.tiles = undefined; }
+    const gl = (L as any).maplibreGL({
+      style,
+      attribution: '© OpenStreetMap © CARTO',
+      // Añade la API key de CARTO (si está) a TODAS las peticiones a su CDN.
+      transformRequest: (url: string) =>
+        key && url.includes('cartocdn.com')
+          ? { url: url + (url.includes('?') ? '&' : '?') + 'key=' + key }
+          : { url },
+    }).addTo(this.map);
+    this.tiles = gl;
+    const applyRoads = () => {
+      const m = gl.getMaplibreMap();
+      for (const lyr of (m.getStyle()?.layers || [])) {
+        const isRoad = lyr.type === 'line' &&
+          ((lyr['source-layer'] === 'transportation') || /road|street|highway|bridge|tunnel|motorway/i.test(lyr.id));
+        if (isRoad) {
+          const c = /case|outline/i.test(lyr.id) ? roadCase : road;
+          try { m.setPaintProperty(lyr.id, 'line-color', c); } catch { }
+        }
+      }
+    };
+    const m = gl.getMaplibreMap();
+    if (m.isStyleLoaded?.()) applyRoads(); else m.on('load', applyRoads);
   }
 
   ngAfterViewInit(): void {
     this.map = L.map(this.mapEl.nativeElement, { zoomControl: false, attributionControl: true }).setView([4.65, -74.1], 6);
     L.control.zoom({ position: 'bottomright' }).addTo(this.map);
-    this.tiles = L.tileLayer(this.tileUrl(), { maxZoom: 19, subdomains: 'abc', attribution: '© OpenStreetMap' }).addTo(this.map);
-    window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', () => this.tiles?.setUrl(this.tileUrl()));
+    this.addThemedBase();
+    window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', () => this.addThemedBase());
     this.markers.addTo(this.map);
     this.routeLayer.addTo(this.map);
     this.renderMarkers();

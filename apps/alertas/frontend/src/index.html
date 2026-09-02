@@ -16,6 +16,8 @@
   <link rel="apple-touch-icon" href="icon-192.png">
 </head>
 <body>
+  <!-- API key de CARTO inyectada en runtime desde la env CARTO_KEY (no vive en el repo). -->
+  <script>window.__CARTO_KEY = '__CARTO_KEY__';</script>
   <app-root></app-root>
   <script>
     if ('serviceWorker' in navigator) {
