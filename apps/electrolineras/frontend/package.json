@@ -2,7 +2,10 @@
   "name": "spider-electrolineras-frontend",
   "version": "0.1.0",
   "private": true,
-  "scripts": { "start": "ng serve", "build": "ng build" },
+  "scripts": {
+    "start": "ng serve",
+    "build": "ng build"
+  },
   "dependencies": {
     "@angular/animations": "^18.2.0",
     "@angular/common": "^18.2.0",
@@ -12,10 +15,12 @@
     "@angular/platform-browser": "^18.2.0",
     "@angular/router": "^18.2.0",
     "@fortawesome/fontawesome-free": "^6.7.2",
+    "@maplibre/maplibre-gl-leaflet": "^0.0.22",
     "@primeng/themes": "^18.0.0",
-    "primeng": "^18.0.0",
-    "primeicons": "^7.0.0",
     "leaflet": "^1.9.4",
+    "maplibre-gl": "^4.7.1",
+    "primeicons": "^7.0.0",
+    "primeng": "^18.0.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
     "zone.js": "~0.14.10"
