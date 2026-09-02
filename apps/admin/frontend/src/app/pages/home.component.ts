@@ -87,22 +87,26 @@ type View = 'cards' | 'list';
                  font-size: .78rem; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; }
     .sec-title i { color: #f5b301; }
 
-    /* Cards */
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; }
-    .card { position: relative; border: 1px solid var(--border); border-radius: 18px; overflow: hidden; background: var(--panel);
-            box-shadow: var(--shadow); transition: transform .16s ease, box-shadow .16s ease; cursor: pointer; }
-    .card:hover { transform: translateY(-4px); box-shadow: 0 12px 34px rgba(20,26,40,.18); }
-    .card .top { height: 88px; display: flex; align-items: center; justify-content: center; position: relative; }
-    .card .top .badge { width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center;
-            font-size: 1.7rem; background: var(--panel); box-shadow: 0 2px 12px rgba(0,0,0,.16); }
-    .card .body { padding: 14px 16px 16px; }
-    .card .body .name { font-weight: 700; font-size: 1.05rem; }
-    .card .body .desc { color: var(--muted); font-size: .85rem; margin-top: 4px; min-height: 38px;
-            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .card .body .go { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; font-weight: 600; font-size: .9rem; }
-    .star { position: absolute; top: 10px; right: 10px; z-index: 2; width: 34px; height: 34px; border-radius: 10px; border: none;
-            background: color-mix(in srgb, var(--panel) 70%, transparent); color: var(--muted); cursor: pointer; backdrop-filter: blur(4px); }
-    .star.on { color: #f5b301; }
+    /* Cards · tiles FLAT de color sólido. 3 por fila en móvil. */
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    @media (min-width: 620px) { .grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; } }
+    .tile {
+      position: relative; border: none; cursor: pointer; color: #fff; font: inherit;
+      background: var(--c); border-radius: 18px; padding: 16px 8px 14px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center;
+      aspect-ratio: 1 / 1; overflow: hidden;
+      transition: transform .1s ease, filter .15s ease;
+    }
+    .tile::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255,255,255,.12), transparent 42%); pointer-events: none; }
+    .tile:hover { filter: brightness(1.05); }
+    .tile:active { transform: scale(.96); }
+    .tile .ico { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 14px;
+            background: rgba(255,255,255,.22); font-size: 1.4rem; }
+    .tile .nm { font-weight: 700; font-size: .82rem; line-height: 1.15; letter-spacing: -.01em;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+    .tile .fav { position: absolute; top: 7px; right: 8px; z-index: 2; border: none; background: none; cursor: pointer;
+            color: rgba(255,255,255,.75); font-size: .82rem; padding: 4px; line-height: 1; }
+    .tile .fav.on { color: #fff; }
 
     /* List */
     .list { display: flex; flex-direction: column; gap: 8px; }
@@ -217,22 +221,17 @@ type View = 'cards' | 'list';
       </div>
     </div>
 
-    <!-- Plantilla: tarjetas -->
+    <!-- Plantilla: tarjetas (tiles flat de color sólido) -->
     <ng-template #cardsTpl let-list>
       <div class="grid">
-        <div class="card" *ngFor="let app of list" (click)="open(app)">
-          <button class="star" [class.on]="isFav(app.slug)" (click)="toggleFav(app.slug, $event)" [title]="isFav(app.slug) ? 'Quitar de favoritas' : 'Marcar favorita'">
+        <button class="tile" *ngFor="let app of list" (click)="open(app)" [style.--c]="app.color">
+          <span class="fav" [class.on]="isFav(app.slug)" (click)="toggleFav(app.slug, $event)"
+                [title]="isFav(app.slug) ? 'Quitar de favoritas' : 'Marcar favorita'">
             <i [class]="isFav(app.slug) ? 'fa-solid fa-star' : 'fa-regular fa-star'"></i>
-          </button>
-          <div class="top" [style.background]="tint(app.color)">
-            <div class="badge" [style.color]="app.color"><i [class]="app.icon"></i></div>
-          </div>
-          <div class="body">
-            <div class="name">{{ app.name }}</div>
-            <div class="desc">{{ app.description || 'Aplicación de la suite Spider.' }}</div>
-            <div class="go" [style.color]="app.color">Abrir <i class="fa-solid fa-arrow-right" style="font-size:.8rem"></i></div>
-          </div>
-        </div>
+          </span>
+          <span class="ico"><i [class]="app.icon"></i></span>
+          <span class="nm">{{ app.name }}</span>
+        </button>
       </div>
     </ng-template>
 
