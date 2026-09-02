@@ -454,11 +454,11 @@ export class AppComponent implements OnInit, AfterViewInit {
         const p: [number, number] = [pos.coords.latitude, pos.coords.longitude];
         this.userPos.set(p);
         if (this.map) {
-          if (this.tab() === 'map') this.map.setView(p, 12);
           const icon = L.divIcon({ className: '', html: '<div class="me"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
           if (this.userMarker) this.userMarker.setLatLng(p); else this.userMarker = L.marker(p, { icon, zIndexOffset: 1000 }).addTo(this.map);
         }
-        this.applyFilters();
+        this.applyFilters();   // re-ordena por cercanía y re-encuadra (fitVisible)
+        this.fitVisible();
       },
       () => this.locating.set(false),
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
@@ -512,9 +512,19 @@ export class AppComponent implements OnInit, AfterViewInit {
     this.fitVisible();
   }
   private fitVisible(): void {
-    if (this.tripInfo()) return; // no re-encuadrar si hay una ruta activa
-    const pts = this.filtered().filter((s) => s.lat != null && s.lon != null).map((s) => [s.lat, s.lon] as [number, number]);
-    if (this.map && pts.length) { try { this.map.fitBounds(L.latLngBounds(pts).pad(0.2), { maxZoom: 13 }); } catch { } }
+    if (!this.map || this.tripInfo()) return; // no re-encuadrar si hay una ruta activa
+    const u = this.userPos();
+    const all = this.filtered().filter((s) => s.lat != null && s.lon != null);
+    if (u) {
+      // Usuario ubicado: enfoca SU zona, no todo el país. Estaciones dentro de
+      // ~40 km; si hay pocas, al menos las 3 más cercanas. fitBounds ajusta el
+      // zoom (más cerca si están densas, ~20 km; sin pasar de zoom 14).
+      const near = all.filter((s) => this.distanceKm(u, [s.lat, s.lon]) <= 40).map((s) => [s.lat, s.lon] as [number, number]);
+      const list = near.length >= 3 ? near : all.slice(0, 3).map((s) => [s.lat, s.lon] as [number, number]);
+      const pts: [number, number][] = [u, ...list];
+      try { this.map.fitBounds(L.latLngBounds(pts).pad(0.25), { maxZoom: 14 }); } catch { }
+    }
+    // Sin ubicación: no encuadramos todo Colombia; se muestra el prompt "Ubicarme".
   }
 
   // ── Detalle ──
