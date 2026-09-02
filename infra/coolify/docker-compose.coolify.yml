@@ -59,6 +59,12 @@ x-common-env: &common-env
   GEMINI_API_KEY: ${GEMINI_API_KEY:-}
   GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
   PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://spider.muvatec.com}
+  # Web Push (VAPID). Solo lo usa gastos; el resto de backends lo ignora. Las
+  # claves se definen como env del app en Coolify (NUNCA en el repo). Sin ellas,
+  # el push queda deshabilitado y la app sigue funcionando igual.
+  VAPID_PUBLIC: ${VAPID_PUBLIC:-}
+  VAPID_PRIVATE: ${VAPID_PRIVATE:-}
+  VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@spider.muvatec.com}
   # Zona horaria de la app (por defecto Colombia, GMT-5). Así LocalDate.now()/
   # YearMonth.now() del backend siguen la hora del usuario y no la UTC del server.
   TZ: ${TZ:-America/Bogota}
