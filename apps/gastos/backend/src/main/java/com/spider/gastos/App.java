@@ -5,14 +5,17 @@ import com.spider.gastos.ai.GeminiScanner;
 import com.spider.gastos.config.Env;
 import com.spider.gastos.db.DbConfig;
 import com.spider.gastos.db.Migrations;
+import com.spider.gastos.expense.AlertService;
 import com.spider.gastos.expense.BudgetService;
 import com.spider.gastos.expense.CategoryService;
 import com.spider.gastos.expense.ConnectionService;
 import com.spider.gastos.expense.ExpenseController;
 import com.spider.gastos.expense.ExpenseService;
+import com.spider.gastos.expense.IncomeService;
 import com.spider.gastos.expense.NotificationService;
 import com.spider.gastos.expense.RecurringService;
 import com.spider.gastos.health.HealthController;
+import com.spider.gastos.push.PushService;
 import com.spider.gastos.registry.Registry;
 import com.spider.gastos.session.AuthGuard;
 import com.spider.gastos.session.Identity;
@@ -38,12 +41,16 @@ public final class App {
         var recurring = new RecurringService(ds);
         var connections = new ConnectionService(ds);
         var notifications = new NotificationService(ds);
+        var income = new IncomeService(ds);
+        var push = new PushService(ds);
+        var alerts = new AlertService(ds, income, notifications, push);
         var scanner = new GeminiScanner();
 
         Ligero app = Ligero.create(Env.port());
         app.use(new AuthGuard(new Identity()));   // sin sesión válida → 401 (nada de invitados)
         HealthController.register(app);
-        new ExpenseController(expenses, categories, budgets, recurring, scanner, connections, notifications).register(app);
+        new ExpenseController(expenses, categories, budgets, recurring, scanner, connections,
+                notifications, income, push, alerts).register(app);
 
         log.info("Backend '{}' escuchando en :{} (schema '{}', IA={})",
                 Env.appName(), Env.port(), db.schema(), Env.aiEnabled());

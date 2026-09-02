@@ -3,6 +3,7 @@ package com.spider.gastos.expense;
 import com.ligero.Ligero;
 import com.spider.gastos.ai.GeminiScanner;
 import com.spider.gastos.config.Env;
+import com.spider.gastos.push.PushService;
 import com.spider.gastos.session.Identity;
 
 import java.util.List;
@@ -62,6 +63,12 @@ public final class ExpenseController {
     public record RecurringInput(Double amount, String currency, Long categoryId, String merchant,
                                  String description, Integer dayOfMonth) {}
 
+    /** Cuerpo para registrar un ingreso (define el «tope global» del mes). */
+    public record IncomeInput(Double amount, String source, String receivedOn) {}
+
+    /** Cuerpo de suscripción Web Push (endpoint + claves del navegador). */
+    public record PushInput(String endpoint, String p256dh, String auth) {}
+
     private final ExpenseService svc;
     private final CategoryService categories;
     private final BudgetService budgets;
@@ -69,11 +76,15 @@ public final class ExpenseController {
     private final GeminiScanner scanner;
     private final ConnectionService connections;
     private final NotificationService notifications;
+    private final IncomeService income;
+    private final PushService push;
+    private final AlertService alerts;
     private final Identity identity = new Identity();
 
     public ExpenseController(ExpenseService svc, CategoryService categories, BudgetService budgets,
                              RecurringService recurring, GeminiScanner scanner, ConnectionService connections,
-                             NotificationService notifications) {
+                             NotificationService notifications, IncomeService income, PushService push,
+                             AlertService alerts) {
         this.svc = svc;
         this.categories = categories;
         this.budgets = budgets;
@@ -81,6 +92,9 @@ public final class ExpenseController {
         this.scanner = scanner;
         this.connections = connections;
         this.notifications = notifications;
+        this.income = income;
+        this.push = push;
+        this.alerts = alerts;
     }
 
     /** Filtra los correos a solo los que están conectados (aceptados) con el usuario. */
@@ -188,6 +202,7 @@ public final class ExpenseController {
             }
             if (in.shareWith() != null) svc.shareExpense(user, id, onlyConnected(user, in.shareWith()));
             notifyExpense(user, catId, id, onlyConnected(user, in.shareWith()), nz(in.merchant()));
+            alerts.check(user, monthOf(in.spentOn()));   // avisa si superó algún tope
             ctx.status(201).json(Map.of("id", id));
         });
 
@@ -208,6 +223,7 @@ public final class ExpenseController {
                     nz(in.merchant()), nz(in.description()), in.spentOn(), in.spentAt(), nz(in.nit()));
             if (in.shareWith() != null) svc.shareExpense(user, id, onlyConnected(user, in.shareWith()));
             notifyExpense(user, catId, id, onlyConnected(user, in.shareWith()), nz(in.merchant()));
+            alerts.check(user, monthOf(in.spentOn()));   // avisa si superó algún tope
             ctx.json(Map.of("status", "updated"));
         });
 
@@ -289,12 +305,68 @@ public final class ExpenseController {
             ctx.json(Map.of("status", "removed"));
         });
 
-        app.get("/summary", ctx ->
-                ctx.json(svc.summary(email(ctx.header("Cookie")), ctx.queryParam("month"))));
+        app.get("/summary", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            String month = ctx.queryParam("month");
+            Map<String, Object> s = new java.util.LinkedHashMap<>(svc.summary(user, month));
+            s.put("income", income.totalForMonth(user, month));   // tope global del mes
+            ctx.json(s);
+        });
 
         app.get("/trend", ctx -> {
             String m = ctx.queryParam("months");
             ctx.json(svc.trend(email(ctx.header("Cookie")), m == null ? 6 : Integer.parseInt(m)));
+        });
+
+        // Acumulado diario del mes (curva de «quema» del presupuesto).
+        app.get("/burndown", ctx ->
+                ctx.json(svc.dailyCumulative(email(ctx.header("Cookie")), ctx.queryParam("month"))));
+
+        // Detector de gastos hormiga (compras pequeñas y frecuentes).
+        app.get("/ant", ctx -> {
+            String max = ctx.queryParam("max");
+            ctx.json(svc.antExpenses(email(ctx.header("Cookie")), ctx.queryParam("month"),
+                    max == null || max.isBlank() ? 0 : Double.parseDouble(max)));
+        });
+
+        // ── Ingresos (tope global del mes) ──
+        app.get("/income", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            String month = ctx.queryParam("month");
+            ctx.json(Map.of("items", income.listByMonth(user, month), "total", income.totalForMonth(user, month)));
+        });
+        app.post("/income", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            IncomeInput in = ctx.body(IncomeInput.class);
+            double amount = in == null || in.amount() == null ? 0 : in.amount();
+            if (amount <= 0) { ctx.status(400).json(Map.of("error", "amount inválido")); return; }
+            long id = income.add(user, amount, in.source(), in.receivedOn());
+            ctx.status(201).json(Map.of("id", id));
+        });
+        app.delete("/income/{id}", ctx -> {
+            income.delete(email(ctx.header("Cookie")), Long.parseLong(ctx.pathParam("id")));
+            ctx.json(Map.of("status", "deleted"));
+        });
+
+        // ── Web Push ──
+        app.get("/push/status", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            ctx.json(Map.of("enabled", push.enabled(), "key", push.publicKey(), "subscribed", push.hasSubscription(user)));
+        });
+        app.post("/push/subscribe", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            PushInput in = ctx.body(PushInput.class);
+            if (in == null || in.endpoint() == null || in.endpoint().isBlank()) {
+                ctx.status(400).json(Map.of("error", "endpoint requerido")); return;
+            }
+            push.subscribe(user, in.endpoint(), in.p256dh(), in.auth());
+            ctx.json(Map.of("status", "ok"));
+        });
+        app.post("/push/unsubscribe", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            PushInput in = ctx.body(PushInput.class);
+            push.unsubscribe(user, in == null ? null : in.endpoint());
+            ctx.json(Map.of("status", "ok"));
         });
 
         // ── Presupuestos ──
@@ -390,4 +462,9 @@ public final class ExpenseController {
 
     private static String or(String v, String def) { return v == null || v.isBlank() ? def : v; }
     private static String nz(String v) { return v == null ? "" : v; }
+
+    /** Mes ("YYYY-MM") de una fecha de gasto; mes actual si viene vacía. */
+    private static String monthOf(String spentOn) {
+        return spentOn != null && spentOn.length() >= 7 ? spentOn.substring(0, 7) : java.time.YearMonth.now().toString();
+    }
 }

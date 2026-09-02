@@ -9,7 +9,7 @@ import { DialogModule } from 'primeng/dialog';
 import { TagModule } from 'primeng/tag';
 import {
   Budget, CategoryShare, Category, CategoryTemplate, Connections, Expense, ExpenseItem, GastosService, Me, Monto, PriceProduct, SharedInCategory,
-  Notif, Recurring, Region, Scan, ScanItem, Summary, Trend,
+  Notif, Recurring, Region, Scan, ScanItem, Summary, Trend, Income, AntReport, BurnPoint, PushStatus,
 } from './gastos.service';
 
 type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
@@ -299,6 +299,57 @@ function localYMD(d: Date = new Date()): string {
     .bnav-badge { position: absolute; top: -6px; right: -10px; min-width: 16px; height: 16px; padding: 0 4px;
                   border-radius: 999px; background: #ef4444; color: #fff; font-size: .64rem; font-weight: 800;
                   line-height: 16px; text-align: center; box-shadow: 0 0 0 2px var(--panel); }
+
+    /* Donut central con labels DEBAJO */
+    .donut-hero { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+    .donut-ring { position: relative; width: 210px; max-width: 62vw; aspect-ratio: 1/1; }
+    .donut-labels { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 14px; width: 100%; }
+    .donut-labels .dl { display: inline-flex; align-items: center; gap: 7px; font-size: .86rem; }
+    .donut-labels .dl .sw { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+    .donut-labels .dl b { font-weight: 700; } .donut-labels .dl small { color: var(--muted); }
+
+    /* Tope global (ingresos) */
+    .tope { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .tope .pbar { flex: 1; min-width: 160px; height: 12px; background: var(--panel-2); border-radius: 999px; overflow: hidden; }
+    .tope .pbar .fill { height: 100%; border-radius: 999px; transition: width .4s ease; }
+    .tope .fig b { font-size: 1.15rem; font-weight: 800; }
+    .inc-row { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--border); }
+
+    /* Gastos hormiga */
+    .ant-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+    .ant-head .big { font-size: 1.5rem; font-weight: 800; color: #f59e0b; letter-spacing: -.5px; }
+    .ant-item { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--border); }
+    .ant-item .an { flex: 1; min-width: 0; text-transform: capitalize; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ant-item .ac { font-size: .74rem; font-weight: 800; padding: 2px 8px; border-radius: 999px;
+                    background: color-mix(in srgb, #f59e0b 18%, transparent); color: #f59e0b; white-space: nowrap; }
+    .ant-item .at { font-weight: 700; white-space: nowrap; }
+
+    /* Apariencia: temas + acento */
+    .theme-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .theme-opt { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 8px; cursor: pointer;
+                 border: 2px solid var(--border); border-radius: 14px; background: var(--panel); color: var(--fg); font: inherit; }
+    .theme-opt.on { border-color: var(--accent); }
+    .theme-opt .prev { width: 100%; height: 42px; border-radius: 9px; border: 1px solid var(--border); position: relative; overflow: hidden; }
+    .theme-opt .prev.flat { background: var(--panel-2); }
+    .theme-opt .prev.modern { background: var(--panel); box-shadow: 0 4px 12px rgba(20,26,40,.18); }
+    .theme-opt .prev.glass { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 40%, transparent), transparent);
+                             backdrop-filter: blur(6px); }
+    .theme-opt small { font-weight: 700; }
+    .swatches { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+    .swatch { width: 30px; height: 30px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; position: relative; }
+    .swatch.on { border-color: var(--fg); }
+    .swatch.auto { display: grid; place-items: center; background: var(--panel-2); color: var(--muted); font-size: .8rem; }
+
+    /* Fila con interruptor (push) */
+    .toggle-row { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--border);
+                  border-radius: 14px; background: var(--panel); }
+    .toggle-row .tr-body { flex: 1; min-width: 0; } .toggle-row .tr-body small { color: var(--muted); font-size: .82rem; }
+    .sw-toggle { width: 46px; height: 27px; border-radius: 999px; border: none; background: var(--panel-2); position: relative;
+                 cursor: pointer; flex: none; transition: background .2s; }
+    .sw-toggle::after { content: ''; position: absolute; top: 3px; left: 3px; width: 21px; height: 21px; border-radius: 50%;
+                        background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .2s; }
+    .sw-toggle.on { background: var(--accent); } .sw-toggle.on::after { transform: translateX(19px); }
+    .sw-toggle:disabled { opacity: .5; cursor: not-allowed; }
   `],
   template: `
     <!-- ═══════════════ ONBOARDING (primera vez) ═══════════════ -->
@@ -375,10 +426,50 @@ function localYMD(d: Date = new Date()): string {
               </div>
             </div>
 
+            <!-- Tope global del mes (ingresos) -->
+            <div style="margin-bottom:16px" *ngIf="summary() as s">
+              <p-card>
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+                  <i class="fa-solid fa-sack-dollar" style="color:var(--accent)"></i>
+                  <b style="font-size:1.02rem">Tope del mes</b>
+                  <span class="spacer" style="flex:1"></span>
+                  <p-button label="Ingreso" icon="pi pi-plus" size="small" [outlined]="true" (onClick)="openIncome()" />
+                </div>
+                <div class="tope" *ngIf="s.income > 0; else noIncome">
+                  <div class="pbar">
+                    <div class="fill" [style.width.%]="topePct()"
+                         [style.background]="topeOver() ? '#ef4444' : 'var(--accent)'"></div>
+                  </div>
+                  <div class="fig">
+                    <b [class.up]="topeOver()">{{ fmt(s.total) }}</b>
+                    <span class="muted"> / {{ fmt(s.income) }}</span>
+                  </div>
+                  <div class="muted" style="width:100%;font-size:.84rem" [class.up]="topeOver()">
+                    {{ topeOver() ? ('Te pasaste ' + fmt(s.total - s.income)) : ('Te quedan ' + fmt(s.income - s.total)) }}
+                    · {{ topePct() }}% de tus ingresos
+                  </div>
+                </div>
+                <ng-template #noIncome>
+                  <p class="muted" style="margin:0;font-size:.9rem">
+                    Registra tus <b>ingresos</b> del mes para fijar tu tope global de gasto.
+                  </p>
+                </ng-template>
+              </p-card>
+            </div>
+
             <div class="grid2">
               <p-card header="Distribución por categoría">
-                <div class="chart-box" *ngIf="(summary()?.byCategory?.length || 0) > 0; else noData">
-                  <p-chart type="doughnut" [data]="pieData()" [options]="pieOptions()" />
+                <div class="donut-hero" *ngIf="(summary()?.byCategory?.length || 0) > 0; else noData">
+                  <div class="donut-ring">
+                    <p-chart type="doughnut" [data]="pieData()" [options]="pieHeroOptions()" />
+                    <div class="donut-center"><b>{{ fmt(summary()?.total || 0) }}</b><small>total</small></div>
+                  </div>
+                  <div class="donut-labels">
+                    <span class="dl" *ngFor="let c of (summary()?.byCategory || [])">
+                      <span class="sw" [style.background]="c.color"></span>
+                      <span><b>{{ c.name }}</b> <small>{{ pctOf(c.total) }}%</small></span>
+                    </span>
+                  </div>
                 </div>
               </p-card>
               <p-card header="Presupuesto del mes" *ngIf="budgeted().length; else noBudget">
@@ -391,7 +482,7 @@ function localYMD(d: Date = new Date()): string {
                     </div>
                   </div>
                   <div class="bud-legend">
-                    <div><span class="sw" style="background:#6c8cff"></span> Gastado <b>{{ fmt(budgetTotals().spent) }}</b></div>
+                    <div><span class="sw" [style.background]="chartAccent()"></span> Gastado <b>{{ fmt(budgetTotals().spent) }}</b></div>
                     <div><span class="sw" [style.background]="dark() ? '#2a2f3a' : '#e2e6ef'"></span>
                       {{ budgetTotals().remaining < 0 ? 'Excedido' : 'Restante' }}
                       <b [class.up]="budgetTotals().remaining < 0">{{ fmt(abs(budgetTotals().remaining)) }}</b></div>
@@ -409,19 +500,47 @@ function localYMD(d: Date = new Date()): string {
               </p-card>
             </div>
 
+            <div style="margin-top:16px" *ngIf="budgetBarHas(); else plainCatBar">
+              <p-card header="Presupuesto vs gastado por categoría">
+                <div class="chart-box" style="height:340px">
+                  <p-chart type="bar" [data]="budgetBarData()" [options]="budgetBarOptions()" />
+                </div>
+              </p-card>
+            </div>
+            <ng-template #plainCatBar>
+              <div style="margin-top:16px">
+                <p-card header="Gasto por categoría (mes)">
+                  <div class="chart-box" style="height:320px" *ngIf="(summary()?.byCategory?.length || 0) > 0; else noData">
+                    <p-chart type="bar" [data]="barData()" [options]="barOptions()" />
+                  </div>
+                </p-card>
+              </div>
+            </ng-template>
+
             <div style="margin-top:16px">
-              <p-card header="Gasto por categoría (mes)">
-                <div class="chart-box" style="height:320px" *ngIf="(summary()?.byCategory?.length || 0) > 0; else noData">
-                  <p-chart type="bar" [data]="barData()" [options]="barOptions()" />
+              <p-card [header]="(summary()?.income || 0) > 0 ? 'Quema del presupuesto' : 'Cómo va el mes'">
+                <div class="chart-box" style="height:300px" *ngIf="(summary()?.count || 0) > 0; else noData">
+                  <p-chart type="line" [data]="burnData()" [options]="lineOptions()" />
                 </div>
               </p-card>
             </div>
 
-            <div style="margin-top:16px">
-              <p-card header="¿Cómo va el mes?">
-                <div class="chart-box" style="height:300px" *ngIf="(summary()?.count || 0) > 0; else noData">
-                  <p-chart type="line" [data]="lineData()" [options]="lineOptions()" />
+            <!-- Gastos hormiga -->
+            <div style="margin-top:16px" *ngIf="ant() as a">
+              <p-card *ngIf="a.groups.length" header="Gastos hormiga">
+                <div class="ant-head">
+                  <span class="big">{{ fmt(a.total) }}</span>
+                  <span class="muted">en {{ a.count }} compras pequeñas (≤ {{ fmt(a.threshold) }})<span *ngIf="antPct() > 0"> · {{ antPct() }}% del mes</span></span>
                 </div>
+                <div class="ant-item" *ngFor="let g of a.groups">
+                  <span class="an">{{ g.label }}</span>
+                  <span class="ac">×{{ g.count }}</span>
+                  <span class="at">{{ fmt(g.total) }}</span>
+                </div>
+                <p class="muted" style="margin:10px 0 0;font-size:.82rem">
+                  <i class="fa-solid fa-lightbulb" style="color:#f59e0b"></i>
+                  Pequeñas compras repetidas que, sumadas, pesan. Revisa si puedes recortarlas.
+                </p>
               </p-card>
             </div>
       </section>
@@ -552,9 +671,43 @@ function localYMD(d: Date = new Date()): string {
                 <span class="badge" *ngIf="conns()?.incoming?.length">{{ conns()?.incoming?.length }}</span>
                 <i class="fa-solid fa-chevron-right go"></i></button>
               <button (click)="fromMore('cats')"><i class="fa-solid fa-tags"></i><span>Mis categorías</span><i class="fa-solid fa-chevron-right go"></i></button>
+              <button (click)="openIncome()"><i class="fa-solid fa-sack-dollar"></i><span>Mis ingresos (tope)</span><i class="fa-solid fa-chevron-right go"></i></button>
               <button (click)="fromMore('recurring')"><i class="fa-solid fa-rotate"></i><span>Gastos recurrentes</span><i class="fa-solid fa-chevron-right go"></i></button>
               <button (click)="fromMore('compare')"><i class="fa-solid fa-code-compare"></i><span>Comparar meses</span><i class="fa-solid fa-chevron-right go"></i></button>
               <button (click)="fromMore('csv')"><i class="fa-solid fa-file-csv"></i><span>Exportar CSV</span><i class="fa-solid fa-chevron-right go"></i></button>
+            </div>
+          </div>
+
+          <!-- Apariencia: estilo + color de acento -->
+          <div class="acc-group">
+            <div class="acc-title">Apariencia</div>
+            <div class="theme-picker">
+              <button class="theme-opt" [class.on]="theme() === 'flat'" (click)="setTheme('flat')">
+                <span class="prev flat"></span><small>Flat</small></button>
+              <button class="theme-opt" [class.on]="theme() === 'modern'" (click)="setTheme('modern')">
+                <span class="prev modern"></span><small>Moderno</small></button>
+              <button class="theme-opt" [class.on]="theme() === 'glass'" (click)="setTheme('glass')">
+                <span class="prev glass"></span><small>Glass</small></button>
+            </div>
+            <div class="acc-title" style="margin-top:14px">Color de acento</div>
+            <div class="swatches">
+              <span class="swatch auto" [class.on]="accentColor() === ''" (click)="setAccent('')" title="Automático">A</span>
+              <span class="swatch" *ngFor="let c of accentSwatches" [style.background]="c"
+                    [class.on]="accentColor() === c" (click)="setAccent(c)"></span>
+            </div>
+          </div>
+
+          <!-- Notificaciones push -->
+          <div class="acc-group" *ngIf="!isGuest()">
+            <div class="acc-title">Notificaciones push</div>
+            <div class="toggle-row">
+              <i class="fa-solid fa-bell" style="color:var(--accent);font-size:1.1rem"></i>
+              <div class="tr-body">
+                <b>Avisos al superar topes</b>
+                <small>{{ pushHint() }}</small>
+              </div>
+              <button class="sw-toggle" [class.on]="pushOn()" [disabled]="pushBusy() || !pushSupported()"
+                      (click)="togglePush()" [attr.aria-pressed]="pushOn()"></button>
             </div>
           </div>
 
@@ -900,6 +1053,29 @@ function localYMD(d: Date = new Date()): string {
         <p-chart type="bar" [data]="cmpData()" [options]="barOptionsV()" />
       </div>
     </p-dialog>
+
+    <!-- ═══ Ingresos (tope global) ═══ -->
+    <p-dialog [(visible)]="incomeDialog" [modal]="true" header="Mis ingresos del mes" [dismissableMask]="true" [style]="{ width: '92%', maxWidth: '460px' }">
+      <p class="muted" style="margin:0 0 10px;font-size:.9rem">La suma de tus ingresos del mes es tu <b>tope global</b> de gasto. Te avisamos si lo superas.</p>
+      <div class="cat-add">
+        <input class="inp" style="width:120px" type="number" [(ngModel)]="incForm.amount" placeholder="Monto" />
+        <input class="inp" style="flex:1;min-width:120px" type="text" [(ngModel)]="incForm.source" placeholder="Fuente (salario…)" />
+      </div>
+      <div class="cat-add">
+        <input class="inp" style="flex:1" type="date" [(ngModel)]="incForm.receivedOn" />
+        <p-button label="Añadir" icon="pi pi-plus" size="small" (onClick)="addIncome()" [disabled]="!incForm.amount || incForm.amount <= 0" />
+      </div>
+      <div class="inc-row" *ngFor="let i of incomeList()">
+        <i class="fa-solid fa-arrow-down-long" style="color:var(--accent)"></i>
+        <span style="flex:1">{{ i.source || 'Ingreso' }} <small class="muted">· {{ i.receivedOn }}</small></span>
+        <b>{{ fmt(i.amount) }}</b>
+        <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="delIncome(i.id)" />
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:12px;font-weight:800" *ngIf="incomeList().length">
+        <span>Tope del mes</span><span>{{ fmt(incomeTotal()) }}</span>
+      </div>
+      <p class="muted" *ngIf="!incomeList().length" style="text-align:center;padding:14px 0">Sin ingresos registrados este mes.</p>
+    </p-dialog>
   `,
 })
 export class AppComponent implements OnInit, OnDestroy {
@@ -1006,12 +1182,35 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly cmpSummA = signal<Summary | null>(null);
   readonly cmpSummB = signal<Summary | null>(null);
 
+  // ── Ingresos (tope global del mes) ──
+  incomeDialog = false;
+  readonly incomeList = signal<Income[]>([]);
+  readonly incomeTotal = signal<number>(0);
+  incForm: { amount: number | null; source: string; receivedOn: string } = { amount: null, source: '', receivedOn: localYMD() };
+
+  // ── Gastos hormiga / quema del presupuesto ──
+  readonly ant = signal<AntReport | null>(null);
+  readonly burn = signal<BurnPoint[]>([]);
+
+  // ── Apariencia: estilo de superficie + color de acento (persistidos) ──
+  readonly theme = signal<'flat' | 'modern' | 'glass'>('modern');
+  readonly accentColor = signal<string>('');
+  readonly accentSwatches = ['#10b981', '#6c8cff', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#0ea5e9'];
+
+  // ── Web Push ──
+  readonly pushState = signal<PushStatus | null>(null);
+  readonly pushBusy = signal<boolean>(false);
+
   constructor() {
     if (typeof window !== 'undefined' && window.matchMedia) {
       window.matchMedia('(prefers-color-scheme: dark)')
         .addEventListener('change', (e) => this.dark.set(e.matches));
     }
+    this.loadAppearance();   // aplica tema/acento guardados antes de pintar
   }
+
+  // Color de acento efectivo para los gráficos (el elegido o el del tema).
+  readonly chartAccent = computed(() => this.accentColor() || (this.dark() ? '#34d399' : '#10b981'));
 
   // ── Colores de gráficos según tema ──
   private tick(): string { return this.dark() ? '#9aa3b2' : '#5b6472'; }
@@ -1056,11 +1255,83 @@ export class AppComponent implements OnInit, OnDestroy {
     const over = t.remaining < 0;
     return { labels: ['Gastado', 'Restante'],
       datasets: [{ data: [over ? t.budget : spent, rest],
-        backgroundColor: [over ? '#ef4444' : '#6c8cff', this.dark() ? '#2a2f3a' : '#e2e6ef'], borderWidth: 0 }] };
+        backgroundColor: [over ? '#ef4444' : this.chartAccent(), this.dark() ? '#2a2f3a' : '#e2e6ef'], borderWidth: 0 }] };
   });
   readonly budgetDonutOpts = computed(() => ({ maintainAspectRatio: false, cutout: '72%',
     plugins: { legend: { display: false } } }));
   abs(n: number): number { return Math.abs(n); }
+
+  // Donut principal centrado (labels van debajo, en HTML).
+  readonly pieHeroOptions = computed(() => ({ maintainAspectRatio: false, cutout: '68%',
+    plugins: { legend: { display: false } } }));
+
+  // % de una categoría sobre el total del mes.
+  pctOf(total: number): number {
+    const t = this.summary()?.total ?? 0;
+    return t > 0 ? Math.round((total / t) * 100) : 0;
+  }
+
+  // ── Tope global (ingresos) ──
+  topePct(): number {
+    const s = this.summary();
+    if (!s || s.income <= 0) return 0;
+    return Math.min(999, Math.round((s.total / s.income) * 100));
+  }
+  topeOver(): boolean { const s = this.summary(); return !!s && s.income > 0 && s.total > s.income; }
+
+  // % de gastos hormiga sobre el total del mes.
+  antPct(): number {
+    const a = this.ant(); const t = this.summary()?.total ?? 0;
+    return a && t > 0 ? Math.round((a.total / t) * 100) : 0;
+  }
+
+  // Presupuesto vs gastado por categoría (barras agrupadas).
+  budgetBarHas(): boolean { return (this.summary()?.byCategory ?? []).some((c) => c.budget > 0); }
+  readonly budgetBarData = computed(() => {
+    const bc = (this.summary()?.byCategory ?? []).filter((c) => c.budget > 0);
+    return { labels: bc.map((c) => c.name),
+      datasets: [
+        { label: 'Gastado', data: bc.map((c) => c.total),
+          backgroundColor: bc.map((c) => (c.total > c.budget ? '#ef4444' : this.chartAccent())), borderRadius: 6 },
+        { label: 'Presupuesto', data: bc.map((c) => c.budget),
+          backgroundColor: this.dark() ? '#2a2f3a' : '#e2e6ef', borderRadius: 6 },
+      ] };
+  });
+  readonly budgetBarOptions = computed(() => ({ maintainAspectRatio: false,
+    plugins: { legend: { labels: { color: this.legend() } } },
+    scales: { x: { ticks: { color: this.tick() }, grid: { display: false } },
+              y: { ticks: { color: this.tick() }, grid: { color: this.gridc() }, beginAtZero: true } } }));
+
+  // Quema del presupuesto: gasto acumulado (sube) y presupuesto restante (baja).
+  readonly burnData = computed(() => {
+    const s = this.summary();
+    const days = s?.daysInMonth ?? 30;
+    const elapsed = Math.min(s?.daysElapsed ?? days, days);
+    const cum = new Array<number | null>(days).fill(null);
+    for (const p of this.burn()) if (p.day >= 1 && p.day <= days) cum[p.day - 1] = p.cumulative;
+    let last = 0;
+    const spent: (number | null)[] = [];
+    for (let d = 1; d <= days; d++) {
+      const v = cum[d - 1];
+      if (v != null) last = v;
+      spent.push(d <= elapsed ? last : null);
+    }
+    const labels = Array.from({ length: days }, (_, i) => String(i + 1));
+    const acc = this.chartAccent();
+    const datasets: Record<string, unknown>[] = [
+      { label: 'Gasto acumulado', data: spent, borderColor: acc,
+        backgroundColor: 'transparent', tension: 0.3, pointRadius: 0, fill: false },
+    ];
+    const tope = s?.income ?? 0;
+    if (tope > 0) {
+      const remaining = spent.map((v) => (v == null ? null : Math.max(tope - v, 0)));
+      datasets.push({ label: 'Presupuesto restante', data: remaining, borderColor: '#ef4444',
+        backgroundColor: 'rgba(239,68,68,.10)', tension: 0.3, pointRadius: 0, fill: true });
+      datasets.push({ label: 'Tope', data: new Array(days).fill(tope),
+        borderColor: this.dark() ? '#4b5563' : '#cbd5e1', borderDash: [4, 4], pointRadius: 0, fill: false });
+    }
+    return { labels, datasets };
+  });
 
   readonly filtered = computed(() => {
     const q = this.query.trim().toLowerCase();
@@ -1155,6 +1426,7 @@ export class AppComponent implements OnInit, OnDestroy {
       next: (me: Me) => {
         this.me.set(me);
         this.loadNotifCount();
+        this.loadPushStatus();
         // Refresco periódico del contador de notificaciones (badge).
         if (!me.guest && !this.notifTimer) {
           this.notifTimer = setInterval(() => { if (this.tab() !== 5) this.loadNotifCount(); }, 45000);
@@ -1247,17 +1519,20 @@ export class AppComponent implements OnInit, OnDestroy {
     if (n.kind === 'connection_invite' || n.kind === 'connection_accepted') this.openHome();
     else if (n.kind === 'category_shared') this.openCats();
     else if (n.kind === 'shared_expense') { this.tab.set(3); this.movFilter.set('shared'); }
+    else if (n.kind === 'budget_exceeded') this.tab.set(0);
   }
   notifIcon(kind: string): string {
     return kind === 'connection_invite' ? 'fa-solid fa-user-plus'
       : kind === 'connection_accepted' ? 'fa-solid fa-user-check'
       : kind === 'category_shared' ? 'fa-solid fa-tags'
+      : kind === 'budget_exceeded' ? 'fa-solid fa-triangle-exclamation'
       : 'fa-solid fa-cart-shopping';
   }
   notifTint(kind: string): string {
     return kind === 'connection_invite' ? '#6c8cff'
       : kind === 'connection_accepted' ? '#10b981'
       : kind === 'category_shared' ? '#f59e0b'
+      : kind === 'budget_exceeded' ? '#ef4444'
       : '#8b5cf6';
   }
   notifWhen(iso: string): string {
@@ -1300,7 +1575,54 @@ export class AppComponent implements OnInit, OnDestroy {
     this.api.expenses(m).subscribe({ next: (e) => { this.expenses.set(e); this.loaded.set(true); }, error: () => this.loaded.set(true) });
     this.api.summary(m).subscribe({ next: (s) => this.summary.set(s), error: () => {} });
     this.api.trend(6).subscribe({ next: (t) => this.trend.set(t), error: () => {} });
+    this.api.ant(m).subscribe({ next: (a) => this.ant.set(a), error: () => {} });
+    this.api.burndown(m).subscribe({ next: (b) => this.burn.set(b), error: () => {} });
   }
+
+  // ── Apariencia (tema + color de acento) ──
+  private loadAppearance(): void {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      const t = localStorage.getItem('gastos.theme') as 'flat' | 'modern' | 'glass' | null;
+      if (t === 'flat' || t === 'modern' || t === 'glass') this.theme.set(t);
+      const a = localStorage.getItem('gastos.accent');
+      if (a) this.accentColor.set(a);
+    } catch { /* almacenamiento no disponible */ }
+    this.applyAppearance();
+  }
+  private applyAppearance(): void {
+    if (typeof document === 'undefined') return;
+    document.documentElement.setAttribute('data-theme', this.theme());
+    const a = this.accentColor();
+    if (a) document.documentElement.style.setProperty('--accent', a);
+    else document.documentElement.style.removeProperty('--accent');
+  }
+  setTheme(t: 'flat' | 'modern' | 'glass'): void {
+    this.theme.set(t);
+    try { localStorage.setItem('gastos.theme', t); } catch { /* noop */ }
+    this.applyAppearance();
+  }
+  setAccent(hex: string): void {
+    this.accentColor.set(hex);
+    try { if (hex) localStorage.setItem('gastos.accent', hex); else localStorage.removeItem('gastos.accent'); } catch { /* noop */ }
+    this.applyAppearance();
+  }
+
+  // ── Ingresos (tope global) ──
+  openIncome(): void { this.incForm = { amount: null, source: '', receivedOn: localYMD() }; this.loadIncome(); this.incomeDialog = true; }
+  private loadIncome(): void {
+    this.api.income(this.month()).subscribe({
+      next: (r) => { this.incomeList.set(r.items || []); this.incomeTotal.set(r.total || 0); }, error: () => {},
+    });
+  }
+  addIncome(): void {
+    if (!this.incForm.amount || this.incForm.amount <= 0) return;
+    this.api.addIncome(this.incForm.amount, this.incForm.source, this.incForm.receivedOn).subscribe({
+      next: () => { this.incForm = { amount: null, source: '', receivedOn: localYMD() }; this.loadIncome(); this.reload(); },
+      error: () => alert('No se pudo registrar el ingreso.'),
+    });
+  }
+  delIncome(id: number): void { this.api.deleteIncome(id).subscribe(() => { this.loadIncome(); this.reload(); }); }
 
   shiftMonth(delta: number): void {
     const [y, m] = this.month().split('-').map(Number);
@@ -1668,4 +1990,64 @@ export class AppComponent implements OnInit, OnDestroy {
     return d.toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
   }
   private validTime(t: string | null): boolean { return !!t && /^\d{2}:\d{2}$/.test(t); }
+
+  // ── Web Push ──
+  pushSupported(): boolean {
+    return typeof navigator !== 'undefined' && 'serviceWorker' in navigator
+      && typeof window !== 'undefined' && 'PushManager' in window
+      && (this.pushState()?.enabled ?? false);
+  }
+  pushOn(): boolean { return this.pushState()?.subscribed === true; }
+  pushHint(): string {
+    if (!this.pushState()?.enabled) return 'No disponible en este servidor.';
+    if (typeof Notification !== 'undefined' && Notification.permission === 'denied')
+      return 'Bloqueadas por el navegador. Actívalas en los ajustes del sitio.';
+    return this.pushOn() ? 'Activadas en este dispositivo.' : 'Recibe un aviso cuando superes un tope.';
+  }
+  private loadPushStatus(): void {
+    if (this.isGuest() || typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    this.api.pushStatus().subscribe({ next: (s) => this.pushState.set(s), error: () => {} });
+  }
+  togglePush(): void { if (this.pushOn()) this.disablePush(); else this.enablePush(); }
+
+  private enablePush(): void {
+    const st = this.pushState();
+    if (!st?.enabled || !st.key) return;
+    this.pushBusy.set(true);
+    const fail = (msg?: string) => { this.pushBusy.set(false); if (msg) alert(msg); };
+    Notification.requestPermission().then((perm) => {
+      if (perm !== 'granted') { fail('Permiso de notificaciones denegado.'); return; }
+      navigator.serviceWorker.ready.then((reg) =>
+        reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: this.urlB64ToUint8Array(st.key) })
+      ).then((sub) => {
+        const json = sub.toJSON();
+        const keys = json.keys || ({} as Record<string, string>);
+        this.api.pushSubscribe({ endpoint: sub.endpoint, p256dh: keys['p256dh'] || '', auth: keys['auth'] || '' }).subscribe({
+          next: () => { this.pushBusy.set(false); this.pushState.set({ ...st, subscribed: true }); },
+          error: () => fail('No se pudo guardar la suscripción.'),
+        });
+      }).catch(() => fail('No se pudo activar el push.'));
+    }).catch(() => fail());
+  }
+
+  private disablePush(): void {
+    const st = this.pushState();
+    this.pushBusy.set(true);
+    navigator.serviceWorker.ready.then((reg) => reg.pushManager.getSubscription()).then((sub) => {
+      const done = () => { this.pushBusy.set(false); if (st) this.pushState.set({ ...st, subscribed: false }); };
+      if (!sub) { done(); return; }
+      const endpoint = sub.endpoint;
+      sub.unsubscribe().finally(() => this.api.pushUnsubscribe(endpoint).subscribe({ next: done, error: done }));
+    }).catch(() => { this.pushBusy.set(false); });
+  }
+
+  /** VAPID key base64url → Uint8Array para applicationServerKey. */
+  private urlB64ToUint8Array(base64: string): Uint8Array {
+    const padding = '='.repeat((4 - (base64.length % 4)) % 4);
+    const b64 = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(b64);
+    const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
 }

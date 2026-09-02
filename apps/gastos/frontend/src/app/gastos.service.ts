@@ -24,9 +24,15 @@ export interface Summary {
   month: string; total: number; byCategory: CatTotal[];
   count: number; daysInMonth: number; daysElapsed: number;
   dailyAverage: number; projectedEndOfMonth: number; previousMonthTotal: number;
+  income: number;   // ingresos del mes = tope global de gasto
 }
 export interface TrendPoint { month: string; total: number; }
 export interface Trend { series: TrendPoint[]; forecastNext: number; average: number; }
+export interface Income { id: number; amount: number; source: string; receivedOn: string; }
+export interface AntGroup { label: string; color: string; count: number; total: number; avg: number; }
+export interface AntReport { month: string; threshold: number; total: number; count: number; groups: AntGroup[]; }
+export interface BurnPoint { day: number; cumulative: number; }
+export interface PushStatus { enabled: boolean; key: string; subscribed: boolean; }
 
 export interface Monto { etiqueta: string; valor: number; }
 export interface Region { campo: string; etiqueta: string; box: number[]; }
@@ -104,6 +110,33 @@ export class GastosService {
   prices(): Observable<PriceProduct[]> { return this.http.get<PriceProduct[]>(`${this.base}/prices`, this.opts); }
   summary(month: string): Observable<Summary> { return this.http.get<Summary>(`${this.base}/summary?month=${month}`, this.opts); }
   trend(months = 6): Observable<Trend> { return this.http.get<Trend>(`${this.base}/trend?months=${months}`, this.opts); }
+
+  // ── Ingresos (tope global) ──
+  income(month: string): Observable<{ items: Income[]; total: number }> {
+    return this.http.get<{ items: Income[]; total: number }>(`${this.base}/income?month=${month}`, this.opts);
+  }
+  addIncome(amount: number, source: string, receivedOn: string): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(`${this.base}/income`, { amount, source, receivedOn }, this.opts);
+  }
+  deleteIncome(id: number): Observable<unknown> { return this.http.delete(`${this.base}/income/${id}`, this.opts); }
+
+  // ── Gastos hormiga / quema de presupuesto ──
+  ant(month: string, max?: number): Observable<AntReport> {
+    const q = max ? `&max=${max}` : '';
+    return this.http.get<AntReport>(`${this.base}/ant?month=${month}${q}`, this.opts);
+  }
+  burndown(month: string): Observable<BurnPoint[]> {
+    return this.http.get<BurnPoint[]>(`${this.base}/burndown?month=${month}`, this.opts);
+  }
+
+  // ── Web Push ──
+  pushStatus(): Observable<PushStatus> { return this.http.get<PushStatus>(`${this.base}/push/status`, this.opts); }
+  pushSubscribe(sub: { endpoint: string; p256dh: string; auth: string }): Observable<unknown> {
+    return this.http.post(`${this.base}/push/subscribe`, sub, this.opts);
+  }
+  pushUnsubscribe(endpoint: string): Observable<unknown> {
+    return this.http.post(`${this.base}/push/unsubscribe`, { endpoint }, this.opts);
+  }
   aiStatus(): Observable<{ enabled: boolean }> { return this.http.get<{ enabled: boolean }>(`${this.base}/ai-status`, this.opts); }
   scan(image: string, mediaType: string): Observable<Scan> {
     return this.http.post<Scan>(`${this.base}/scan`, { image, mediaType }, this.opts);

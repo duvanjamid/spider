@@ -23,6 +23,46 @@
   }
 }
 
+// ══ Estilo de superficie (ortogonal a claro/oscuro). Se elige en el perfil y
+//    se aplica con data-theme en <html>. El color de acento se inyecta inline. ══
+:root[data-theme="flat"] {
+  --shadow: none;
+  --radius: 12px;
+}
+:root[data-theme="modern"] {
+  --radius: 16px;
+}
+:root[data-theme="glass"] {
+  --panel: rgba(255, 255, 255, .60);
+  --panel-2: rgba(255, 255, 255, .40);
+  --border: rgba(255, 255, 255, .55);
+  --shadow: 0 8px 32px rgba(20, 26, 40, .14);
+  --blur: 14px;
+  --radius: 20px;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="glass"] {
+    --panel: rgba(30, 34, 44, .55);
+    --panel-2: rgba(40, 45, 58, .45);
+    --border: rgba(255, 255, 255, .12);
+    --shadow: 0 8px 32px rgba(0, 0, 0, .45);
+  }
+}
+// Fondo con un toque de acento para que el «glass» tenga algo que difuminar.
+:root[data-theme="glass"] body {
+  background:
+    radial-gradient(120% 90% at 8% -10%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 55%),
+    radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 50%),
+    var(--bg);
+  background-attachment: fixed;
+}
+// Superficies translúcidas con desenfoque (solo en glass).
+:root[data-theme="glass"] :is(.kpi, .row, .pcard, .notif-list, .profile, .seg,
+    .acc-group .menu, .bnav, .bar) {
+  backdrop-filter: blur(var(--blur, 12px));
+  -webkit-backdrop-filter: blur(var(--blur, 12px));
+}
+
 * { box-sizing: border-box; }
 
 html, body {

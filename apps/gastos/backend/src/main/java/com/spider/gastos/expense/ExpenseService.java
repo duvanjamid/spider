@@ -271,6 +271,81 @@ public class ExpenseService {
         return den == 0 ? 0 : num / den;
     }
 
+    /**
+     * Detector de «gastos hormiga»: compras pequeñas (≤ {@code maxAmount}) que se
+     * repiten (≥ 2 veces) en el mes y, sumadas, pesan. Agrupa por comercio (o
+     * descripción/categoría) sobre los gastos propios del usuario.
+     */
+    public Map<String, Object> antExpenses(String email, String month, double maxAmount) {
+        String ym = month == null || month.isBlank() ? YearMonth.now().toString() : month;
+        double cap = maxAmount > 0 ? maxAmount : 40000;   // ~10 USD: umbral de «compra pequeña» por defecto
+        String sql = """
+                SELECT lower(coalesce(nullif(trim(e.merchant),''), nullif(trim(e.description),''), c.name, 'otros')) AS gkey,
+                       max(coalesce(nullif(trim(e.merchant),''), nullif(trim(e.description),''), c.name, 'Otros')) AS label,
+                       max(coalesce(c.color, '#9aa3b2')) AS color,
+                       count(*) AS n, sum(e.amount) AS total, avg(e.amount) AS avg
+                FROM expense e LEFT JOIN category c ON c.id = e.category_id
+                WHERE e.owner_email = ? AND to_char(e.spent_on,'YYYY-MM') = ? AND e.amount <= ?
+                GROUP BY gkey HAVING count(*) >= 2
+                ORDER BY sum(e.amount) DESC
+                """;
+        List<Map<String, Object>> groups = new ArrayList<>();
+        double total = 0;
+        int count = 0;
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, email); ps.setString(2, ym); ps.setDouble(3, cap);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    double t = rs.getBigDecimal("total").doubleValue();
+                    int n = rs.getInt("n");
+                    total += t; count += n;
+                    if (groups.size() < 12) {
+                        Map<String, Object> m = new LinkedHashMap<>();
+                        m.put("label", rs.getString("label"));
+                        m.put("color", rs.getString("color"));
+                        m.put("count", n);
+                        m.put("total", t);
+                        m.put("avg", rs.getBigDecimal("avg").doubleValue());
+                        groups.add(m);
+                    }
+                }
+            }
+        } catch (Exception e) { throw new RuntimeException("Error detectando gastos hormiga", e); }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("month", ym);
+        out.put("threshold", cap);
+        out.put("total", total);
+        out.put("count", count);
+        out.put("groups", groups);
+        return out;
+    }
+
+    /** Acumulado de gasto propio por día del mes (para la curva de «quema» del presupuesto). */
+    public List<Map<String, Object>> dailyCumulative(String email, String month) {
+        String ym = month == null || month.isBlank() ? YearMonth.now().toString() : month;
+        String sql = "SELECT EXTRACT(DAY FROM spent_on)::int AS d, SUM(amount) AS total "
+                + "FROM expense WHERE owner_email = ? AND to_char(spent_on,'YYYY-MM') = ? GROUP BY d ORDER BY d";
+        int days = YearMonth.parse(ym).lengthOfMonth();
+        double[] perDay = new double[days + 1];
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, email); ps.setString(2, ym);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    int d = rs.getInt("d");
+                    if (d >= 1 && d <= days) perDay[d] = rs.getBigDecimal("total").doubleValue();
+                }
+            }
+        } catch (Exception e) { throw new RuntimeException("Error calculando acumulado diario", e); }
+        List<Map<String, Object>> out = new ArrayList<>();
+        double acc = 0;
+        for (int d = 1; d <= days; d++) {
+            acc += perDay[d];
+            out.add(Map.of("day", d, "cumulative", acc));
+        }
+        return out;
+    }
+
     // ══════════════ Productos de la factura (detalle) ══════════════
 
     /** Guarda las líneas de producto de un gasto (nombre, cantidad, precio unitario, total). */

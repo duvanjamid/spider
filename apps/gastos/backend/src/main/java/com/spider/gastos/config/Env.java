@@ -42,4 +42,11 @@ public final class Env {
     // ── Secreto de sesión de la plataforma (mismo que el admin) para
     //    identificar al usuario por la cookie spider_session. ──
     public static String authJwtSecret() { return get("AUTH_JWT_SECRET", "dev-secret-change-me"); }
+
+    // ── Web Push (VAPID). Las claves NO viven en el repo: se inyectan por
+    //    entorno. Sin ellas, las notificaciones push quedan deshabilitadas
+    //    (la app sigue funcionando; solo no envía push). ──
+    public static String vapidPublic() { return get("VAPID_PUBLIC", "").trim(); }
+    public static String vapidPrivate() { return get("VAPID_PRIVATE", "").trim(); }
+    public static String vapidSubject() { return get("VAPID_SUBJECT", "mailto:admin@spider.muvatec.com").trim(); }
 }
