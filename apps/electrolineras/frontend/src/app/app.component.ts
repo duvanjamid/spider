@@ -431,8 +431,10 @@ export class AppComponent implements OnInit, AfterViewInit {
     const style = dark
       ? 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
       : 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
-    const road = dark ? '#34d399' : '#16a34a';     // relleno de la vía (verde app)
-    const roadCase = dark ? '#0f766e' : '#0f766e'; // contorno de la vía (verde oscuro)
+    // Tono SUTIL estilo Waze: verdoso grisáceo, poco saturado (no compite con
+    // los parques/zonas verdes ni satura el mapa).
+    const road = dark ? '#5f8f7c' : '#a3c3b4';     // relleno de la vía
+    const roadCase = dark ? '#436e5d' : '#6f9585'; // contorno de la vía
     if (this.tiles) { try { this.map.removeLayer(this.tiles); } catch { } this.tiles = undefined; }
     // El plugin añade `maplibreGL` al Leaflet en runtime (window.L); el namespace
     // `import * as L` puede no exponerlo, así que se toma del global.
