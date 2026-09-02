@@ -421,17 +421,15 @@ export class AppComponent implements OnInit, AfterViewInit {
   private tiles?: L.TileLayer;
   private isDark(): boolean { return typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)').matches : false; }
   private tileUrl(): string {
-    // Calles coloridas (voyager) de día, oscuro de noche. El tinte verde
-    // temático se aplica por CSS sobre las teselas.
-    return this.isDark()
-      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+    // OpenStreetMap estándar (SIN API key). CARTO empezó a exigir key y devolvía
+    // teselas "API KEY REQUIRED". El tinte verde temático se aplica por CSS.
+    return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
   }
 
   ngAfterViewInit(): void {
     this.map = L.map(this.mapEl.nativeElement, { zoomControl: false, attributionControl: true }).setView([4.65, -74.1], 6);
     L.control.zoom({ position: 'bottomright' }).addTo(this.map);
-    this.tiles = L.tileLayer(this.tileUrl(), { maxZoom: 20, subdomains: 'abcd', detectRetina: true, attribution: '© OpenStreetMap · © CARTO' }).addTo(this.map);
+    this.tiles = L.tileLayer(this.tileUrl(), { maxZoom: 19, subdomains: 'abc', attribution: '© OpenStreetMap' }).addTo(this.map);
     window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', () => this.tiles?.setUrl(this.tileUrl()));
     this.markers.addTo(this.map);
     this.routeLayer.addTo(this.map);

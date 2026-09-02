@@ -377,7 +377,7 @@ export class AppComponent implements OnInit, AfterViewInit {
     this.map = L.map(this.mapEl.nativeElement, { zoomControl: false, attributionControl: false })
       .setView([4.65, -74.1], 12);
     this.tiles = L.tileLayer(this.tileUrl(), {
-      maxZoom: 20, subdomains: 'abcd', detectRetina: true,
+      maxZoom: 19, subdomains: 'abc', attribution: '© OpenStreetMap',
     }).addTo(this.map);
     this.layer.addTo(this.map);
     L.control.zoom({ position: 'bottomright' }).addTo(this.map);
@@ -506,11 +506,9 @@ export class AppComponent implements OnInit, AfterViewInit {
 
   // ─── helpers de presentación ───
   private tileUrl(): string {
-    // Mapa "estilo Waze": calles coloridas (voyager) de día, oscuro de noche.
-    // El tinte rojo temático se aplica por CSS sobre las teselas.
-    return this.dark()
-      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+    // OpenStreetMap estándar (SIN API key). CARTO empezó a exigir key y devolvía
+    // teselas "API KEY REQUIRED". El tinte rojo temático se aplica por CSS.
+    return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
   }
   private prefersDark(): boolean {
     return typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
