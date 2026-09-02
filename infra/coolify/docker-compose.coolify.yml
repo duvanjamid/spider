@@ -22,6 +22,22 @@
 #  --project-directory = raíz). MEMORIA: mem_limit por servicio; los backends
 #  Java capan heap al 70% (JAVA_TOOL_OPTIONS + SerialGC). ~2.6 GB con 4 apps.
 #  Cada entorno tiene su BD → schemas planos (SCHEMA_PREFIX por defecto vacío).
+#
+#  AISLAMIENTO DE RED (importante):
+#    Coolify crea AUTOMÁTICAMENTE una red propia por recurso (nombre = uuid del
+#    app, distinta en test y prod) y conecta a ella TODOS los servicios del
+#    compose + su Traefik (ver label `traefik.docker.network`). Esa red es única
+#    por entorno, así que dentro de ella los nombres de servicio (`admin-backend`,
+#    …) resuelven SIN chocar con el otro entorno.
+#
+#    Por eso el gateway NO va en la red compartida `coolify`: resuelve los
+#    upstreams por su nombre corto en la red por-app (aislada) y nunca ve los
+#    contenedores homónimos del otro entorno. (El intento anterior de aliases
+#    `${NS}-<servicio>` sobre la red `coolify` NO sirve: Coolify 4.3.14 los BORRA
+#    al parsear el compose.)
+#
+#    Los BACKENDS sí siguen en `coolify` porque ahí vive la BD gestionada
+#    (DB_HOST). El gateway igual los alcanza por la red por-app.
 # ══════════════════════════════════════════════════════════════
 
 # ── Env COMPARTIDA por todos los backends (se define una vez en Coolify). ──
@@ -33,7 +49,9 @@ x-common-env: &common-env
   DB_PASSWORD: ${DB_PASSWORD}
   AUTH_JWT_SECRET: ${AUTH_JWT_SECRET}
   REGISTRY_TOKEN: ${REGISTRY_TOKEN}
-  ADMIN_REGISTRY_URL: http://${NS}-admin-backend:8080
+  # Auto-registro vía el gateway (resuelve `gateway` en la red por-app, aislada
+  # por entorno). El gateway enruta /admin-api → admin-backend del MISMO entorno.
+  ADMIN_REGISTRY_URL: http://gateway/admin-api
   ADMIN_EMAILS: ${ADMIN_EMAILS:-}
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
@@ -50,25 +68,27 @@ services:
   # ── Gateway: ÚNICO servicio expuesto. Enruta /<app> y /<app>-api. ──
   gateway:
     build: infra/gateway
-    # Upstreams con alias ÚNICO por entorno (${NS}) para no chocar con los
-    # servicios homónimos del otro entorno en la red compartida `coolify`.
+    # Upstreams por NOMBRE CORTO: se resuelven en la red por-app (aislada por
+    # entorno que crea Coolify), así el gateway nunca alcanza los contenedores
+    # homónimos del otro entorno. El gateway NO va en la red `coolify` (Traefik
+    # lo alcanza por la red por-app, ver label traefik.docker.network).
     environment:
       - SERVICE_FQDN_GATEWAY_80
       - PORT=80
-      - ADMIN_BACKEND=http://${NS}-admin-backend:8080
-      - ADMIN_FRONTEND=http://${NS}-admin-frontend:80
-      - GASTOS_BACKEND=http://${NS}-gastos-backend:8080
-      - GASTOS_FRONTEND=http://${NS}-gastos-frontend:80
-      - ELECTROLINERAS_BACKEND=http://${NS}-electrolineras-backend:8080
-      - ELECTROLINERAS_FRONTEND=http://${NS}-electrolineras-frontend:80
-      - ALERTAS_BACKEND=http://${NS}-alertas-backend:8080
-      - ALERTAS_FRONTEND=http://${NS}-alertas-frontend:80
+      - ADMIN_BACKEND=http://admin-backend:8080
+      - ADMIN_FRONTEND=http://admin-frontend:80
+      - GASTOS_BACKEND=http://gastos-backend:8080
+      - GASTOS_FRONTEND=http://gastos-frontend:80
+      - ELECTROLINERAS_BACKEND=http://electrolineras-backend:8080
+      - ELECTROLINERAS_FRONTEND=http://electrolineras-frontend:80
+      - ALERTAS_BACKEND=http://alertas-backend:8080
+      - ALERTAS_FRONTEND=http://alertas-frontend:80
     depends_on:
       - admin-backend
       - admin-frontend
     restart: unless-stopped
     mem_limit: 96m
-    networks: [coolify, default]
+    networks: [default]
 
   # ═════════════════════ APP: admin (plataforma) ═════════════════════
   admin-backend:

@@ -173,15 +173,22 @@ type Sheet = 'none' | 'report' | 'detail' | 'profile';
     /* Mapa: z-index:0 confina los z-index internos de Leaflet (hasta 1000). */
     .map { position: absolute; inset: 0; z-index: 0; }
     :host ::ng-deep .leaflet-container { background: var(--bg); font-family: inherit; }
-    /* Mapa temático «estilo Waze»: teselas más vivas + tinte rojo de la app. */
-    :host ::ng-deep .leaflet-tile-pane { filter: saturate(1.2) contrast(1.03); }
+    /* Mapa temático «estilo Waze»: tinte ROJO aplicado con filter sobre las
+       teselas (fiable: los paneles de Leaflet usan transform y aíslan el
+       stacking, por eso mix-blend-mode apenas se veía). sepia+hue-rotate lleva
+       el mapa hacia el rojo/naranja de la app; saturate/contrast lo hacen vivo. */
+    :host ::ng-deep .leaflet-tile-pane {
+      filter: saturate(1.4) contrast(1.05) brightness(1.03) sepia(.3) hue-rotate(-20deg);
+    }
+    :host.dark ::ng-deep .leaflet-tile-pane,
+    :host ::ng-deep .app.dark .leaflet-tile-pane {
+      filter: saturate(1.35) contrast(1.02) brightness(1.02) sepia(.35) hue-rotate(-20deg);
+    }
+    /* Viñeta sutil hacia el rojo en los bordes (sin depender de blend). */
     :host ::ng-deep .leaflet-container::after {
       content: ''; position: absolute; inset: 0; z-index: 250; pointer-events: none;
-      background: radial-gradient(120% 90% at 50% 0%, #ef4444, #b91c1c 70%);
-      mix-blend-mode: soft-light; opacity: .58;
+      background: radial-gradient(130% 100% at 50% 0%, transparent 55%, rgba(185,28,28,.16));
     }
-    :host.dark ::ng-deep .leaflet-container::after,
-    :host ::ng-deep .app.dark .leaflet-container::after { opacity: .5; }
 
     .chip { display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 12px; border: none;
       border-radius: 999px; background: var(--panel); color: var(--ink); box-shadow: var(--shadow); cursor: pointer;
