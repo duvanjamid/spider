@@ -30,11 +30,14 @@
               "node_modules/primeicons/primeicons.css",
               "node_modules/@fortawesome/fontawesome-free/css/all.min.css",
               "node_modules/leaflet/dist/leaflet.css",
+              "node_modules/maplibre-gl/dist/maplibre-gl.css",
               "src/styles.scss"
             ],
             "baseHref": "./",
             "allowedCommonJsDependencies": [
-              "leaflet"
+              "leaflet",
+              "maplibre-gl",
+              "@maplibre/maplibre-gl-leaflet"
             ]
           },
           "configurations": {
