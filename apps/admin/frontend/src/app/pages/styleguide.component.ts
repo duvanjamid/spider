@@ -164,8 +164,8 @@ import { RouterLink } from '@angular/router';
     @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } .sg-top { flex-direction: column; } }
 
     .card {
-      background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg);
-      padding: var(--s5); box-shadow: var(--e2);
+      background: var(--surface-grad); border: 1px solid var(--border); border-radius: var(--r-xl);
+      padding: var(--s5); box-shadow: var(--raise-lg);
     }
     .card > h2 { margin: 0 0 var(--s4); }
     .row { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; margin-bottom: var(--s2); }
@@ -195,29 +195,33 @@ import { RouterLink } from '@angular/router';
     /* Elevation */
     .elevs { display: flex; gap: var(--s4); flex-wrap: wrap; }
     .ele { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-    .ele .tile { width: 60px; height: 46px; border-radius: var(--r); background: var(--panel); border: 1px solid var(--border); }
+    .ele .tile { width: 62px; height: 48px; border-radius: var(--r); background: var(--surface-grad); border: 1px solid var(--border); }
 
     /* Buttons */
     .btn {
-      display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px;
-      border-radius: var(--r-pill); border: 1px solid transparent; cursor: pointer; font: inherit; font-weight: 600;
-      background: var(--accent); color: var(--accent-contrast); box-shadow: var(--e1); transition: transform .06s ease, filter .15s ease, box-shadow .15s ease;
+      display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 18px;
+      border-radius: var(--r-pill); border: 1px solid transparent; cursor: pointer; font: inherit; font-weight: 650;
+      color: var(--accent-contrast);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 85%, #fff) 0%, var(--accent) 100%);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 1px 2px rgba(28,40,34,.14), 0 8px 16px color-mix(in srgb, var(--accent) 40%, transparent);
+      transition: transform .07s ease, filter .15s ease, box-shadow .15s ease;
     }
-    .btn:hover { filter: brightness(1.03); box-shadow: var(--e2); }
-    .btn:active { transform: translateY(1px); }
-    .btn.strong { background: var(--accent-strong); color: #fff; }
-    .btn.soft { background: var(--accent-soft); color: var(--accent-strong); }
-    .btn.ghost { background: transparent; color: var(--fg); border-color: var(--border); box-shadow: none; }
-    .btn.danger { background: var(--error); color: #2a0f0d; }
-    .btn.sm { height: 32px; padding: 0 12px; font-size: .85rem; }
-    .btn[disabled] { opacity: .5; cursor: not-allowed; box-shadow: none; }
+    .btn:hover { filter: brightness(1.04); box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 2px 4px rgba(28,40,34,.16), 0 12px 22px color-mix(in srgb, var(--accent) 46%, transparent); }
+    .btn:active { transform: translateY(1px); box-shadow: inset 0 2px 4px rgba(28,40,34,.2); }
+    .btn.strong { background: linear-gradient(180deg, color-mix(in srgb, var(--accent-strong) 85%, #fff), var(--accent-strong)); color: #fff; }
+    .btn.soft { background: linear-gradient(180deg, #fff, var(--accent-soft)); color: var(--accent-strong); box-shadow: var(--raise); }
+    .btn.ghost { background: var(--surface-grad); color: var(--fg); border-color: var(--border); box-shadow: var(--raise); }
+    .btn.danger { background: linear-gradient(180deg, color-mix(in srgb, var(--error) 85%, #fff), var(--error)); color: #3a1512; box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 8px 16px color-mix(in srgb, var(--error) 40%, transparent); }
+    .btn.sm { height: 34px; padding: 0 14px; font-size: .85rem; }
+    .btn[disabled] { background: var(--panel-2); color: var(--muted); box-shadow: var(--e1); opacity: .8; cursor: not-allowed; }
 
     /* Inputs */
     .field {
-      display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; margin-bottom: var(--s2);
-      background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-pill); box-shadow: var(--e1);
+      display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 16px; margin-bottom: var(--s2);
+      background: var(--surface-grad-2); border: 1px solid var(--border); border-radius: var(--r-pill);
+      box-shadow: inset 0 2px 4px rgba(28,40,34,.06), inset 0 1px 0 rgba(255,255,255,.5); /* recessed */
     }
-    .field:focus-within { box-shadow: var(--focus); border-color: var(--accent); }
+    .field:focus-within { box-shadow: var(--focus), inset 0 2px 4px rgba(28,40,34,.06); border-color: var(--accent); }
     .field i { color: var(--muted); }
     .field input { flex: 1; border: none; outline: none; background: none; color: var(--fg); font: inherit; }
     .field.disabled { opacity: .55; }
@@ -226,17 +230,18 @@ import { RouterLink } from '@angular/router';
 
     /* Chips */
     .chip {
-      display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; cursor: pointer; font: inherit;
-      border-radius: var(--r-pill); border: 1px solid var(--border); background: var(--panel); color: var(--fg); font-size: .85rem;
+      display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 15px; cursor: pointer; font: inherit;
+      border-radius: var(--r-pill); border: 1px solid var(--border); background: var(--surface-grad); color: var(--fg); font-size: .85rem;
+      box-shadow: var(--raise);
     }
     .chip i { color: var(--muted); font-size: .8rem; }
-    .chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }
+    .chip.on { background: linear-gradient(180deg, #fff, var(--accent-soft)); border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); color: var(--accent-strong); }
     .chip.on i { color: var(--accent-strong); }
 
     /* Tabs */
-    .seg { display: inline-flex; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--r-pill); padding: 4px; gap: 4px; margin-bottom: var(--s4); }
-    .seg button { border: none; background: none; cursor: pointer; font: inherit; font-weight: 600; color: var(--muted); padding: 7px 16px; border-radius: var(--r-pill); }
-    .seg button.on { background: var(--panel); color: var(--fg); box-shadow: var(--e1); }
+    .seg { display: inline-flex; background: var(--surface-grad-2); border: 1px solid var(--border); border-radius: var(--r-pill); padding: 5px; gap: 4px; margin-bottom: var(--s4); box-shadow: inset 0 2px 4px rgba(28,40,34,.07); }
+    .seg button { border: none; background: none; cursor: pointer; font: inherit; font-weight: 650; color: var(--muted); padding: 8px 18px; border-radius: var(--r-pill); transition: color .15s ease; }
+    .seg button.on { background: linear-gradient(180deg, #fff, #f4f6f1); color: var(--accent-strong); box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 1px 2px rgba(28,40,34,.1), 0 4px 10px rgba(28,40,34,.1); }
     .uline { display: flex; gap: var(--s4); border-bottom: 1px solid var(--border); }
     .uline button { border: none; background: none; cursor: pointer; font: inherit; font-weight: 600; color: var(--muted); padding: 10px 2px; position: relative; }
     .uline button.on { color: var(--accent-strong); }
@@ -251,9 +256,11 @@ import { RouterLink } from '@angular/router';
     .alert.info { background: var(--info-soft); color: #3d5878; }
 
     /* Card sample */
-    .mini { display: flex; gap: var(--s4); background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--s4); box-shadow: var(--e3); }
+    .mini { display: flex; gap: var(--s4); background: var(--surface-grad); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--s4); box-shadow: var(--raise-lg); }
     .mini-body { flex: 1; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
-    .mini-img { width: 76px; height: 76px; border-radius: var(--r); background: var(--panel-2); display: grid; place-items: center; color: var(--muted); font-size: 1.4rem; flex: none; }
+    .mini-img { width: 76px; height: 76px; border-radius: var(--r); background: var(--surface-grad-2); box-shadow: inset 0 2px 5px rgba(28,40,34,.08); display: grid; place-items: center; color: var(--muted); font-size: 1.4rem; flex: none; }
+    .chip-color, .rad .box, .ele .tile { position: relative; }
+    .swatches .chip-color { box-shadow: var(--raise); }
 
     .sg-foot { text-align: center; margin-top: var(--s6); }
   `],
