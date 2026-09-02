@@ -1,25 +1,90 @@
-// ── Tokens de tema. Claro por defecto; oscuro según el dispositivo. ──
+// ══════════════════════════════════════════════════════════════
+//  Sistema de diseño Spider · admin
+//  Estilo "soft product UI": superficies claras, salvia mate, bordes
+//  sutiles, esquinas redondeadas y elevación suave. Claro por defecto;
+//  oscuro según el dispositivo. Los componentes usan estos tokens, así
+//  que cambiar aquí re-estiliza todo.
+// ══════════════════════════════════════════════════════════════
 :root {
-  --bg: #f4f6fb;
-  --panel: #ffffff;
-  --panel-2: #eef1f7;
-  --fg: #1e2330;
-  --muted: #5b6472;
-  --accent: #6c8cff;
-  --border: #e2e6ef;
-  --shadow: 0 1px 3px rgba(20, 26, 40, .08), 0 8px 24px rgba(20, 26, 40, .06);
+  // ── Superficies / texto ──
+  --bg: #f3f4f1;          // fondo (papel cálido)
+  --panel: #ffffff;        // superficie de tarjetas
+  --panel-2: #eef0ec;      // superficie sutil / hover
+  --fg: #2c332f;           // texto principal
+  --muted: #7b847d;        // texto secundario
+  --border: #e5e7e1;       // bordes / divisores
+
+  // ── Marca (salvia mate) ──
+  --accent: #7fae95;       // primario
+  --accent-strong: #5f9179;// primario fuerte (texto/hover)
+  --accent-soft: #e7f0ea;  // relleno suave (chips, estados)
+  --accent-contrast: #10231a; // texto sobre primario
+
+  // ── Semánticos (suaves, tipo el styleguide) ──
+  --success: #7fae8f;  --success-soft: #e7f0ea;
+  --warning: #d9bf6f;  --warning-soft: #f6efd6;
+  --error:   #d5928c;  --error-soft:   #f6e4e2;
+  --info:    #8aa1bd;  --info-soft:    #e7edf4;
+
+  // ── Foco ──
+  --focus: 0 0 0 3px rgba(127, 174, 149, .35);
+
+  // ── Radios ──
+  --r-xs: 8px; --r-sm: 10px; --r: 14px; --r-lg: 18px; --r-xl: 24px; --r-pill: 999px;
+
+  // ── Espaciado ──
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
+
+  // ── Elevación (sombras suaves multicapa, look soft-3D) ──
+  --e1: 0 1px 2px rgba(28, 40, 34, .05), 0 2px 6px rgba(28, 40, 34, .05);
+  --e2: 0 1px 2px rgba(28, 40, 34, .05), 0 6px 14px rgba(28, 40, 34, .08), 0 2px 6px rgba(28, 40, 34, .04);
+  --e3: 0 2px 4px rgba(28, 40, 34, .05), 0 12px 24px rgba(28, 40, 34, .09), 0 24px 48px rgba(28, 40, 34, .07);
+  --e4: 0 4px 8px rgba(28, 40, 34, .07), 0 18px 34px rgba(28, 40, 34, .11), 0 40px 70px rgba(28, 40, 34, .10);
+  --e5: 0 8px 16px rgba(28, 40, 34, .09), 0 30px 56px rgba(28, 40, 34, .14), 0 60px 100px rgba(28, 40, 34, .12);
+  --shadow: var(--e3); // alias compatible con componentes existentes
+  // Relieve: brillo superior + sombra suave (tarjetas/botones "extruidos").
+  --hi: rgba(255, 255, 255, .75); // brillo superior (borde de luz)
+  --raise: inset 0 1px 0 var(--hi), 0 1px 2px rgba(28, 40, 34, .06), 0 10px 22px rgba(28, 40, 34, .10);
+  --raise-lg: inset 0 1px 0 var(--hi), 0 2px 4px rgba(28, 40, 34, .06), 0 20px 44px rgba(28, 40, 34, .13);
+  // Degradado sutil para superficies (arriba más claro, abajo apenas más oscuro).
+  --surface-grad: linear-gradient(180deg, #ffffff 0%, #f6f7f3 100%);
+  --surface-grad-2: linear-gradient(180deg, #f4f6f1 0%, #e9ece5 100%);
+
+  // ── Tipografía ──
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0f1115;
-    --panel: #161922;
-    --panel-2: #1d212b;
-    --fg: #e6e8ee;
-    --muted: #9aa3b2;
-    --accent: #8aa2ff;
-    --border: #262a33;
-    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 30px rgba(0, 0, 0, .35);
+    --bg: #14171a;
+    --panel: #1b1f22;
+    --panel-2: #232a2c;
+    --fg: #e6ebe7;
+    --muted: #9aa39c;
+    --border: #2b3134;
+
+    --accent: #86b79c;
+    --accent-strong: #a6cfb8;
+    --accent-soft: #223029;
+    --accent-contrast: #0b1611;
+
+    --success: #86b79c; --success-soft: #1f2c25;
+    --warning: #d9bf6f; --warning-soft: #2f2a19;
+    --error:   #d5928c; --error-soft:   #2f211f;
+    --info:    #8aa1bd; --info-soft:    #1e262f;
+
+    --focus: 0 0 0 3px rgba(134, 183, 156, .35);
+
+    --e1: 0 1px 2px rgba(0, 0, 0, .5), 0 2px 6px rgba(0, 0, 0, .35);
+    --e2: 0 1px 2px rgba(0, 0, 0, .5), 0 6px 14px rgba(0, 0, 0, .4);
+    --e3: 0 2px 4px rgba(0, 0, 0, .5), 0 12px 28px rgba(0, 0, 0, .45), 0 24px 48px rgba(0, 0, 0, .35);
+    --e4: 0 6px 16px rgba(0, 0, 0, .5), 0 22px 46px rgba(0, 0, 0, .5);
+    --e5: 0 14px 32px rgba(0, 0, 0, .55), 0 40px 72px rgba(0, 0, 0, .55);
+    --hi: rgba(255, 255, 255, .06);
+    --raise: inset 0 1px 0 var(--hi), 0 1px 2px rgba(0, 0, 0, .5), 0 10px 24px rgba(0, 0, 0, .4);
+    --raise-lg: inset 0 1px 0 var(--hi), 0 2px 4px rgba(0, 0, 0, .5), 0 22px 48px rgba(0, 0, 0, .45);
+    --surface-grad: linear-gradient(180deg, #1e2225 0%, #191d20 100%);
+    --surface-grad-2: linear-gradient(180deg, #262d30 0%, #1f2528 100%);
   }
 }
 
@@ -28,13 +93,42 @@
 html, body {
   margin: 0;
   min-height: 100%;
-  background: var(--bg);
+  // Fondo con degradado suave (vignette clara arriba) sobre el color base.
+  background:
+    radial-gradient(120% 80% at 50% -10%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--fg);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font);
   -webkit-font-smoothing: antialiased;
-  overflow-x: clip;          // nunca scroll horizontal a nivel de página
+  text-rendering: optimizeLegibility;
+  overflow-x: clip;
+  letter-spacing: -.011em;
 }
 
-img, svg, canvas, table { max-width: 100%; }
+// Grano/textura de papel muy sutil, fijo sobre todo el fondo.
+body::before {
+  content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: .04; mix-blend-mode: multiply;
+}
+@media (prefers-color-scheme: dark) { body::before { opacity: .05; mix-blend-mode: screen; } }
+// El contenido de la app queda por encima del grano.
+app-root { position: relative; z-index: 1; display: block; }
 
-a { color: var(--accent); text-decoration: none; }
+img, svg, canvas, table { max-width: 100%; }
+a { color: var(--accent-strong); text-decoration: none; }
+
+// ── Escala tipográfica (utilidades) ──
+.t-display { font-size: clamp(2rem, 5vw, 2.6rem); font-weight: 800; letter-spacing: -.02em; line-height: 1.05; }
+.t-h1 { font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; }
+.t-h2 { font-size: 1.25rem; font-weight: 700; letter-spacing: -.015em; }
+.t-h3 { font-size: 1.05rem; font-weight: 700; }
+.t-body { font-size: .95rem; font-weight: 450; }
+.t-caption { font-size: .8rem; color: var(--muted); }
+.t-eyebrow { font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-strong); }
+
+// Foco visible y accesible en todo lo interactivo.
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: none; box-shadow: var(--focus); border-radius: var(--r-sm);
+}
