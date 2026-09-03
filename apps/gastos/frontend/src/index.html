@@ -8,12 +8,26 @@
   <!-- PWA propia de esta app (scope = /gastos/) -->
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/svg+xml" href="logo.svg">
-  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f6f1">
-  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#10130e">
+  <!-- Un único theme-color que un script ajusta en vivo al tema (claro/oscuro).
+       En una PWA instalada Chrome usa el theme_color del manifest, que es
+       estático; actualizar este <meta> por JS hace que la barra de estado siga
+       el tema del dispositivo (blanco de día, oscuro de noche). -->
+  <meta name="theme-color" id="theme-color-meta" content="#f4f6f1">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="__PWA_PREFIX__Gastos">
   <link rel="apple-touch-icon" href="icon-192.png">
+  <script>
+    (function () {
+      var LIGHT = '#f4f6f1', DARK = '#10130e';
+      var meta = document.getElementById('theme-color-meta');
+      var mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+      function apply() { if (meta) meta.setAttribute('content', (mq && mq.matches) ? DARK : LIGHT); }
+      apply();
+      if (mq) { try { mq.addEventListener('change', apply); } catch (e) { if (mq.addListener) mq.addListener(apply); } }
+    })();
+  </script>
 </head>
 <body>
   <app-root></app-root>
