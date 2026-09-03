@@ -119,6 +119,8 @@ services:
       APP_NAME: electrolineras
       # Open Charge Map (cobertura nacional). Sin key se omite esa fuente.
       OPENCHARGEMAP_KEY: ${OPENCHARGEMAP_KEY:-}
+      # TomTom (POI de EV + conectores/potencia). Sin key se omite esa fuente.
+      TOMTOM_KEY: ${TOMTOM_KEY:-}
     depends_on:
       db:
         condition: service_healthy

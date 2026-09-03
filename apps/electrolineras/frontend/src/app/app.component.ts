@@ -726,21 +726,24 @@ export class AppComponent implements OnInit, AfterViewInit {
   anyLabel(s: string): string { const m: Record<string, string> = { active: 'activa', inactive: 'inactiva', free: 'libre', busy: 'ocupado', broken: 'dañado' }; return m[s] || s; }
   sourceLabel(s: string): string {
     return s === 'datos_gov_epm' ? 'datos.gov.co (EPM)' : s === 'openstreetmap' ? 'OpenStreetMap'
-      : s === 'openchargemap' ? 'Open Charge Map' : s === 'essa' ? 'ESSA (Santander)' : s;
+      : s === 'openchargemap' ? 'Open Charge Map' : s === 'essa' ? 'ESSA (Santander)'
+      : s === 'tomtom' ? 'TomTom' : s;
   }
   sourceDesc(s: string): string {
     return s === 'datos_gov_epm' ? 'Datos abiertos del gobierno · Antioquia'
       : s === 'openstreetmap' ? 'Comunidad OSM · cobertura nacional'
       : s === 'openchargemap' ? 'Comunidad · cobertura nacional'
-      : s === 'essa' ? 'Ecoestaciones ESSA · Santander' : 'Fuente de datos';
+      : s === 'essa' ? 'Ecoestaciones ESSA · Santander'
+      : s === 'tomtom' ? 'TomTom · POI de mapas · cobertura nacional' : 'Fuente de datos';
   }
   sourceShort(s: string): string {
     return s === 'datos_gov_epm' ? 'EPM' : s === 'openstreetmap' ? 'OSM'
-      : s === 'openchargemap' ? 'OCM' : s === 'essa' ? 'ESSA' : s;
+      : s === 'openchargemap' ? 'OCM' : s === 'essa' ? 'ESSA' : s === 'tomtom' ? 'TomTom' : s;
   }
   sourceColor(s: string): string {
     return s === 'essa' ? '#f59e0b' : s === 'datos_gov_epm' ? '#eab308'
-      : s === 'openstreetmap' ? '#7c3aed' : s === 'openchargemap' ? '#06b6d4' : '#94a3b8';
+      : s === 'openstreetmap' ? '#7c3aed' : s === 'openchargemap' ? '#06b6d4'
+      : s === 'tomtom' ? '#df1b12' : '#94a3b8';
   }
 
   // ── Conectores y velocidad (chips coloreados) ──

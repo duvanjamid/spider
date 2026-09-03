@@ -44,6 +44,7 @@ public class StationService {
         int n = syncDatosGov();
         if (Env.overpassEnabled()) n += syncOverpass();           // OSM · nacional · sin key
         if (Env.openChargeMapEnabled()) n += syncOpenChargeMap(); // OCM · nacional · con key
+        if (Env.tomtomEnabled()) n += syncTomTom();               // TomTom · metros · con key
         try { dedupe(); } catch (Exception e) { log.warn("Dedup falló (se continúa): {}", e.getMessage()); }
         return n;
     }
@@ -452,6 +453,128 @@ public class StationService {
             log.debug("POI OCM ignorado: {}", e.getMessage());
             return false;
         }
+    }
+
+    // ── TomTom (POI EV · con key) ───────────────────────────────────
+    //   Search 2.0 no da >100 por consulta ni cobertura nacional en una sola
+    //   llamada, así que se recorre un MOSAICO de áreas metropolitanas (radio
+    //   50 km, categoría 7309 = Electric Vehicle Station). Cubre donde de hecho
+    //   hay cargadores en Colombia sin agotar el free tier (2.500/día).
+    private static final double[][] TOMTOM_TILES = {
+            {4.6533, -74.0836},  // Bogotá
+            {6.2442, -75.5812},  // Medellín / Aburrá
+            {3.4516, -76.5320},  // Cali
+            {10.9685, -74.7813}, // Barranquilla
+            {10.3910, -75.4794}, // Cartagena
+            {7.1193, -73.1227},  // Bucaramanga (área metropolitana)
+            {7.8939, -72.4967},  // Cúcuta
+            {4.8133, -75.6961},  // Pereira / Eje Cafetero
+            {5.0703, -75.5138},  // Manizales
+            {4.4389, -75.2322},  // Ibagué
+            {4.1420, -73.6266},  // Villavicencio
+            {11.2408, -74.1990}, // Santa Marta
+            {1.2136, -77.2811},  // Pasto
+            {2.9273, -75.2819},  // Neiva
+            {4.5339, -75.6811},  // Armenia
+    };
+
+    public int syncTomTom() {
+        String key = Env.tomtomKey();
+        int total = 0;
+        for (double[] tile : TOMTOM_TILES) {
+            String url = "https://api.tomtom.com/search/2/nearbySearch/.json?key=" + URLEncoder.encode(key, StandardCharsets.UTF_8)
+                    + "&lat=" + tile[0] + "&lon=" + tile[1] + "&radius=50000&categorySet=7309&limit=100&countrySet=CO";
+            try {
+                HttpRequest req = HttpRequest.newBuilder(URI.create(url))
+                        .header("accept", "application/json").timeout(Duration.ofSeconds(30)).GET().build();
+                HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+                if (res.statusCode() / 100 != 2) {
+                    log.warn("TomTom {} → {}", res.statusCode(), res.body().substring(0, Math.min(160, res.body().length())));
+                    continue;
+                }
+                JsonNode root = Json.MAPPER.readTree(res.body());
+                for (JsonNode r : root.path("results")) total += upsertFromTomTom(r) ? 1 : 0;
+            } catch (Exception e) {
+                log.warn("TomTom falló en tile {},{}: {}", tile[0], tile[1], e.getMessage());
+            }
+        }
+        log.info("Sync TomTom: {} estaciones procesadas", total);
+        return total;
+    }
+
+    private boolean upsertFromTomTom(JsonNode r) {
+        JsonNode pos = r.path("position");
+        if (pos.path("lat").isMissingNode() || pos.path("lon").isMissingNode()) return false;
+        double lat = pos.path("lat").asDouble(), lon = pos.path("lon").asDouble();
+        if (lat == 0 && lon == 0) return false;
+        String extId = "tomtom-" + firstNonBlank(text(r, "id"), lat + "," + lon);
+        JsonNode poi = r.path("poi");
+        JsonNode addr = r.path("address");
+        String name = firstNonBlank(text(poi, "name"), "Estación de carga");
+        String operator = poi.path("brands").isArray() && poi.path("brands").size() > 0
+                ? text(poi.path("brands").get(0), "name") : null;
+        String city = firstNonBlank(text(addr, "municipality"), text(addr, "countrySubdivision"), "");
+        String address = text(addr, "freeformAddress");
+
+        StringBuilder conn = new StringBuilder();
+        double maxKw = 0;
+        List<String[]> connectors = new ArrayList<>(); // [type, kw|null]
+        for (JsonNode cn : r.path("chargingPark").path("connectors")) {
+            String type = tomtomConnector(text(cn, "connectorType"));
+            Double kw = cn.path("ratedPowerKW").isNumber() ? cn.path("ratedPowerKW").asDouble() : null;
+            if (kw != null) maxKw = Math.max(maxKw, kw);
+            connectors.add(new String[]{ type, kw == null ? null : String.valueOf(kw) });
+            if (conn.length() > 0) conn.append(", ");
+            conn.append(type);
+        }
+        String speed = maxKw >= 50 ? "Rápida" : maxKw >= 22 ? "Semi-rápida" : maxKw > 0 ? "Lenta" : null;
+
+        String sql = """
+                INSERT INTO station (source, external_id, name, operator, city, address, lat, lon,
+                                     connectors, speed, hours, website, source_active, raw, updated_at)
+                VALUES ('tomtom', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, TRUE, ?, now())
+                ON CONFLICT (source, external_id) DO UPDATE SET
+                    name = EXCLUDED.name, operator = EXCLUDED.operator, city = EXCLUDED.city,
+                    address = EXCLUDED.address, lat = EXCLUDED.lat, lon = EXCLUDED.lon,
+                    connectors = EXCLUDED.connectors, speed = EXCLUDED.speed,
+                    raw = EXCLUDED.raw, updated_at = now()
+                RETURNING id
+                """;
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, extId);
+            ps.setString(2, name);
+            ps.setString(3, operator);
+            ps.setString(4, city);
+            ps.setString(5, address);
+            ps.setDouble(6, lat);
+            ps.setDouble(7, lon);
+            ps.setString(8, conn.length() > 0 ? conn.toString() : null);
+            ps.setString(9, speed);
+            ps.setString(10, r.toString());
+            long stationId;
+            try (ResultSet rs = ps.executeQuery()) { rs.next(); stationId = rs.getLong(1); }
+            int idx = 0;
+            for (String[] s : connectors) {
+                idx++;
+                Double kw = s[1] == null ? null : Double.parseDouble(s[1]);
+                insertCharger(c, stationId, s[0] + " #" + idx, s[0], kw);
+            }
+            return true;
+        } catch (Exception e) { log.debug("POI TomTom ignorado: {}", e.getMessage()); return false; }
+    }
+
+    /** Mapea los tipos de conector de TomTom a nuestros estándares. */
+    private static String tomtomConnector(String t) {
+        if (t == null) return "Conector";
+        String u = t.toUpperCase();
+        if (u.contains("CCS") || u.contains("COMBO")) return "CCS2";
+        if (u.contains("CHADEMO")) return "CHAdeMO";
+        if (u.contains("TYPE2") || u.contains("TYPE 2")) return "Tipo 2";
+        if (u.contains("TYPE1") || u.contains("TYPE 1")) return "Tipo 1";
+        if (u.contains("GBT") || u.contains("GB/T")) return "GB/T";
+        if (u.contains("TESLA")) return "Tesla";
+        if (u.contains("HOUSEHOLD") || u.contains("SCHUKO")) return "Schuko";
+        return t;
     }
 
     private void insertCharger(Connection c, long stationId, String label, String connectorType, Double powerKw) throws Exception {

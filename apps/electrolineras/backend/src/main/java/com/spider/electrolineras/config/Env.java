@@ -44,4 +44,10 @@ public final class Env {
     public static boolean openChargeMapEnabled() { return !openChargeMapKey().isBlank(); }
     public static int openChargeMapMax() { return getInt("OPENCHARGEMAP_MAX", 5000); }
     public static String openChargeMapCountry() { return get("OPENCHARGEMAP_COUNTRY", "CO"); }
+
+    // ── TomTom (POI EV + conectores/potencia · free tier 2.500/día) ──
+    //   Requiere API key gratuita (developer.tomtom.com). Si falta, se omite.
+    //   Cobertura nacional por mosaico de áreas metropolitanas (radio 50 km).
+    public static String tomtomKey() { return get("TOMTOM_KEY", ""); }
+    public static boolean tomtomEnabled() { return !tomtomKey().isBlank(); }
 }
