@@ -593,7 +593,17 @@ public class StationService {
     //   Cada pin es un GRUPO de estaciones co-ubicadas: se unen conectores y
     //   fuentes, se toma la mejor velocidad y los campos visibles del canónico.
     public List<Map<String, Object>> list() {
-        String sql = """
+        return list(null, null, null, null, 0);
+    }
+
+    /**
+     * Listado consolidado, opcionalmente acotado a un bounding box (para carga
+     * por área visible del mapa) y con un límite de filas (tope de seguridad).
+     * Cualquiera de los límites en null desactiva el filtro/tope.
+     */
+    public List<Map<String, Object>> list(Double minLat, Double minLon, Double maxLat, Double maxLon, int limit) {
+        boolean bbox = minLat != null && minLon != null && maxLat != null && maxLon != null;
+        StringBuilder sql = new StringBuilder("""
                 SELECT s.id, COALESCE(s.canonical_id, s.id) AS cluster,
                        s.name, s.operator, s.city, s.address, s.lat, s.lon, s.connectors, s.speed, s.source,
                   (SELECT r.status FROM status_report r WHERE r.station_id = s.id AND r.charger_id IS NULL
@@ -602,14 +612,21 @@ public class StationService {
                   (SELECT count(*) FROM charger ch WHERE ch.station_id = s.id) AS chargers
                 FROM station s
                 WHERE s.lat IS NOT NULL AND s.lon IS NOT NULL
-                ORDER BY s.city, s.name
-                """;
+                """);
+        if (bbox) sql.append(" AND s.lat BETWEEN ? AND ? AND s.lon BETWEEN ? AND ?");
+        sql.append(" ORDER BY s.city, s.name");
+        if (limit > 0) sql.append(" LIMIT ").append(limit);
         Map<Long, Map<String, Object>> byCluster = new LinkedHashMap<>();
         Map<Long, Set<String>> connByCluster = new LinkedHashMap<>();
         Map<Long, Set<String>> srcByCluster = new LinkedHashMap<>();
         Map<Long, int[]> sumByCluster = new LinkedHashMap<>();   // [comments, chargers]
         Map<Long, String> speedByCluster = new LinkedHashMap<>();
-        try (Connection c = ds.getConnection(); Statement st = c.createStatement(); ResultSet rs = st.executeQuery(sql)) {
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql.toString())) {
+            if (bbox) {
+                ps.setDouble(1, minLat); ps.setDouble(2, maxLat);
+                ps.setDouble(3, minLon); ps.setDouble(4, maxLon);
+            }
+            ResultSet rs = ps.executeQuery();
             while (rs.next()) {
                 long cluster = rs.getLong("cluster");
                 boolean isCanon = rs.getLong("id") == cluster;

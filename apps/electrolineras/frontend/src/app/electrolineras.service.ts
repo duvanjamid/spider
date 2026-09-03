@@ -31,7 +31,14 @@ export class ElectrolinerasService {
   private base = environment.apiBase;
   private opts = { withCredentials: true };
 
-  stations(): Observable<Station[]> { return this.http.get<Station[]>(`${this.base}/stations`, this.opts); }
+  /** Lista estaciones; con bbox [minLat,minLon,maxLat,maxLon] solo las del área. */
+  stations(bbox?: [number, number, number, number], limit?: number): Observable<Station[]> {
+    const params: string[] = [];
+    if (bbox) params.push('bbox=' + bbox.join(','));
+    if (limit) params.push('limit=' + limit);
+    const qs = params.length ? '?' + params.join('&') : '';
+    return this.http.get<Station[]>(`${this.base}/stations${qs}`, this.opts);
+  }
   station(id: number): Observable<StationFull> { return this.http.get<StationFull>(`${this.base}/stations/${id}`, this.opts); }
   comments(id: number): Observable<Comment[]> { return this.http.get<Comment[]>(`${this.base}/stations/${id}/comments`, this.opts); }
   addComment(id: number, body: string): Observable<{ id: number }> {

@@ -118,6 +118,32 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
     .trow .dot, .scard .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
     .trow .grow { flex: 1; min-width: 0; } .trow .nm { font-weight: 600; } .trow .ds { color: var(--muted); font-size: .8rem; }
     .stopbadge { font-size: .68rem; font-weight: 800; color: #08130c; background: var(--accent); padding: 2px 8px; border-radius: 999px; }
+    .kpi.hi { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+    /* Selector de conectores del conductor (multi) */
+    .connpick { margin: 4px 0 10px; }
+    .connpick label { font-size: .82rem; font-weight: 700; }
+    .connpick .pick-hint { margin: 2px 0 8px; color: var(--muted); font-size: .78rem; }
+    .connpick .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+    .pchip { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; font-weight: 700; padding: 7px 12px; border-radius: 999px; cursor: pointer;
+             color: var(--muted); background: var(--panel-2); border: 1px solid var(--border); transition: all .15s ease; }
+    .pchip i { font-size: .72rem; opacity: .7; }
+    .pchip.on { color: var(--cc); background: color-mix(in srgb, var(--cc) 16%, transparent); border-color: color-mix(in srgb, var(--cc) 55%, transparent); }
+    .pchip.on i { opacity: 1; color: var(--cc); }
+    /* Reparto por velocidad de compatibles */
+    .spbreak { display: flex; gap: 8px; margin: 0 0 12px; }
+    .spb { flex: 1; text-align: center; font-size: .74rem; color: var(--muted); padding: 8px 4px; border-radius: 12px;
+           background: color-mix(in srgb, var(--sc) 12%, var(--panel)); border: 1px solid color-mix(in srgb, var(--sc) 30%, var(--border)); }
+    .spb b { display: block; font-size: 1.15rem; color: var(--sc); }
+    .triprow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: .82rem; color: var(--muted); cursor: pointer; }
+    .trow.incompat { opacity: .5; }
+    .okbadge { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; flex: none;
+               color: #fff; background: #22c55e; font-size: .7rem; }
+    /* Aviso sobre el mapa (acércate / cargando) */
+    .maphint { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); z-index: 20; white-space: nowrap;
+               display: flex; align-items: center; gap: 8px; font-size: .82rem; font-weight: 600; color: var(--fg);
+               background: var(--glass); backdrop-filter: blur(12px); border: 1px solid var(--border); border-radius: 999px; padding: 8px 14px; box-shadow: var(--shadow); }
+    .maphint i { color: var(--accent); }
 
     /* Info screen */
     .stat { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 16px; background: var(--panel); margin-bottom: 10px; }
@@ -183,9 +209,11 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
         <section class="scr" [hidden]="tab() !== 'map'">
           <div class="map-search">
             <i class="fa-solid fa-magnifying-glass"></i>
-            <input [(ngModel)]="query" (ngModelChange)="applyFilters()" placeholder="Buscar estación o ciudad…" />
+            <input [(ngModel)]="query" (ngModelChange)="onFiltersChange()" placeholder="Filtrar lo visible…" />
             <button [class.on]="!!userPos()" (click)="locate()" title="Mi ubicación"><i class="fa-solid fa-location-crosshairs"></i></button>
           </div>
+          <div class="maphint" *ngIf="mapZoomLow()"><i class="fa-solid fa-magnifying-glass-plus"></i> Acércate para ver las estaciones del área</div>
+          <div class="maphint load" *ngIf="!mapZoomLow() && mapLoading()"><i class="fa-solid fa-spinner fa-spin"></i> Cargando estaciones…</div>
           <div #mapEl class="map"></div>
         </section>
 
@@ -240,6 +268,19 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
             <div class="field"><i class="fa-solid fa-location-dot" style="color:#3b82f6"></i><input [(ngModel)]="tripOrigin" placeholder="Origen (o «mi ubicación»)" /></div>
             <div class="field"><i class="fa-solid fa-flag-checkered" style="color:var(--accent)"></i><input [(ngModel)]="tripDest" placeholder="Destino: ciudad o dirección" (keyup.enter)="plan()" /></div>
             <div class="field"><i class="fa-solid fa-battery-three-quarters muted"></i><input type="number" [(ngModel)]="tripAutonomy" placeholder="Autonomía (km) — opcional" /></div>
+
+            <div class="connpick">
+              <label>¿Qué conectores puedes usar?</label>
+              <p class="pick-hint">Marca todos los que tengas, incluidos los de adaptador.</p>
+              <div class="chips">
+                <button type="button" class="pchip" *ngFor="let ct of CONNECTOR_TYPES"
+                        [class.on]="tripConnectors().includes(ct)"
+                        [style.--cc]="connColor(ct)" (click)="toggleConnector(ct)">
+                  <i class="fa-solid fa-plug"></i> {{ ct }}
+                </button>
+              </div>
+            </div>
+
             <div style="display:flex;gap:8px">
               <p-button label="Planear ruta" icon="fa-solid fa-route" (onClick)="plan()" [loading]="planning()" [disabled]="!tripDest.trim()" styleClass="grow-btn" />
               <p-button *ngIf="tripInfo()" label="Limpiar" [outlined]="true" (onClick)="clearTrip()" />
@@ -250,21 +291,50 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
               <div class="kpis">
                 <div class="kpi"><div class="v">{{ t.distanceKm }}</div><div class="l">km</div></div>
                 <div class="kpi"><div class="v">{{ fmtDur(t.durationMin) }}</div><div class="l">duración</div></div>
-                <div class="kpi"><div class="v">{{ tripStations().length }}</div><div class="l">en ruta</div></div>
+                <div class="kpi" [class.hi]="tripConnectors().length">
+                  <div class="v">{{ tripConnectors().length ? tripCompatible().length : tripStations().length }}</div>
+                  <div class="l">{{ tripConnectors().length ? 'compatibles' : 'en ruta' }}</div>
+                </div>
               </div>
+
+              <!-- Reparto por velocidad de las estaciones compatibles -->
+              <div class="spbreak" *ngIf="tripConnectors().length && tripCompatible().length">
+                <span class="spb" [style.--sc]="speedColor('Rápida')"><b>{{ tripBySpeed().fast }}</b> rápida</span>
+                <span class="spb" [style.--sc]="speedColor('Semi-rápida')"><b>{{ tripBySpeed().semi }}</b> semi</span>
+                <span class="spb" [style.--sc]="speedColor('Lenta')"><b>{{ tripBySpeed().slow }}</b> lenta</span>
+              </div>
+              <p class="muted" *ngIf="tripConnectors().length && !tripCompatible().length" style="margin:2px 0 10px">
+                <i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b"></i>
+                Ninguna estación de la ruta tiene tus conectores. Considera un adaptador o revisa otra ruta.
+              </p>
+
               <div class="prow" *ngIf="tripAutonomy" style="margin-bottom:14px">
                 <span class="lbl">Autonomía</span>
                 <div class="pbar" style="flex:1"><i [style.width.%]="autonomyPct(t.distanceKm)" [style.background]="autonomyPct(t.distanceKm) >= 100 ? '#ef4444' : 'var(--accent)'"></i></div>
                 <span class="muted" style="font-size:.8rem;white-space:nowrap">{{ tripStopsCount() }} parada(s)</span>
               </div>
-              <p-button label="Ver ruta en el mapa" icon="fa-solid fa-map-location-dot" [text]="true" (onClick)="setTab('map')" />
-              <h3 class="sec" style="margin-top:12px">Estaciones en la ruta</h3>
-              <div class="trow" *ngFor="let s of tripStations()" (click)="openDetail(s)" [class.stop]="isStop(s)">
-                <span class="dot" [style.background]="statusColor(s.communityStatus)"></span>
-                <div class="grow"><div class="nm">{{ s.name }}</div><div class="ds">{{ s.city }} · km {{ routeKm(s) }}</div></div>
+
+              <div class="triprow">
+                <p-button label="Ver ruta en el mapa" icon="fa-solid fa-map-location-dot" [text]="true" (onClick)="setTab('map')" />
+                <label class="toggle" *ngIf="tripConnectors().length">
+                  <input type="checkbox" [ngModel]="onlyCompatible()" (ngModelChange)="onlyCompatible.set($event)" /> Solo compatibles
+                </label>
+              </div>
+
+              <h3 class="sec" style="margin-top:8px">Estaciones en la ruta</h3>
+              <div class="trow" *ngFor="let s of tripListShown()" (click)="openDetail(s)"
+                   [class.stop]="isStop(s)" [class.incompat]="tripConnectors().length && !isCompatible(s)">
+                <span class="dot" [style.background]="speedColor(s.speed)"></span>
+                <div class="grow">
+                  <div class="nm">{{ s.name }}</div>
+                  <div class="ds">{{ s.city }} · km {{ routeKm(s) }}<span *ngIf="s.speed"> · {{ s.speed }}</span></div>
+                </div>
+                <span class="okbadge" *ngIf="tripConnectors().length && isCompatible(s)" title="Compatible"><i class="fa-solid fa-check"></i></span>
                 <span class="stopbadge" *ngIf="isStop(s)"><i class="fa-solid fa-bolt"></i> parada</span>
               </div>
-              <p class="muted" *ngIf="!tripStations().length" style="padding:8px 0">No hay estaciones cerca de esta ruta con los datos actuales. Con cobertura nacional (Open Charge Map) habrá muchas más.</p>
+              <p class="muted" *ngIf="!tripListShown().length" style="padding:8px 0">
+                {{ tripConnectors().length && tripStations().length ? 'Ninguna estación compatible en la ruta.' : 'No hay estaciones cerca de esta ruta con los datos actuales.' }}
+              </p>
             </div>
           </div>
         </section>
@@ -312,15 +382,15 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
           <button class="icon-btn" (click)="drawer.set(false)"><i class="fa-solid fa-xmark"></i></button></div>
         <div class="db">
           <div><label>Ciudad</label>
-            <select class="sel" [(ngModel)]="cityFilter" (ngModelChange)="applyFilters()">
+            <select class="sel" [(ngModel)]="cityFilter" (ngModelChange)="onFiltersChange()">
               <option value="">Todas</option><option *ngFor="let c of cities()" [value]="c">{{ c }}</option>
             </select></div>
           <div><label>Tipo de conector</label>
-            <select class="sel" [(ngModel)]="connectorFilter" (ngModelChange)="applyFilters()">
+            <select class="sel" [(ngModel)]="connectorFilter" (ngModelChange)="onFiltersChange()">
               <option value="">Todos</option><option value="CCS2">CCS2</option><option value="CHAdeMO">CHAdeMO</option><option value="Tipo 2">Tipo 2</option><option value="GB/T">GB/T</option>
             </select></div>
           <div><label>Velocidad</label>
-            <select class="sel" [(ngModel)]="speedFilter" (ngModelChange)="applyFilters()">
+            <select class="sel" [(ngModel)]="speedFilter" (ngModelChange)="onFiltersChange()">
               <option value="">Todas</option><option *ngFor="let s of speeds()" [value]="s">{{ s }}</option>
             </select></div>
           <p-button label="Limpiar filtros" [outlined]="true" icon="fa-solid fa-eraser" (onClick)="clearFilters()" />
@@ -425,13 +495,17 @@ export class AppComponent implements OnInit, AfterViewInit {
   readonly isTest = signal(false);
   readonly tab = signal<Tab>('near');
   readonly drawer = signal(false);
-  readonly stations = signal<Station[]>([]);
+  readonly stations = signal<Station[]>([]);      // cercanas al usuario (lista "Inicio")
+  readonly mapStations = signal<Station[]>([]);    // cargadas según el área visible del mapa
+  readonly mapZoomLow = signal(false);             // true → alejado: pedir acercarse
+  readonly mapLoading = signal(false);
   readonly filtered = signal<Station[]>([]);
   readonly loaded = signal(false);
   readonly meta = signal<any>(null);
   query = ''; cityFilter = ''; connectorFilter = ''; speedFilter = '';
-  readonly cities = computed(() => [...new Set(this.stations().map((s) => s.city).filter(Boolean))].sort());
-  readonly speeds = computed(() => [...new Set(this.stations().map((s) => s.speed).filter(Boolean))].sort());
+  private allLoaded(): Station[] { return [...this.mapStations(), ...this.stations()]; }
+  readonly cities = computed(() => [...new Set(this.allLoaded().map((s) => s.city).filter(Boolean))].sort());
+  readonly speeds = computed(() => [...new Set(this.allLoaded().map((s) => s.speed).filter(Boolean))].sort());
   readonly activeCount = computed(() => this.stations().filter((s) => s.communityStatus === 'active').length);
 
   readonly detail = signal<StationFull | null>(null);
@@ -455,6 +529,41 @@ export class AppComponent implements OnInit, AfterViewInit {
   readonly tripStops = signal<Set<number>>(new Set());
   private routePos = new Map<number, number>();
 
+  // Conectores que puede usar el conductor (varios, por adaptadores). Persistido.
+  readonly CONNECTOR_TYPES = ['CCS2', 'CHAdeMO', 'Tipo 2', 'Tipo 1', 'GB/T', 'Tesla'];
+  readonly tripConnectors = signal<string[]>(this.loadConnectors());
+  readonly onlyCompatible = signal(false);
+  private loadConnectors(): string[] {
+    try { const v = localStorage.getItem('elec.myConnectors'); return v ? JSON.parse(v) : []; } catch { return []; }
+  }
+  toggleConnector(t: string): void {
+    const cur = this.tripConnectors();
+    const next = cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t];
+    this.tripConnectors.set(next);
+    try { localStorage.setItem('elec.myConnectors', JSON.stringify(next)); } catch { }
+  }
+  /** ¿La estación tiene ALGUNO de los conectores elegidos? (sin elegir → todas). */
+  isCompatible(s: Station): boolean {
+    const sel = this.tripConnectors();
+    if (!sel.length) return true;
+    return sel.some((t) => this.matchConnector(s.connectors, t));
+  }
+  /** Estaciones de la ruta compatibles con los conectores elegidos. */
+  readonly tripCompatible = computed(() => this.tripStations().filter((s) => this.isCompatible(s)));
+  /** Reparto por velocidad de las compatibles: [rápida, semi, lenta]. */
+  readonly tripBySpeed = computed(() => {
+    const c = { fast: 0, semi: 0, slow: 0 };
+    for (const s of this.tripCompatible()) {
+      if (s.speed === 'Rápida') c.fast++;
+      else if (s.speed === 'Semi-rápida') c.semi++;
+      else c.slow++;
+    }
+    return c;
+  });
+  /** Lista mostrada en la ruta: todas o solo compatibles según el interruptor. */
+  readonly tripListShown = computed(() =>
+    this.onlyCompatible() ? this.tripCompatible() : this.tripStations());
+
   private map?: L.Map;
   private markers = L.layerGroup();
   private routeLayer = L.layerGroup();
@@ -463,10 +572,8 @@ export class AppComponent implements OnInit, AfterViewInit {
   ngOnInit(): void {
     this.api.health().subscribe({ next: (h) => this.isTest.set(h.env === 'test'), error: () => {} });
     this.api.meta().subscribe({ next: (m) => this.meta.set(m), error: () => {} });
-    this.api.stations().subscribe({
-      next: (s) => { this.stations.set(s); this.applyFilters(); this.loaded.set(true); this.renderMarkers(); },
-      error: () => this.loaded.set(true),
-    });
+    // Ya NO se cargan todas las estaciones al inicio: el mapa pide por área
+    // visible y la lista "Inicio" pide alrededor del usuario al ubicarse.
   }
 
   private tiles?: any; // capa base MapLibre GL (vectorial)
@@ -515,6 +622,10 @@ export class AppComponent implements OnInit, AfterViewInit {
     if (m.isStyleLoaded?.()) applyRoads(); else m.on('load', applyRoads);
   }
 
+  // Umbral de zoom para pedir estaciones (más bajo = área más grande).
+  private static readonly MIN_ZOOM = 9;
+  private moveTimer: any;
+
   ngAfterViewInit(): void {
     this.map = L.map(this.mapEl.nativeElement, { zoomControl: false, attributionControl: true }).setView([4.65, -74.1], 6);
     L.control.zoom({ position: 'bottomright' }).addTo(this.map);
@@ -522,15 +633,43 @@ export class AppComponent implements OnInit, AfterViewInit {
     window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', () => this.addThemedBase());
     this.markers.addTo(this.map);
     this.routeLayer.addTo(this.map);
-    this.renderMarkers();
+    // Carga por ÁREA VISIBLE: al mover/zoom se piden las estaciones del recuadro.
+    this.map.on('moveend', () => { clearTimeout(this.moveTimer); this.moveTimer = setTimeout(() => this.zone.run(() => this.loadViewport()), 350); });
+    this.updateZoomHint();
     this.locate();
+  }
+
+  /** Pide al backend solo las estaciones del recuadro visible (si hay zoom). */
+  private loadViewport(): void {
+    if (!this.map) return;
+    if (this.map.getZoom() < AppComponent.MIN_ZOOM) {
+      this.mapZoomLow.set(true); this.mapStations.set([]); this.renderMarkers(); return;
+    }
+    this.mapZoomLow.set(false); this.mapLoading.set(true);
+    const b = this.map.getBounds();
+    const bbox: [number, number, number, number] = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()];
+    this.api.stations(bbox, 2000).subscribe({
+      next: (s) => { this.mapStations.set(s); this.mapLoading.set(false); this.renderMarkers(); },
+      error: () => this.mapLoading.set(false),
+    });
+  }
+  private updateZoomHint(): void { if (this.map) this.mapZoomLow.set(this.map.getZoom() < AppComponent.MIN_ZOOM); }
+
+  /** Carga las estaciones alrededor del usuario para la lista "Inicio". */
+  private loadNear(pos: [number, number]): void {
+    const d = 0.45; // ~50 km
+    const bbox: [number, number, number, number] = [pos[0] - d, pos[1] - d, pos[0] + d, pos[1] + d];
+    this.api.stations(bbox, 1500).subscribe({
+      next: (s) => { this.stations.set(s); this.loaded.set(true); this.applyFilters(); },
+      error: () => this.loaded.set(true),
+    });
   }
 
   setTab(t: Tab): void {
     this.tab.set(t);
-    if (t === 'map') setTimeout(() => { this.map?.invalidateSize(); this.fitVisible(); }, 80);
+    if (t === 'map') setTimeout(() => { this.map?.invalidateSize(); this.updateZoomHint(); this.loadViewport(); }, 80);
   }
-  clearFilters(): void { this.cityFilter = ''; this.connectorFilter = ''; this.speedFilter = ''; this.query = ''; this.applyFilters(); this.drawer.set(false); }
+  clearFilters(): void { this.cityFilter = ''; this.connectorFilter = ''; this.speedFilter = ''; this.query = ''; this.onFiltersChange(); this.drawer.set(false); }
   tint(s: string | null): string { const c = this.statusColor(s); return `linear-gradient(135deg, ${c}26, ${c}0d)`; }
 
   // ── Ubicación ──
@@ -545,9 +684,10 @@ export class AppComponent implements OnInit, AfterViewInit {
         if (this.map) {
           const icon = L.divIcon({ className: '', html: '<div class="me"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
           if (this.userMarker) this.userMarker.setLatLng(p); else this.userMarker = L.marker(p, { icon, zIndexOffset: 1000 }).addTo(this.map);
+          // Centrar en el usuario dispara 'moveend' → carga las estaciones del área.
+          this.map.setView(p, 13);
         }
-        this.applyFilters();   // re-ordena por cercanía y re-encuadra (fitVisible)
-        this.fitVisible();
+        this.loadNear(p);      // lista "Inicio": estaciones cercanas
       }),
       () => this.zone.run(() => this.locating.set(false)),
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
@@ -572,27 +712,33 @@ export class AppComponent implements OnInit, AfterViewInit {
     if (type === 'CCS2') return u.includes('CCS') || u.includes('COMBO');
     if (type === 'CHAdeMO') return u.includes('CHADEMO');
     if (type === 'Tipo 2') return u.includes('MENNEKES') || u.includes('TIPO 2') || u.includes('TYPE 2') || u.includes('EUROPEO');
+    if (type === 'Tipo 1') return u.includes('TIPO 1') || u.includes('TYPE 1') || u.includes('J1772');
     if (type === 'GB/T') return u.includes('GBT') || u.includes('GB/T') || u.includes('GB T');
+    if (type === 'Tesla') return u.includes('TESLA');
     return true;
   }
+  /** Predicado común de los filtros del cajón + búsqueda de texto. */
+  private matchFilters(s: Station): boolean {
+    const q = this.query.trim().toLowerCase();
+    if (this.cityFilter && s.city !== this.cityFilter) return false;
+    if (this.speedFilter && s.speed !== this.speedFilter) return false;
+    if (this.connectorFilter && !this.matchConnector(s.connectors, this.connectorFilter)) return false;
+    if (!q) return true;
+    return (s.name + ' ' + s.operator + ' ' + s.city + ' ' + s.address + ' ' + s.connectors).toLowerCase().includes(q);
+  }
+  // Filtros que afectan a AMBAS vistas (lista "Inicio" + marcadores del mapa).
+  onFiltersChange(): void { this.applyFilters(); this.renderMarkers(); }
   applyFilters(): void {
-    const q = this.query.trim().toLowerCase(), city = this.cityFilter, conn = this.connectorFilter, speed = this.speedFilter, u = this.userPos();
-    const list = this.stations().filter((s) => {
-      if (city && s.city !== city) return false;
-      if (speed && s.speed !== speed) return false;
-      if (conn && !this.matchConnector(s.connectors, conn)) return false;
-      if (!q) return true;
-      return (s.name + ' ' + s.operator + ' ' + s.city + ' ' + s.address + ' ' + s.connectors).toLowerCase().includes(q);
-    });
+    const u = this.userPos();
+    const list = this.stations().filter((s) => this.matchFilters(s));
     if (u) list.sort((a, b) => this.distanceKm(u, [a.lat, a.lon]) - this.distanceKm(u, [b.lat, b.lon]));
     this.filtered.set(list);
-    this.renderMarkers();
   }
   private renderMarkers(): void {
     if (!this.map) return;
     this.markers.clearLayers();
-    for (const s of this.filtered()) {
-      if (s.lat == null || s.lon == null) continue;
+    for (const s of this.mapStations()) {
+      if (s.lat == null || s.lon == null || !this.matchFilters(s)) continue;
       // El pin se colorea por VELOCIDAD de carga (mapa informativo de un vistazo);
       // el ESTADO reportado se codifica como anillo: verde vivo=activa, rojo=inactiva.
       const color = this.speedColor(s.speed);
@@ -602,22 +748,6 @@ export class AppComponent implements OnInit, AfterViewInit {
       // diálogo no reacciona (no dispara detección de cambios).
       L.marker([s.lat, s.lon], { icon }).addTo(this.markers).on('click', () => this.zone.run(() => this.openDetail(s)));
     }
-    this.fitVisible();
-  }
-  private fitVisible(): void {
-    if (!this.map || this.tripInfo()) return; // no re-encuadrar si hay una ruta activa
-    const u = this.userPos();
-    const all = this.filtered().filter((s) => s.lat != null && s.lon != null);
-    if (u) {
-      // Usuario ubicado: enfoca SU zona, no todo el país. Estaciones dentro de
-      // ~40 km; si hay pocas, al menos las 3 más cercanas. fitBounds ajusta el
-      // zoom (más cerca si están densas, ~20 km; sin pasar de zoom 14).
-      const near = all.filter((s) => this.distanceKm(u, [s.lat, s.lon]) <= 40).map((s) => [s.lat, s.lon] as [number, number]);
-      const list = near.length >= 3 ? near : all.slice(0, 3).map((s) => [s.lat, s.lon] as [number, number]);
-      const pts: [number, number][] = [u, ...list];
-      try { this.map.fitBounds(L.latLngBounds(pts).pad(0.25), { maxZoom: 14 }); } catch { }
-    }
-    // Sin ubicación: no encuadramos todo Colombia; se muestra el prompt "Ubicarme".
   }
 
   // ── Detalle ──
@@ -634,7 +764,9 @@ export class AppComponent implements OnInit, AfterViewInit {
     const d = this.detail(); if (!d) return;
     this.api.station(d.id).subscribe({ next: (x) => this.detail.set(x), error: () => {} });
     this.api.reports(d.id).subscribe({ next: (r) => this.reports.set(r), error: () => {} });
-    this.api.stations().subscribe({ next: (s) => { this.stations.set(s); this.applyFilters(); }, error: () => {} });
+    // Refresca solo lo cargado (área visible + cercanas), no todo el catálogo.
+    this.loadViewport();
+    const u = this.userPos(); if (u) this.loadNear(u);
   }
   reportStation(status: string): void { const d = this.detail(); if (d) this.api.report(d.id, null, status).subscribe({ next: () => this.refreshDetail(), error: () => {} }); }
   reportCharger(c: Charger, status: string): void { const d = this.detail(); if (d) this.api.report(d.id, c.id, status).subscribe({ next: () => this.refreshDetail(), error: () => {} }); }
@@ -692,15 +824,24 @@ export class AppComponent implements OnInit, AfterViewInit {
     L.marker(origin, { icon: mk('o') }).addTo(this.routeLayer);
     L.marker(dest, { icon: mk('d') }).addTo(this.routeLayer);
     if (this.map) { this.map.invalidateSize(); this.map.fitBounds(L.latLngBounds(r.coordinates as L.LatLngExpression[]).pad(0.15)); }
-    this.computeAlongRoute(r.coordinates);
+    // Carga las estaciones del CORREDOR de la ruta (su bounding box) para no
+    // depender de lo que haya en el viewport ni del catálogo completo.
+    let minLat = 90, minLon = 180, maxLat = -90, maxLon = -180;
+    for (const c of r.coordinates) { minLat = Math.min(minLat, c[0]); maxLat = Math.max(maxLat, c[0]); minLon = Math.min(minLon, c[1]); maxLon = Math.max(maxLon, c[1]); }
+    const pad = 0.1;
+    const bbox: [number, number, number, number] = [minLat - pad, minLon - pad, maxLat + pad, maxLon + pad];
+    this.api.stations(bbox, 4000).subscribe({
+      next: (list) => this.computeAlongRoute(r.coordinates, list),
+      error: () => this.computeAlongRoute(r.coordinates, this.stations()),
+    });
   }
-  private computeAlongRoute(coords: [number, number][]): void {
+  private computeAlongRoute(coords: [number, number][], pool: Station[]): void {
     const cum: number[] = [0];
     for (let i = 1; i < coords.length; i++) cum[i] = cum[i - 1] + this.distanceKm(coords[i - 1], coords[i]);
     const THRESH = 8, step = Math.max(1, Math.floor(coords.length / 400));
     const near: { s: Station; pos: number }[] = [];
     this.routePos.clear();
-    for (const s of this.stations()) {
+    for (const s of pool) {
       if (s.lat == null || s.lon == null) continue;
       let best = Infinity, bestIdx = 0;
       for (let i = 0; i < coords.length; i += step) { const d = this.distanceKm([s.lat, s.lon], coords[i]); if (d < best) { best = d; bestIdx = i; } }

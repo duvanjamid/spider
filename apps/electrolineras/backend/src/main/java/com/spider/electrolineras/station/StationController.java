@@ -36,7 +36,13 @@ public final class StationController {
     }
 
     public void register(Ligero app) {
-        app.get("/stations", ctx -> ctx.json(stations.list()));
+        // bbox=minLat,minLon,maxLat,maxLon  → solo estaciones del área visible
+        // (carga bajo demanda del mapa). Sin bbox devuelve el catálogo completo.
+        app.get("/stations", ctx -> {
+            Double[] b = parseBbox(ctx.queryParam("bbox"));
+            int limit = parseInt(ctx.queryParam("limit"), b[0] != null ? 2000 : 0);
+            ctx.json(stations.list(b[0], b[1], b[2], b[3], limit));
+        });
 
         app.get("/stations/{id}", ctx -> {
             var d = stations.detail(Long.parseLong(ctx.pathParam("id")));
@@ -86,4 +92,19 @@ public final class StationController {
     }
 
     private String email(String cookieHeader) { return identity.emailOrGuest(cookieHeader); }
+
+    /** "minLat,minLon,maxLat,maxLon" → [minLat,minLon,maxLat,maxLon] o nulls. */
+    private static Double[] parseBbox(String s) {
+        Double[] out = { null, null, null, null };
+        if (s == null || s.isBlank()) return out;
+        String[] p = s.split(",");
+        if (p.length != 4) return out;
+        try { for (int i = 0; i < 4; i++) out[i] = Double.parseDouble(p[i].trim()); }
+        catch (NumberFormatException e) { return new Double[]{ null, null, null, null }; }
+        return out;
+    }
+    private static int parseInt(String s, int def) {
+        if (s == null || s.isBlank()) return def;
+        try { return Integer.parseInt(s.trim()); } catch (NumberFormatException e) { return def; }
+    }
 }
