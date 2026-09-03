@@ -53,7 +53,12 @@ export interface Scan {
 }
 export interface ExpenseItem { name: string; quantity: number | null; unitPrice: number | null; lineTotal: number | null; }
 export interface PriceStore { store: string; minPrice: number; avgPrice: number; lastPrice: number; lastOn: string; count: number; shared?: boolean; }
-export interface PriceProduct { name: string; categorySlug: string; categoryName: string; stores: PriceStore[]; minPrice: number; maxPrice: number; storeCount: number; cheapestStore: string; shared?: boolean; }
+export interface PricePoint { on: string; store: string; price: number; }
+export interface PriceProduct {
+  name: string; categorySlug: string; categoryName: string; stores: PriceStore[];
+  minPrice: number; maxPrice: number; storeCount: number; cheapestStore: string; shared?: boolean;
+  points: PricePoint[]; lastPrice: number; lastOn: string; pointCount: number; trendPct: number;
+}
 export interface Me { email: string; guest: boolean; onboarded: boolean; name?: string; picture?: string; }
 export interface Notif {
   id: number; kind: string; title: string; body: string;

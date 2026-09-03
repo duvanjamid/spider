@@ -8,12 +8,12 @@ import { ChartModule } from 'primeng/chart';
 import { TagModule } from 'primeng/tag';
 import {
   Budget, CategoryShare, Category, CategoryTemplate, Connections, Expense, ExpenseItem, GastosService, Me, Monto, PriceProduct, SharedInCategory,
-  Notif, Recurring, Region, Scan, ScanItem, Summary, Trend, Income, AntReport, BurnPoint, PushStatus,
+  Notif, Recurring, Region, Scan, ScanItem, Summary, Trend, Income, AntReport, BurnPoint, PushStatus, PricePoint,
 } from './gastos.service';
 
 type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
 // Vistas de página completa (nada de modales). '' = pestaña principal.
-type View = '' | 'income' | 'categories' | 'category-edit' | 'recurring' | 'compare' | 'home' | 'register' | 'detail';
+type View = '' | 'income' | 'categories' | 'category-edit' | 'recurring' | 'compare' | 'home' | 'register' | 'detail' | 'price-detail';
 
 // Fechas en la ZONA LOCAL del navegador (no UTC).
 function localYM(d: Date = new Date()): string {
@@ -322,17 +322,45 @@ function localYMD(d: Date = new Date()): string {
     .chips-sel .chip { border: 1px solid var(--border); }
     .shared-tag { color: var(--accent-strong); font-weight: 600; }
 
-    /* Precios */
-    .plist { display: flex; flex-direction: column; gap: 12px; }
-    .pcard { border: 1px solid var(--border); border-radius: 14px; background: var(--panel); padding: 12px 14px; box-shadow: var(--shadow); }
-    .pcard-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
-    .pcard-h b { font-size: 1.02rem; text-transform: capitalize; }
-    .pcard-h .muted { font-size: .76rem; white-space: nowrap; }
-    .pstore { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); }
+    /* Precios: tarjetas con precio actual, tendencia y mini-evolución */
+    .plist { display: flex; flex-direction: column; gap: 10px; }
+    .pcard { border: 1px solid var(--border); border-radius: 15px; background: var(--panel); padding: 13px 15px;
+             box-shadow: var(--shadow); cursor: pointer; transition: border-color .12s, transform .06s; }
+    .pcard:hover { border-color: var(--accent); }
+    .pcard:active { transform: scale(.995); }
+    .pcard-h { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .pcard-h b { font-size: 1.02rem; text-transform: capitalize; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .trend { display: inline-flex; align-items: center; gap: 4px; font-size: .74rem; font-weight: 800; padding: 3px 9px;
+             border-radius: 999px; white-space: nowrap; }
+    .trend.down { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent-strong); }
+    .trend.up { background: color-mix(in srgb, #e0574f 16%, transparent); color: #e0574f; }
+    .trend.flat { background: var(--panel-2); color: var(--muted); }
+    .pcard-body { display: flex; align-items: flex-end; gap: 12px; }
+    .pcard-price { display: flex; flex-direction: column; }
+    .pcard-price .pp { font-size: 1.35rem; font-weight: 800; letter-spacing: -.5px; }
+    .pcard-price small { color: var(--muted); font-size: .74rem; }
+    .spark { flex: 1; height: 40px; min-width: 60px; }
+    .spark polyline { fill: none; stroke-width: 2.2; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
+    .spark .area { fill: var(--accent-weak); stroke: none; }
+    .pcard-foot { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--border); font-size: .8rem; color: var(--muted);
+                  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .pcard-foot .best { color: var(--accent-strong); font-weight: 700; }
+    .go-chev { color: var(--muted); font-size: .78rem; margin-left: auto; }
+
+    /* Detalle de producto (evolución) */
+    .pd-hero { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 4px; }
+    .pd-hero .pp { font-size: 2rem; font-weight: 800; letter-spacing: -1px; }
+    .pd-sub { color: var(--muted); font-size: .84rem; margin-bottom: 14px; }
+    .pstore { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); }
     .pstore-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .pstore-p { font-weight: 700; white-space: nowrap; }
+    .pstore-p { font-weight: 700; white-space: nowrap; text-align: right; }
+    .pstore-p small { display: block; color: var(--muted); font-weight: 500; font-size: .72rem; }
     .pstore.best .pstore-n, .pstore.best .pstore-p { color: var(--accent-strong); }
     .pstore.best .pstore-p i { margin-left: 5px; font-size: .72rem; }
+    .pd-stat { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0; }
+    .pd-stat .st { background: var(--panel-2); border-radius: 12px; padding: 10px 12px; text-align: center; }
+    .pd-stat .st small { display: block; color: var(--muted); font-size: .72rem; }
+    .pd-stat .st b { font-size: 1rem; }
 
     /* Lista de productos */
     .items { border-top: 1px solid var(--border); margin-top: 6px; }
@@ -651,14 +679,62 @@ function localYMD(d: Date = new Date()): string {
         </p>
         <p class="muted" *ngIf="prices().length && filteredPrices().length === 0" style="text-align:center;padding:24px">Sin productos que coincidan con el filtro.</p>
         <div class="plist">
-          <div class="pcard" *ngFor="let p of filteredPrices()">
+          <div class="pcard" *ngFor="let p of filteredPrices()" (click)="openPriceDetail(p)">
             <div class="pcard-h">
-              <b>{{ p.name }} <i *ngIf="p.shared" class="fa-solid fa-users shared-tag" title="incluye precios del hogar"></i></b>
-              <span class="muted" *ngIf="p.storeCount > 1">{{ p.storeCount }} tiendas · ahorro {{ fmt(p.maxPrice - p.minPrice) }}</span>
+              <b>{{ p.name }}</b>
+              <span class="trend" [class.down]="p.trendPct < 0" [class.up]="p.trendPct > 0" [class.flat]="p.trendPct === 0" *ngIf="p.pointCount > 1">
+                <i class="fa-solid" [class.fa-arrow-trend-down]="p.trendPct < 0" [class.fa-arrow-trend-up]="p.trendPct > 0" [class.fa-minus]="p.trendPct === 0"></i>
+                {{ p.trendPct > 0 ? '+' : '' }}{{ p.trendPct }}%
+              </span>
             </div>
+            <div class="pcard-body">
+              <div class="pcard-price"><span class="pp">{{ fmt(p.lastPrice) }}</span><small>último precio</small></div>
+              <svg class="spark" *ngIf="p.pointCount > 1" viewBox="0 0 120 40" preserveAspectRatio="none" aria-hidden="true">
+                <polyline class="area" [attr.points]="sparkArea(p)"></polyline>
+                <polyline [attr.points]="sparkLine(p)" [attr.stroke]="p.trendPct > 0 ? '#e0574f' : chartAccent()"></polyline>
+              </svg>
+            </div>
+            <div class="pcard-foot">
+              <span *ngIf="p.storeCount > 1"><i class="fa-solid fa-store" style="margin-right:4px"></i>más barato en <span class="best">{{ p.cheapestStore }}</span> · ahorras {{ fmt(p.maxPrice - p.minPrice) }}</span>
+              <span *ngIf="p.storeCount <= 1"><i class="fa-solid fa-clock-rotate-left" style="margin-right:4px"></i>{{ p.pointCount }} registro(s) · {{ p.storeCount }} tienda</span>
+              <i *ngIf="p.shared" class="fa-solid fa-users shared-tag" title="incluye precios del hogar"></i>
+              <i class="fa-solid fa-chevron-right go-chev"></i>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══ Vista: Evolución de precio de un producto ═══ -->
+      <section class="page" *ngIf="view() === 'price-detail'">
+        <div *ngIf="priceDetail() as p">
+          <div class="pd-hero">
+            <span class="pp">{{ fmt(p.lastPrice) }}</span>
+            <span class="trend" [class.down]="p.trendPct < 0" [class.up]="p.trendPct > 0" [class.flat]="p.trendPct === 0" *ngIf="p.pointCount > 1" style="margin-bottom:6px">
+              <i class="fa-solid" [class.fa-arrow-trend-down]="p.trendPct < 0" [class.fa-arrow-trend-up]="p.trendPct > 0" [class.fa-minus]="p.trendPct === 0"></i>
+              {{ p.trendPct > 0 ? '+' : '' }}{{ p.trendPct }}%
+            </span>
+          </div>
+          <div class="pd-sub">Último precio · {{ p.lastOn }}<span *ngIf="p.categoryName"> · {{ p.categoryName }}</span></div>
+
+          <p-card header="Evolución del precio" *ngIf="p.pointCount > 1; else noEvo">
+            <div class="chart-box" style="height:240px"><p-chart type="line" [data]="priceChart()" [options]="priceChartOptions()" /></div>
+          </p-card>
+          <ng-template #noEvo>
+            <p class="muted" style="text-align:center;padding:20px 0">Necesitas al menos dos compras de este producto para ver su evolución.</p>
+          </ng-template>
+
+          <div class="pd-stat">
+            <div class="st"><small>Mínimo</small><b>{{ fmt(p.minPrice) }}</b></div>
+            <div class="st"><small>Máximo</small><b>{{ fmt(p.maxPrice) }}</b></div>
+            <div class="st"><small>Ahorro</small><b>{{ fmt(p.maxPrice - p.minPrice) }}</b></div>
+          </div>
+
+          <h3>Por tienda</h3>
+          <div class="card" style="padding:2px 15px">
             <div class="pstore" *ngFor="let s of p.stores" [class.best]="s.store === p.cheapestStore && p.storeCount > 1">
               <span class="pstore-n">{{ s.store }} <small class="muted" *ngIf="s.count > 1">×{{ s.count }}</small><i *ngIf="s.shared" class="fa-solid fa-users shared-tag" style="margin-left:6px" title="del hogar"></i></span>
-              <span class="pstore-p">{{ fmt(s.minPrice) }}<i class="fa-solid fa-arrow-down" *ngIf="s.store === p.cheapestStore && p.storeCount > 1"></i></span>
+              <span class="pstore-p">{{ fmt(s.minPrice) }}<i class="fa-solid fa-arrow-down" *ngIf="s.store === p.cheapestStore && p.storeCount > 1"></i>
+                <small>último {{ fmt(s.lastPrice) }} · {{ s.lastOn }}</small></span>
             </div>
           </div>
         </div>
@@ -1196,6 +1272,7 @@ export class AppComponent implements OnInit, OnDestroy {
   // Precios
   readonly prices = signal<PriceProduct[]>([]);
   readonly pricesLoaded = signal<boolean>(false);
+  readonly priceDetail = signal<PriceProduct | null>(null);
   readonly priceCat = signal<string>('');
   readonly priceStore = signal<string>('');
   readonly priceQuery = signal<string>('');
@@ -1446,6 +1523,7 @@ export class AppComponent implements OnInit, OnDestroy {
       case 'compare': return 'Comparar meses';
       case 'home': return 'Hogar';
       case 'detail': return this.editing() ? 'Editar gasto' : 'Detalle del gasto';
+      case 'price-detail': return this.priceDetail()?.name || 'Precio';
       case 'register':
         return this.regStep() === 'choose' ? 'Registrar gasto'
           : this.regStep() === 'text' ? 'Pegar texto' : this.sheetTitle();
@@ -1949,6 +2027,33 @@ export class AppComponent implements OnInit, OnDestroy {
       error: () => this.pricesLoaded.set(true),
     });
   }
+  openPriceDetail(p: PriceProduct): void { this.priceDetail.set(p); this.nav('price-detail'); }
+
+  // Mini-evolución (sparkline) como coordenadas SVG en un viewBox 120×40.
+  private sparkPts(p: PriceProduct): string {
+    const vals = (p.points ?? []).map((x) => x.price);
+    const n = vals.length;
+    if (n < 2) return '';
+    const min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
+    return vals.map((v, i) => `${(i / (n - 1) * 120).toFixed(1)},${(38 - (v - min) / span * 36).toFixed(1)}`).join(' ');
+  }
+  sparkLine(p: PriceProduct): string { return this.sparkPts(p); }
+  sparkArea(p: PriceProduct): string {
+    const line = this.sparkPts(p);
+    return line ? `0,40 ${line} 120,40` : '';
+  }
+
+  readonly priceChart = computed(() => {
+    const pts = this.priceDetail()?.points ?? [];
+    const acc = this.chartAccent();
+    return { labels: pts.map((x) => x.on),
+      datasets: [{ label: 'Precio', data: pts.map((x) => x.price), borderColor: acc,
+        backgroundColor: 'transparent', tension: 0.25, pointRadius: 3, pointHoverRadius: 5, pointBackgroundColor: acc, fill: false }] };
+  });
+  readonly priceChartOptions = computed(() => ({ maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: { x: { ticks: { color: this.tick(), maxTicksLimit: 6 }, grid: { display: false } },
+              y: { ticks: { color: this.tick() }, grid: { color: this.gridc() } } } }));
   sourceLabel(s: string): string { return s === 'scan' ? 'Escaneado con IA' : s === 'recurring' ? 'Recurrente' : 'Manual'; }
   fmtDateTime(s: string): string {
     if (!s) return '—';
