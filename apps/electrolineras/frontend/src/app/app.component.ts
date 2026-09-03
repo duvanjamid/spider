@@ -69,7 +69,7 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
     .scard:hover { transform: translateY(-3px); box-shadow: var(--glow); border-color: color-mix(in srgb, var(--c) 40%, var(--border)); }
     .scard:active { transform: scale(.99); }
     .scard .ic { position: relative; width: 48px; height: 48px; border-radius: 15px; display: grid; place-items: center; font-size: 1.3rem; flex: none; color: var(--c); background: color-mix(in srgb, var(--c) 15%, var(--panel)); }
-    .scard .ic .livedot { position: absolute; top: -2px; right: -2px; width: 12px; height: 12px; border-radius: 50%; background: var(--c); border: 2px solid var(--panel); animation: pdot 1.8s infinite; }
+    .scard .ic .livedot { position: absolute; top: -2px; right: -2px; width: 12px; height: 12px; border-radius: 50%; background: #22c55e; color: #22c55e; border: 2px solid var(--panel); animation: pdot 1.8s infinite; }
     .scard .grow { flex: 1; min-width: 0; }
     .scard .nm { font-weight: 700; }
     .scard .meta { color: var(--muted); font-size: .84rem; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -78,6 +78,23 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
     .scard .km { font-weight: 700; font-size: .9rem; white-space: nowrap; }
     .chip { display: inline-flex; align-items: center; gap: 5px; font-size: .72rem; padding: 4px 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); white-space: nowrap; color: var(--muted); }
     .chip i { color: var(--accent); font-size: .68rem; }
+    /* Chip de conector, coloreado por estándar */
+    .cchip { display: inline-flex; align-items: center; font-size: .72rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+             color: var(--cc); background: color-mix(in srgb, var(--cc) 16%, transparent); border: 1px solid color-mix(in srgb, var(--cc) 42%, transparent); }
+    /* Chip de velocidad, coloreado por tipo de carga */
+    .chip.spd { color: var(--sc); font-weight: 700; background: color-mix(in srgb, var(--sc) 12%, var(--panel-2)); border-color: color-mix(in srgb, var(--sc) 40%, var(--border)); }
+    .chip.spd i { color: var(--sc); }
+    /* Badges de fuente de datos (agregación) */
+    .sbadges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 9px; }
+    .sbadge { display: inline-flex; align-items: center; gap: 5px; font-size: .62rem; font-weight: 800; letter-spacing: .4px; text-transform: uppercase;
+              padding: 3px 8px; border-radius: 7px; color: var(--sb); background: color-mix(in srgb, var(--sb) 14%, transparent); border: 1px solid color-mix(in srgb, var(--sb) 36%, transparent); }
+    .sbadge i { font-size: .58rem; opacity: .85; }
+    /* Banda de "carga rápida" en el detalle */
+    .speedband { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; margin: 4px 0 12px;
+                 color: #fff; background: linear-gradient(135deg, var(--sc), color-mix(in srgb, var(--sc) 55%, #0b0e14)); box-shadow: 0 8px 22px color-mix(in srgb, var(--sc) 32%, transparent); }
+    .speedband .bi { font-size: 1.35rem; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: rgba(255,255,255,.18); flex: none; }
+    .speedband .bt { font-weight: 800; font-size: 1.02rem; line-height: 1.1; }
+    .speedband .bs { font-size: .76rem; opacity: .9; }
 
     /* Progress bar */
     .pbar { height: 8px; border-radius: 999px; background: var(--panel-2); overflow: hidden; }
@@ -180,6 +197,7 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
               <div class="hchips">
                 <span class="hchip"><span class="pulse"></span> {{ activeCount() }} activas</span>
                 <span class="hchip"><i class="fa-solid fa-city"></i> {{ meta()?.cities ?? 0 }} ciudades</span>
+                <span class="hchip"><i class="fa-solid fa-layer-group"></i> {{ meta()?.bySource?.length ?? 0 }} fuentes</span>
                 <span class="hchip" (click)="locate()"><i class="fa-solid fa-location-crosshairs"></i> {{ userPos() ? 'Ubicado' : 'Ubicarme' }}</span>
               </div>
             </div>
@@ -189,14 +207,17 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
               <p-button label="Usar mi ubicación" icon="fa-solid fa-location-crosshairs" (onClick)="locate()" [loading]="locating()" styleClass="mt" />
             </div>
             <div class="cards">
-              <div class="scard" *ngFor="let s of filtered()" (click)="openDetail(s)" [style.--c]="statusColor(s.communityStatus)">
+              <div class="scard" *ngFor="let s of filtered()" (click)="openDetail(s)" [style.--c]="speedColor(s.speed)">
                 <span class="ic"><i class="fa-solid fa-bolt"></i><span class="livedot" *ngIf="s.communityStatus === 'active'"></span></span>
                 <div class="grow">
                   <div class="nm">{{ s.name }}</div>
                   <div class="meta">{{ s.operator || 'Operador' }} · {{ s.city }}</div>
                   <div class="chips">
-                    <span class="chip" *ngIf="s.speed"><i class="fa-solid fa-gauge-high"></i> {{ s.speed }}</span>
-                    <span class="chip" *ngIf="s.connectors"><i class="fa-solid fa-plug"></i> {{ s.connectors.length > 18 ? (s.connectors | slice:0:18) + '…' : s.connectors }}</span>
+                    <span class="chip spd" *ngIf="s.speed" [style.--sc]="speedColor(s.speed)"><i class="fa-solid fa-gauge-high"></i> {{ s.speed }}</span>
+                    <span class="cchip" *ngFor="let ct of connList(s.connectors)" [style.--cc]="connColor(ct)">{{ ct }}</span>
+                  </div>
+                  <div class="sbadges" *ngIf="s.sources?.length">
+                    <span class="sbadge" *ngFor="let src of s.sources" [style.--sb]="sourceColor(src)">{{ sourceShort(src) }}</span>
                   </div>
                 </div>
                 <div class="right">
@@ -252,15 +273,21 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
             <div class="stat"><div class="n">{{ meta()?.total ?? '—' }}</div><div><div style="font-weight:700">Estaciones cargadas</div><div class="muted" style="font-size:.84rem">en {{ meta()?.cities ?? 0 }} ciudad(es)</div></div></div>
             <h3 class="sec">Fuentes de datos</h3>
             <div class="stat" *ngFor="let s of meta()?.bySource || []"><div class="n">{{ s.count }}</div><div><div style="font-weight:700">{{ sourceLabel(s.source) }}</div><div class="muted" style="font-size:.84rem">{{ sourceDesc(s.source) }}</div></div></div>
+            <h3 class="sec">Velocidad de carga (color del pin)</h3>
+            <div class="legend">
+              <span><i class="d" style="background:#f97316"></i> Rápida (DC)</span>
+              <span><i class="d" style="background:#14b8a6"></i> Semi-rápida</span>
+              <span><i class="d" style="background:#3b82f6"></i> Lenta (AC)</span>
+              <span><i class="d" style="background:#9aa3b2"></i> Sin dato</span>
+            </div>
             <h3 class="sec">Estado (reportado por la comunidad)</h3>
             <div class="legend">
-              <span><i class="d" style="background:#22c55e"></i> Activa</span>
-              <span><i class="d" style="background:#ef4444"></i> Inactiva</span>
-              <span><i class="d" style="background:#9aa3b2"></i> Sin reportes</span>
+              <span><i class="d" style="box-shadow:0 0 0 2px #22c55e inset;background:transparent;border:1px solid #22c55e"></i> Activa (anillo verde)</span>
+              <span><i class="d" style="box-shadow:0 0 0 2px #ef4444 inset;background:transparent;border:1px solid #ef4444"></i> Inactiva (borde rojo)</span>
             </div>
             <p class="muted" style="font-size:.86rem">El estado en vivo no está en datos abiertos; lo construimos entre todos. Cuando uses una estación, reporta si está activa/ocupada y comenta.</p>
-            <div class="note" *ngIf="meta() && !meta().openChargeMap" style="margin-top:12px">
-              <b>Cobertura nacional activa</b> vía OpenStreetMap (comunidad) + EPM. Se puede sumar el catálogo de Open Charge Map como fuente extra opcional; no es necesario para usar la app.
+            <div class="note" style="margin-top:12px">
+              <b>Agregación de fuentes.</b> Consolidamos varias fuentes de electrolineras de Colombia (OpenStreetMap, EPM, ESSA y —opcional— Open Charge Map) y unificamos las estaciones que están en el mismo punto para no repetir pines. Cada pin muestra las fuentes que lo respaldan.
             </div>
           </div>
         </section>
@@ -312,12 +339,21 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
           <p-tabView>
             <p-tabPanel header="Info" leftIcon="fa-solid fa-circle-info">
               <ng-template pTemplate="content">
+                <div class="speedband" *ngIf="d.speed" [style.--sc]="speedColor(d.speed)">
+                  <span class="bi"><i class="fa-solid fa-bolt"></i></span>
+                  <div><div class="bt">Carga {{ d.speed.toLowerCase() }}</div><div class="bs">{{ speedDesc(d.speed) }}</div></div>
+                </div>
+                <div class="chips" *ngIf="connList(d.connectors).length" style="margin:2px 0 12px">
+                  <span class="cchip" *ngFor="let ct of connList(d.connectors)" [style.--cc]="connColor(ct)">{{ ct }}</span>
+                </div>
                 <div class="kv">
-                  <span class="k" *ngIf="d.speed"><i class="fa-solid fa-gauge-high"></i> {{ d.speed }}</span>
                   <span class="k" *ngIf="d.hours"><i class="fa-solid fa-clock"></i> {{ d.hours }}</span>
                   <a class="k" *ngIf="d.website" [href]="d.website" target="_blank" rel="noopener"><i class="fa-solid fa-up-right-from-square"></i> Sitio</a>
                 </div>
-                <div class="d-meta" *ngIf="d.address" style="margin-bottom:10px"><i class="fa-solid fa-location-dot"></i> {{ d.address }}</div>
+                <div class="d-meta" *ngIf="d.address" style="margin-bottom:8px"><i class="fa-solid fa-location-dot"></i> {{ d.address }}</div>
+                <div class="sbadges" *ngIf="d.sources?.length" style="margin-bottom:12px">
+                  <span class="sbadge" *ngFor="let src of d.sources" [style.--sb]="sourceColor(src)"><i class="fa-solid fa-database"></i> {{ sourceLabel(src) }}</span>
+                </div>
                 <h3 class="sec">¿Está funcionando?</h3>
                 <div class="report-btns">
                   <p-button label="Activa" icon="fa-solid fa-circle-check" severity="success" [outlined]="d.communityStatus !== 'active'" (onClick)="reportStation('active')" />
@@ -543,9 +579,11 @@ export class AppComponent implements OnInit, AfterViewInit {
     this.markers.clearLayers();
     for (const s of this.filtered()) {
       if (s.lat == null || s.lon == null) continue;
-      const color = this.statusColor(s.communityStatus);
-      const live = s.communityStatus === 'active' ? ' live' : '';
-      const icon = L.divIcon({ className: '', html: `<div class="pin${live}" style="background:${color};color:${color}"><i class="fa-solid fa-bolt"></i></div>`, iconSize: [30, 30], iconAnchor: [15, 30] });
+      // El pin se colorea por VELOCIDAD de carga (mapa informativo de un vistazo);
+      // el ESTADO reportado se codifica como anillo: verde vivo=activa, rojo=inactiva.
+      const color = this.speedColor(s.speed);
+      const st = s.communityStatus === 'active' ? ' live' : s.communityStatus === 'inactive' ? ' off' : '';
+      const icon = L.divIcon({ className: '', html: `<div class="pin${st}" style="background:${color};color:${color}"><i class="fa-solid fa-bolt"></i></div>`, iconSize: [30, 30], iconAnchor: [15, 30] });
       L.marker([s.lat, s.lon], { icon }).addTo(this.markers).on('click', () => this.openDetail(s));
     }
     this.fitVisible();
@@ -669,12 +707,56 @@ export class AppComponent implements OnInit, AfterViewInit {
   anyColor(s: string): string { return s === 'active' || s === 'free' ? '#22c55e' : s === 'inactive' || s === 'broken' ? '#ef4444' : s === 'busy' ? '#f59e0b' : '#9aa3b2'; }
   anyLabel(s: string): string { const m: Record<string, string> = { active: 'activa', inactive: 'inactiva', free: 'libre', busy: 'ocupado', broken: 'dañado' }; return m[s] || s; }
   sourceLabel(s: string): string {
-    return s === 'datos_gov_epm' ? 'datos.gov.co (EPM)' : s === 'openstreetmap' ? 'OpenStreetMap' : s === 'openchargemap' ? 'Open Charge Map' : s;
+    return s === 'datos_gov_epm' ? 'datos.gov.co (EPM)' : s === 'openstreetmap' ? 'OpenStreetMap'
+      : s === 'openchargemap' ? 'Open Charge Map' : s === 'essa' ? 'ESSA (Santander)' : s;
   }
   sourceDesc(s: string): string {
     return s === 'datos_gov_epm' ? 'Datos abiertos del gobierno · Antioquia'
       : s === 'openstreetmap' ? 'Comunidad OSM · cobertura nacional'
-      : s === 'openchargemap' ? 'Comunidad · cobertura nacional' : 'Fuente de datos';
+      : s === 'openchargemap' ? 'Comunidad · cobertura nacional'
+      : s === 'essa' ? 'Ecoestaciones ESSA · Santander' : 'Fuente de datos';
+  }
+  sourceShort(s: string): string {
+    return s === 'datos_gov_epm' ? 'EPM' : s === 'openstreetmap' ? 'OSM'
+      : s === 'openchargemap' ? 'OCM' : s === 'essa' ? 'ESSA' : s;
+  }
+  sourceColor(s: string): string {
+    return s === 'essa' ? '#f59e0b' : s === 'datos_gov_epm' ? '#eab308'
+      : s === 'openstreetmap' ? '#7c3aed' : s === 'openchargemap' ? '#06b6d4' : '#94a3b8';
+  }
+
+  // ── Conectores y velocidad (chips coloreados) ──
+  connList(connectors: string): string[] {
+    if (!connectors) return [];
+    const seen = new Set<string>(); const out: string[] = [];
+    for (const raw of connectors.split(/[,/;]| y /)) {
+      const t = this.normConn(raw.trim());
+      if (t.length >= 2 && !seen.has(t)) { seen.add(t); out.push(t); }
+    }
+    return out.slice(0, 4);
+  }
+  private normConn(s: string): string {
+    const u = s.toUpperCase();
+    if (u.includes('CCS') || u.includes('COMBO')) return 'CCS2';
+    if (u.includes('CHADEMO')) return 'CHAdeMO';
+    if (u.includes('MENNEKES') || u.includes('TIPO 2') || u.includes('TYPE 2') || u.includes('EUROPEO')) return 'Tipo 2';
+    if (u.includes('GBT') || u.includes('GB/T') || u.includes('GB T')) return 'GB/T';
+    if (u.includes('TIPO 1') || u.includes('TYPE 1') || u.includes('J1772')) return 'Tipo 1';
+    if (u.includes('TESLA')) return 'Tesla';
+    if (u.includes('SCHUKO')) return 'Schuko';
+    return s.length > 12 ? s.slice(0, 12) : s;
+  }
+  connColor(t: string): string {
+    return t === 'CCS2' ? '#f97316' : t === 'CHAdeMO' ? '#8b5cf6' : t === 'Tipo 2' ? '#14b8a6'
+      : t === 'Tipo 1' ? '#0ea5e9' : t === 'GB/T' ? '#ef4444' : t === 'Tesla' ? '#e11d48' : '#94a3b8';
+  }
+  speedColor(s: string | null): string {
+    return s === 'Rápida' ? '#f97316' : s === 'Semi-rápida' ? '#14b8a6' : s === 'Lenta' ? '#3b82f6' : '#9aa3b2';
+  }
+  speedDesc(s: string | null): string {
+    return s === 'Rápida' ? 'Corriente directa · ideal para viajes'
+      : s === 'Semi-rápida' ? 'Corriente alterna · recarga en un par de horas'
+      : s === 'Lenta' ? 'Corriente alterna · recarga nocturna' : 'Velocidad sin dato';
   }
   fmtWhen(s: string): string { if (!s) return ''; const d = new Date(s.replace(' ', 'T')); return isNaN(d.getTime()) ? s : d.toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' }); }
 }
