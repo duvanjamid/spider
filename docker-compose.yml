@@ -117,6 +117,8 @@ services:
       DB_PASSWORD: ${BD_PASS:?define BD_PASS}
       DB_SCHEMA: electrolineras
       APP_NAME: electrolineras
+      # Open Charge Map (cobertura nacional). Sin key se omite esa fuente.
+      OPENCHARGEMAP_KEY: ${OPENCHARGEMAP_KEY:-}
     depends_on:
       db:
         condition: service_healthy
