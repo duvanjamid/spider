@@ -1,4 +1,4 @@
-import { AfterViewInit, Component, ElementRef, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, NgZone, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { NgFor, NgIf, SlicePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
@@ -164,6 +164,9 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
     .cmt-form textarea { flex: 1; min-height: 44px; padding: 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel-2); color: var(--fg); font-family: inherit; resize: vertical; }
     .act { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--border); font-size: .84rem; }
     h3.sec { margin: 4px 0 8px; font-size: .95rem; }
+    .dstate { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 34px 20px; text-align: center; color: var(--muted); }
+    .dstate i { font-size: 1.6rem; color: var(--accent); }
+    .dstate p { margin: 0; }
   `],
   template: `
     <div class="app">
@@ -328,6 +331,14 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
       <!-- Detalle (bottom sheet con tabs) -->
       <p-dialog [(visible)]="detailVisible" [modal]="true" [position]="'bottom'" [dismissableMask]="true"
                 [style]="{ width: '100%', maxWidth: '640px' }" [header]="' '">
+        <div class="dstate" *ngIf="!detail() && !detailError()">
+          <i class="fa-solid fa-spinner fa-spin"></i> Cargando estación…
+        </div>
+        <div class="dstate" *ngIf="detailError()">
+          <i class="fa-solid fa-triangle-exclamation" style="color:#ef4444"></i>
+          <p>No se pudo cargar el detalle. Revisa tu conexión.</p>
+          <p-button label="Reintentar" icon="fa-solid fa-rotate-right" (onClick)="retryDetail()" />
+        </div>
         <div *ngIf="detail() as d">
           <div class="d-head">
             <span class="dot" [style.background]="statusColor(d.communityStatus)" style="width:16px;height:16px;border-radius:50%;margin-top:5px"></span>
@@ -408,6 +419,7 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
 })
 export class AppComponent implements OnInit, AfterViewInit {
   private api = inject(ElectrolinerasService);
+  private zone = inject(NgZone);
   @ViewChild('mapEl') mapEl!: ElementRef<HTMLDivElement>;
 
   readonly isTest = signal(false);
@@ -423,6 +435,8 @@ export class AppComponent implements OnInit, AfterViewInit {
   readonly activeCount = computed(() => this.stations().filter((s) => s.communityStatus === 'active').length);
 
   readonly detail = signal<StationFull | null>(null);
+  readonly detailError = signal(false);
+  private detailStation: Station | null = null;
   detailVisible = false;
   readonly comments = signal<Comment[]>([]);
   readonly reports = signal<Report[]>([]);
@@ -524,7 +538,7 @@ export class AppComponent implements OnInit, AfterViewInit {
     if (!navigator.geolocation) return;
     this.locating.set(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      (pos) => this.zone.run(() => {
         this.locating.set(false);
         const p: [number, number] = [pos.coords.latitude, pos.coords.longitude];
         this.userPos.set(p);
@@ -534,8 +548,8 @@ export class AppComponent implements OnInit, AfterViewInit {
         }
         this.applyFilters();   // re-ordena por cercanía y re-encuadra (fitVisible)
         this.fitVisible();
-      },
-      () => this.locating.set(false),
+      }),
+      () => this.zone.run(() => this.locating.set(false)),
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
     );
   }
@@ -584,7 +598,9 @@ export class AppComponent implements OnInit, AfterViewInit {
       const color = this.speedColor(s.speed);
       const st = s.communityStatus === 'active' ? ' live' : s.communityStatus === 'inactive' ? ' off' : '';
       const icon = L.divIcon({ className: '', html: `<div class="pin${st}" style="background:${color};color:${color}"><i class="fa-solid fa-bolt"></i></div>`, iconSize: [30, 30], iconAnchor: [15, 30] });
-      L.marker([s.lat, s.lon], { icon }).addTo(this.markers).on('click', () => this.openDetail(s));
+      // El click de Leaflet corre FUERA de la zona de Angular; sin zone.run el
+      // diálogo no reacciona (no dispara detección de cambios).
+      L.marker([s.lat, s.lon], { icon }).addTo(this.markers).on('click', () => this.zone.run(() => this.openDetail(s)));
     }
     this.fitVisible();
   }
@@ -606,12 +622,14 @@ export class AppComponent implements OnInit, AfterViewInit {
 
   // ── Detalle ──
   openDetail(s: Station): void {
-    this.detail.set(null); this.comments.set([]); this.reports.set([]); this.newComment = '';
+    this.detail.set(null); this.detailError.set(false); this.comments.set([]); this.reports.set([]); this.newComment = '';
+    this.detailStation = s;
     this.detailVisible = true;
-    this.api.station(s.id).subscribe({ next: (d) => this.detail.set(d), error: () => {} });
+    this.api.station(s.id).subscribe({ next: (d) => this.detail.set(d), error: () => this.detailError.set(true) });
     this.api.comments(s.id).subscribe({ next: (c) => this.comments.set(c), error: () => {} });
     this.api.reports(s.id).subscribe({ next: (r) => this.reports.set(r), error: () => {} });
   }
+  retryDetail(): void { if (this.detailStation) this.openDetail(this.detailStation); }
   private refreshDetail(): void {
     const d = this.detail(); if (!d) return;
     this.api.station(d.id).subscribe({ next: (x) => this.detail.set(x), error: () => {} });
