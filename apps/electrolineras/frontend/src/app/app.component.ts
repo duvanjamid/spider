@@ -532,7 +532,7 @@ export class AppComponent implements OnInit, AfterViewInit {
       if (speed && s.speed !== speed) return false;
       if (conn && !this.matchConnector(s.connectors, conn)) return false;
       if (!q) return true;
-      return (s.name + ' ' + s.city + ' ' + s.address + ' ' + s.connectors).toLowerCase().includes(q);
+      return (s.name + ' ' + s.operator + ' ' + s.city + ' ' + s.address + ' ' + s.connectors).toLowerCase().includes(q);
     });
     if (u) list.sort((a, b) => this.distanceKm(u, [a.lat, a.lon]) - this.distanceKm(u, [b.lat, b.lon]));
     this.filtered.set(list);
