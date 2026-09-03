@@ -13,7 +13,7 @@ import {
 
 type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
 // Vistas de página completa (nada de modales). '' = pestaña principal.
-type View = '' | 'income' | 'categories' | 'recurring' | 'compare' | 'home' | 'register' | 'detail';
+type View = '' | 'income' | 'categories' | 'category-edit' | 'recurring' | 'compare' | 'home' | 'register' | 'detail';
 
 // Fechas en la ZONA LOCAL del navegador (no UTC).
 function localYM(d: Date = new Date()): string {
@@ -282,6 +282,39 @@ function localYMD(d: Date = new Date()): string {
     .picker button:disabled { opacity: .45; cursor: not-allowed; }
     .picker button:disabled:hover { border-color: var(--border); }
 
+    /* Opción destacada: registrar ingreso (arriba en el menú del + central) */
+    .reg-income { width: 100%; display: flex; align-items: center; gap: 12px; padding: 16px; cursor: pointer;
+                  border: none; border-radius: 16px; background: var(--accent); color: var(--on-accent); font: inherit;
+                  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 45%, transparent); transition: transform .06s; }
+    .reg-income:active { transform: scale(.98); }
+    .reg-income .ri-ic { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; flex: none;
+                         background: color-mix(in srgb, var(--on-accent) 14%, transparent); font-size: 1.15rem; }
+    .reg-income .ri-body { flex: 1; display: flex; flex-direction: column; text-align: left; }
+    .reg-income .ri-body b { font-size: 1.05rem; font-weight: 800; }
+    .reg-income .ri-body small { opacity: .8; font-size: .8rem; }
+    .reg-income .ri-go { opacity: .7; }
+    .ri-sep { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: .8rem; margin: 16px 0 8px; }
+    .ri-sep::before, .ri-sep::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* Categorías: cabecera con botón agregar + conmutador grilla/lista */
+    .list-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .list-head .lh-title { font-weight: 800; font-size: 1.02rem; flex: 1; }
+    .cat-list { display: flex; flex-direction: column; gap: 8px; }
+    .cat-li { display: flex; align-items: center; gap: 12px; padding: 11px 12px; border: 1px solid var(--border);
+              border-radius: 14px; background: var(--panel); cursor: pointer; box-shadow: var(--shadow); }
+    .cat-li:hover { border-color: var(--accent); }
+    .cat-li .cc-ic { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; color: #fff; font-size: 1rem; flex: none; }
+    .cat-li .cl-body { flex: 1; min-width: 0; }
+    .cat-li .cl-body .nm { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cat-li .cl-body small { color: var(--muted); font-size: .78rem; }
+    .cat-li .cl-body small b { color: var(--accent-strong); }
+    .cat-li .cl-act { display: flex; gap: 2px; }
+    .cat-li .cc-btn { width: 30px; height: 30px; border-radius: 8px; border: none; background: transparent; color: var(--muted);
+                      cursor: pointer; display: grid; place-items: center; font-size: .85rem; }
+    .cat-li .cc-btn:hover { background: var(--panel-2); }
+    .cat-li .cc-btn.shared { color: var(--accent-strong); }
+    .cat-li .cc-btn.del:hover { color: #e0574f; }
+
     .page { padding-top: 8px; }
 
     /* Compartir (chips) */
@@ -464,8 +497,6 @@ function localYMD(d: Date = new Date()): string {
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
               <i class="fa-solid fa-sack-dollar" style="color:var(--accent-strong)"></i>
               <b style="font-size:1.02rem">Tope del mes</b>
-              <span class="spacer" style="flex:1"></span>
-              <p-button label="Ingreso" icon="pi pi-plus" size="small" [outlined]="true" (onClick)="openIncome()" />
             </div>
             <div class="tope" *ngIf="s.income > 0; else noIncome">
               <div class="pbar">
@@ -705,6 +736,12 @@ function localYMD(d: Date = new Date()): string {
       <section class="page" *ngIf="view() === 'register'">
         <!-- Elegir método -->
         <div *ngIf="regStep() === 'choose'">
+          <button class="reg-income" (click)="openIncome()">
+            <span class="ri-ic"><i class="fa-solid fa-sack-dollar"></i></span>
+            <span class="ri-body"><b>Registrar ingreso</b><small>Suma a tu tope del mes</small></span>
+            <i class="fa-solid fa-chevron-right ri-go"></i>
+          </button>
+          <div class="ri-sep"><span>o registra un gasto</span></div>
           <div class="picker">
             <button (click)="chooseManual()"><i class="fa-solid fa-pen"></i><b>Manual</b><small>Escríbelo tú</small></button>
             <button (click)="chooseText()" [disabled]="!aiEnabled()"><i class="fa-solid fa-align-left"></i><b>Pegar texto</b><small>SMS o correo</small></button>
@@ -876,8 +913,71 @@ function localYMD(d: Date = new Date()): string {
         </div>
       </section>
 
-      <!-- ═══ Vista: Categorías ═══ -->
+      <!-- ═══ Vista: Categorías (lista) ═══ -->
       <section class="page" *ngIf="view() === 'categories'">
+        <div class="list-head">
+          <span class="lh-title">Tus categorías</span>
+          <div class="seg mini">
+            <button [class.on]="catView() === 'grid'" (click)="setCatView('grid')" title="Grilla"><i class="fa-solid fa-table-cells-large"></i></button>
+            <button [class.on]="catView() === 'list'" (click)="setCatView('list')" title="Lista"><i class="fa-solid fa-list"></i></button>
+          </div>
+          <p-button label="Agregar" icon="pi pi-plus" (onClick)="addCategory()" />
+        </div>
+
+        <!-- Grilla -->
+        <div class="cat-grid" *ngIf="catView() === 'grid'">
+          <div class="cat-card" *ngFor="let c of categories()" (click)="editCat(c)">
+            <div class="cc-actions">
+              <button class="cc-btn" [class.shared]="isCategoryShared(c.slug)" [disabled]="!household().length"
+                      (click)="$event.stopPropagation(); toggleCategoryShare(c.slug)"
+                      [title]="household().length ? (isCategoryShared(c.slug) ? 'Compartida — clic para dejar de compartir' : 'Compartir con el hogar') : 'Conecta a alguien en Hogar para compartir'">
+                <i class="fa-solid" [class.fa-users]="isCategoryShared(c.slug)" [class.fa-user]="!isCategoryShared(c.slug)"></i>
+              </button>
+              <button class="cc-btn del" (click)="$event.stopPropagation(); delCat(c)" title="Borrar"><i class="fa-solid fa-trash"></i></button>
+            </div>
+            <span class="cc-ic" [style.background]="c.color"><i [class]="c.icon || 'fa-solid fa-wallet'"></i></span>
+            <span class="cc-name">{{ c.name }}</span>
+            <span class="cc-bud" *ngIf="budgetFor(c.id) as b; else noBud"><b>{{ fmt(b) }}</b> / mes</span>
+            <ng-template #noBud><span class="cc-bud">Sin tope</span></ng-template>
+          </div>
+        </div>
+
+        <!-- Lista -->
+        <div class="cat-list" *ngIf="catView() === 'list'">
+          <div class="cat-li" *ngFor="let c of categories()" (click)="editCat(c)">
+            <span class="cc-ic" [style.background]="c.color"><i [class]="c.icon || 'fa-solid fa-wallet'"></i></span>
+            <div class="cl-body">
+              <div class="nm">{{ c.name }}</div>
+              <small *ngIf="budgetFor(c.id) as b; else noBudLi"><b>{{ fmt(b) }}</b> / mes</small>
+              <ng-template #noBudLi><small>Sin tope</small></ng-template>
+            </div>
+            <div class="cl-act">
+              <button class="cc-btn" [class.shared]="isCategoryShared(c.slug)" [disabled]="!household().length"
+                      (click)="$event.stopPropagation(); toggleCategoryShare(c.slug)"
+                      [title]="household().length ? (isCategoryShared(c.slug) ? 'Compartida' : 'Compartir con el hogar') : 'Conecta a alguien en Hogar'">
+                <i class="fa-solid" [class.fa-users]="isCategoryShared(c.slug)" [class.fa-user]="!isCategoryShared(c.slug)"></i>
+              </button>
+              <button class="cc-btn del" (click)="$event.stopPropagation(); delCat(c)" title="Borrar"><i class="fa-solid fa-trash"></i></button>
+              <i class="fa-solid fa-chevron-right" style="color:var(--muted);font-size:.75rem;margin-left:2px"></i>
+            </div>
+          </div>
+        </div>
+
+        <p class="muted" *ngIf="!categories().length" style="text-align:center;padding:24px">Aún no tienes categorías. Toca «Agregar».</p>
+
+        <ng-container *ngIf="sharedInCats().length">
+          <h3>Compartidas conmigo</h3>
+          <div class="cat-list">
+            <div class="cat-li" *ngFor="let c of sharedInCats()" style="cursor:default">
+              <span class="cc-ic" [style.background]="c.color"><i [class]="c.icon || 'fa-solid fa-wallet'"></i></span>
+              <div class="cl-body"><div class="nm">{{ c.name }}</div><small>de {{ c.owner }}</small></div>
+            </div>
+          </div>
+        </ng-container>
+      </section>
+
+      <!-- ═══ Vista: Crear / editar categoría ═══ -->
+      <section class="page" *ngIf="view() === 'category-edit'">
         <div class="cat-editor">
           <div class="ce-top">
             <span class="ce-preview" [style.background]="catForm.color"><i [class]="catForm.icon"></i></span>
@@ -898,39 +998,12 @@ function localYMD(d: Date = new Date()): string {
           <div class="ce-label">Presupuesto mensual (opcional)</div>
           <div class="ce-amount"><span class="cur">$</span><input class="inp" type="number" [(ngModel)]="catForm.amount" placeholder="0" min="0" /></div>
           <div class="ce-hint">Te avisamos cuando el gasto del mes se acerque o supere este monto.</div>
-          <div class="ce-actions">
-            <p-button *ngIf="catForm.id" label="Cancelar" [text]="true" (onClick)="resetCatForm()" />
-            <p-button [label]="catForm.id ? 'Guardar cambios' : 'Crear categoría'" icon="pi pi-check" (onClick)="saveCat()" [disabled]="!catForm.name.trim()" />
-          </div>
         </div>
-
-        <div class="cat-grid">
-          <div class="cat-card" *ngFor="let c of categories()" (click)="editCat(c)">
-            <div class="cc-actions">
-              <button class="cc-btn" [class.shared]="isCategoryShared(c.slug)" [disabled]="!household().length"
-                      (click)="$event.stopPropagation(); toggleCategoryShare(c.slug)"
-                      [title]="household().length ? (isCategoryShared(c.slug) ? 'Compartida — clic para dejar de compartir' : 'Compartir con el hogar') : 'Conecta a alguien en Hogar para compartir'">
-                <i class="fa-solid" [class.fa-users]="isCategoryShared(c.slug)" [class.fa-user]="!isCategoryShared(c.slug)"></i>
-              </button>
-              <button class="cc-btn del" (click)="$event.stopPropagation(); delCat(c)" title="Borrar"><i class="fa-solid fa-trash"></i></button>
-            </div>
-            <span class="cc-ic" [style.background]="c.color"><i [class]="c.icon || 'fa-solid fa-wallet'"></i></span>
-            <span class="cc-name">{{ c.name }}</span>
-            <span class="cc-bud" *ngIf="budgetFor(c.id) as b; else noBud"><b>{{ fmt(b) }}</b> / mes</span>
-            <ng-template #noBud><span class="cc-bud">Sin tope</span></ng-template>
-          </div>
+        <div class="actionbar">
+          <p-button label="Cancelar" [text]="true" (onClick)="goBack()" />
+          <p-button *ngIf="catForm.id" label="Borrar" icon="pi pi-trash" severity="danger" [text]="true" (onClick)="delCurrentCat()" />
+          <p-button [label]="catForm.id ? 'Guardar cambios' : 'Crear categoría'" icon="pi pi-check" (onClick)="saveCat()" [disabled]="!catForm.name.trim()" />
         </div>
-
-        <ng-container *ngIf="sharedInCats().length">
-          <h3>Compartidas conmigo</h3>
-          <div class="cat-grid">
-            <div class="cat-card" *ngFor="let c of sharedInCats()" style="cursor:default">
-              <span class="cc-ic" [style.background]="c.color"><i [class]="c.icon || 'fa-solid fa-wallet'"></i></span>
-              <span class="cc-name">{{ c.name }}</span>
-              <span class="cc-bud">de {{ c.owner }}</span>
-            </div>
-          </div>
-        </ng-container>
       </section>
 
       <!-- ═══ Vista: Ingresos (tope global) ═══ -->
@@ -1180,6 +1253,8 @@ export class AppComponent implements OnInit, OnDestroy {
 
   // Modo del gráfico de distribución (disco / torta). Persistido.
   readonly distMode = signal<'doughnut' | 'pie'>('doughnut');
+  // Vista de categorías: grilla o lista. Persistido.
+  readonly catView = signal<'grid' | 'list'>('grid');
 
   // Web Push
   readonly pushState = signal<PushStatus | null>(null);
@@ -1189,7 +1264,14 @@ export class AppComponent implements OnInit, OnDestroy {
     if (typeof window !== 'undefined' && window.matchMedia) {
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => this.dark.set(e.matches));
     }
-    try { const d = localStorage.getItem('gastos.dist'); if (d === 'pie' || d === 'doughnut') this.distMode.set(d); } catch { /* noop */ }
+    try {
+      const d = localStorage.getItem('gastos.dist'); if (d === 'pie' || d === 'doughnut') this.distMode.set(d);
+      const cv = localStorage.getItem('gastos.catView'); if (cv === 'grid' || cv === 'list') this.catView.set(cv);
+    } catch { /* noop */ }
+  }
+  setCatView(v: 'grid' | 'list'): void {
+    this.catView.set(v);
+    try { localStorage.setItem('gastos.catView', v); } catch { /* noop */ }
   }
 
   // Color de marca (lemongrass) para los gráficos, según claro/oscuro.
@@ -1351,6 +1433,7 @@ export class AppComponent implements OnInit, OnDestroy {
       this.view.set(''); return;
     }
     if (this.view() === 'detail' && this.editing()) { this.editing.set(false); return; }
+    if (this.view() === 'category-edit') { this.view.set('categories'); return; }
     if (this.view()) { this.view.set(''); return; }
     if (this.tab() !== 0) this.tab.set(0);
   }
@@ -1358,6 +1441,7 @@ export class AppComponent implements OnInit, OnDestroy {
     switch (this.view()) {
       case 'income': return 'Mis ingresos';
       case 'categories': return 'Mis categorías';
+      case 'category-edit': return this.catForm.id ? 'Editar categoría' : 'Nueva categoría';
       case 'recurring': return 'Gastos recurrentes';
       case 'compare': return 'Comparar meses';
       case 'home': return 'Hogar';
@@ -1537,17 +1621,18 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   // ── Categorías ──
-  openCats(): void { this.resetCatForm(); this.loadBudgets(); this.loadHome(); this.nav('categories'); }
+  openCats(): void { this.loadBudgets(); this.loadHome(); this.nav('categories'); }
   resetCatForm(): void { this.catForm = { id: null, name: '', color: '#8db63c', icon: 'fa-solid fa-wallet', amount: null }; }
+  addCategory(): void { this.resetCatForm(); this.nav('category-edit'); }
   editCat(c: Category): void {
     this.catForm = { id: c.id, name: c.name, color: c.color, icon: c.icon || 'fa-solid fa-wallet', amount: this.budgetFor(c.id) };
-    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+    this.nav('category-edit');
   }
   saveCat(): void {
     const f = this.catForm;
     if (!f.name.trim()) return;
     const amount = Number(f.amount) || 0;
-    const finish = () => { this.resetCatForm(); this.loadCategories(); this.loadBudgets(); this.reload(); };
+    const finish = () => { this.resetCatForm(); this.loadCategories(); this.loadBudgets(); this.reload(); this.view.set('categories'); };
     if (f.id) {
       const id = f.id;
       this.api.updateCategory(id, { name: f.name.trim(), color: f.color, icon: f.icon })
@@ -1561,7 +1646,13 @@ export class AppComponent implements OnInit, OnDestroy {
   }
   delCat(c: Category): void {
     if (!confirm(`¿Borrar la categoría "${c.name}"? Los gastos quedarán sin categoría.`)) return;
-    this.api.deleteCategory(c.id).subscribe(() => { this.loadCategories(); this.reload(); });
+    this.api.deleteCategory(c.id).subscribe(() => { this.loadCategories(); this.loadBudgets(); this.reload(); });
+  }
+  delCurrentCat(): void {
+    const id = this.catForm.id;
+    if (!id) return;
+    if (!confirm(`¿Borrar la categoría "${this.catForm.name}"? Los gastos quedarán sin categoría.`)) return;
+    this.api.deleteCategory(id).subscribe(() => { this.loadCategories(); this.loadBudgets(); this.reload(); this.view.set('categories'); });
   }
 
   // ── Presupuestos ──
