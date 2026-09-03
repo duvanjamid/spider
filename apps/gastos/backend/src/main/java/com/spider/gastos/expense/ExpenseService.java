@@ -398,7 +398,8 @@ public class ExpenseService {
      * precio mínimo/medio/último, la tienda más barata y el rango de precios.
      */
     public List<Map<String, Object>> prices(String email) {
-        String sql = """
+        // CTE común: puntos de precio visibles para el usuario (propios + del hogar compartidos).
+        String cte = """
                 WITH fam AS (
                   SELECT CASE WHEN requester_email = ? THEN addressee_email ELSE requester_email END AS email
                   FROM connection
@@ -424,6 +425,8 @@ public class ExpenseService {
                                           AND ( (cs.owner_email = e.owner_email AND cs.shared_with = ?)
                                              OR (cs.owner_email = ? AND cs.shared_with = e.owner_email) )) ) )
                 )
+                """;
+        String storesSql = cte + """
                 SELECT name_norm,
                        (array_agg(name ORDER BY spent_on DESC))[1] AS name,
                        (array_agg(cat_slug ORDER BY spent_on DESC))[1] AS cat_slug,
@@ -441,8 +444,8 @@ public class ExpenseService {
                 ORDER BY name_norm, min_price ASC
                 """;
         Map<String, Map<String, Object>> prod = new LinkedHashMap<>();
-        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-            for (int i = 1; i <= 8; i++) ps.setString(i, email);   // el correo se repite en todos los filtros
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(storesSql)) {
+            for (int i = 1; i <= 8; i++) ps.setString(i, email);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     String norm = rs.getString("name_norm");
@@ -453,6 +456,7 @@ public class ExpenseService {
                         p.put("categorySlug", rs.getString("cat_slug"));
                         p.put("categoryName", rs.getString("cat_name"));
                         p.put("stores", new ArrayList<Map<String, Object>>());
+                        p.put("points", new ArrayList<Map<String, Object>>());
                         p.put("minPrice", Double.MAX_VALUE);
                         p.put("maxPrice", 0.0);
                         p.put("shared", false);
@@ -478,16 +482,54 @@ public class ExpenseService {
             }
         } catch (Exception e) { throw new RuntimeException("Error comparando precios", e); }
 
+        // Serie temporal de precios por producto (evolución), en orden ascendente por fecha.
+        String pointsSql = cte + """
+                SELECT name_norm, to_char(spent_on,'YYYY-MM-DD') AS on_date, store, price
+                FROM pts WHERE price IS NOT NULL ORDER BY name_norm, spent_on ASC, store
+                """;
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(pointsSql)) {
+            for (int i = 1; i <= 8; i++) ps.setString(i, email);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> p = prod.get(rs.getString("name_norm"));
+                    if (p == null) continue;
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> points = (List<Map<String, Object>>) p.get("points");
+                    Map<String, Object> pt = new LinkedHashMap<>();
+                    pt.put("on", rs.getString("on_date"));
+                    pt.put("store", rs.getString("store"));
+                    pt.put("price", rs.getBigDecimal("price").doubleValue());
+                    points.add(pt);
+                }
+            }
+        } catch (Exception e) { throw new RuntimeException("Error leyendo evolución de precios", e); }
+
         List<Map<String, Object>> out = new ArrayList<>(prod.values());
         for (Map<String, Object> p : out) {
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> stores = (List<Map<String, Object>>) p.get("stores");
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> points = (List<Map<String, Object>>) p.get("points");
             p.put("storeCount", stores.size());
-            // La consulta ordena las tiendas por precio mínimo asc → la primera es la más barata.
             p.put("cheapestStore", stores.isEmpty() ? "" : stores.get(0).get("store"));
+            // Recorta la serie a los últimos 40 puntos para no inflar la respuesta.
+            if (points.size() > 40) p.put("points", new ArrayList<>(points.subList(points.size() - 40, points.size())));
+            // Precio actual y tendencia (primer vs último punto).
+            int n = points.size();
+            double lastPrice = n > 0 ? (double) points.get(n - 1).get("price") : 0;
+            String lastOn = n > 0 ? (String) points.get(n - 1).get("on") : "";
+            double firstPrice = n > 0 ? (double) points.get(0).get("price") : 0;
+            int trendPct = firstPrice > 0 ? (int) Math.round((lastPrice - firstPrice) / firstPrice * 100) : 0;
+            p.put("lastPrice", lastPrice);
+            p.put("lastOn", lastOn);
+            p.put("pointCount", n);
+            p.put("trendPct", trendPct);
         }
-        // Primero los productos comprados en más tiendas (más útiles para comparar).
-        out.sort((a, b) -> Integer.compare((int) b.get("storeCount"), (int) a.get("storeCount")));
+        // Primero los productos con más historial (más útiles para ver evolución), luego por nº de tiendas.
+        out.sort((a, b) -> {
+            int byPts = Integer.compare((int) b.get("pointCount"), (int) a.get("pointCount"));
+            return byPts != 0 ? byPts : Integer.compare((int) b.get("storeCount"), (int) a.get("storeCount"));
+        });
         return out;
     }
 
