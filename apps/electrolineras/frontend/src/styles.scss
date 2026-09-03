@@ -60,9 +60,12 @@ h3 { margin: 18px 0 10px; }
 .pin { width: 30px; height: 30px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
   border: 2px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,.35); display: grid; place-items: center; }
 .pin i { transform: rotate(45deg); color: #fff; font-size: .8rem; }
-// Pulso "en vivo" para estaciones activas
+// Pulso "en vivo" (verde) para estaciones reportadas como ACTIVAS
+.pin.live { border-color: #22c55e; }
 .pin.live::after { content: ''; position: absolute; inset: -6px; border-radius: 50% 50% 50% 0;
-  border: 2px solid currentColor; opacity: .6; animation: ping 1.8s cubic-bezier(0,0,.2,1) infinite; }
+  border: 2px solid #22c55e; opacity: .6; animation: ping 1.8s cubic-bezier(0,0,.2,1) infinite; }
+// Estación reportada como INACTIVA: borde rojo, atenuada
+.pin.off { border-color: #ef4444; opacity: .82; box-shadow: 0 0 0 2px rgba(239,68,68,.28), 0 4px 10px rgba(0,0,0,.35); }
 @keyframes ping { 0% { transform: scale(.7); opacity: .7; } 100% { transform: scale(1.6); opacity: 0; } }
 
 // Mi ubicación

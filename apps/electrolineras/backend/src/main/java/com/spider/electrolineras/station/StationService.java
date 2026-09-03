@@ -44,7 +44,102 @@ public class StationService {
         int n = syncDatosGov();
         if (Env.overpassEnabled()) n += syncOverpass();           // OSM · nacional · sin key
         if (Env.openChargeMapEnabled()) n += syncOpenChargeMap(); // OCM · nacional · con key
+        try { dedupe(); } catch (Exception e) { log.warn("Dedup falló (se continúa): {}", e.getMessage()); }
         return n;
+    }
+
+    // ── Deduplicación por cercanía ──────────────────────────────────
+    //   Agrupa estaciones co-ubicadas (distintas fuentes que describen el
+    //   mismo punto físico) bajo un "canónico" para no repetir pines. El
+    //   listado y el detalle consolidan conectores y fuentes por grupo.
+    private static final double DEDUP_METERS = 70.0;
+
+    public void dedupe() {
+        record Row(long id, double lat, double lon, String source, int chargers) {}
+        List<Row> rows = new ArrayList<>();
+        try (Connection c = ds.getConnection(); Statement st = c.createStatement();
+             ResultSet rs = st.executeQuery("""
+                     SELECT s.id, s.lat, s.lon, s.source,
+                       (SELECT count(*) FROM charger ch WHERE ch.station_id = s.id) AS chargers
+                     FROM station s WHERE s.lat IS NOT NULL AND s.lon IS NOT NULL""")) {
+            while (rs.next()) rows.add(new Row(rs.getLong(1), rs.getDouble(2), rs.getDouble(3),
+                    rs.getString(4), rs.getInt(5)));
+        } catch (Exception e) { log.warn("dedupe: no se pudo leer estaciones: {}", e.getMessage()); return; }
+
+        int n = rows.size();
+        if (n == 0) return;
+        int[] parent = new int[n];
+        for (int i = 0; i < n; i++) parent[i] = i;
+
+        // Rejilla espacial para comparar solo con vecinos cercanos (no O(n²) real).
+        double cell = 0.001; // ~110 m
+        Map<Long, List<Integer>> grid = new LinkedHashMap<>();
+        for (int i = 0; i < n; i++) {
+            long gx = (long) Math.floor(rows.get(i).lat() / cell);
+            long gy = (long) Math.floor(rows.get(i).lon() / cell);
+            grid.computeIfAbsent(gkey(gx, gy), k -> new ArrayList<>()).add(i);
+        }
+        for (int i = 0; i < n; i++) {
+            Row a = rows.get(i);
+            long gx = (long) Math.floor(a.lat() / cell), gy = (long) Math.floor(a.lon() / cell);
+            for (long dx = -1; dx <= 1; dx++) for (long dy = -1; dy <= 1; dy++) {
+                List<Integer> bucket = grid.get(gkey(gx + dx, gy + dy));
+                if (bucket == null) continue;
+                for (int j : bucket) {
+                    if (j <= i) continue;
+                    Row b = rows.get(j);
+                    if (haversine(a.lat(), a.lon(), b.lat(), b.lon()) <= DEDUP_METERS) union(parent, i, j);
+                }
+            }
+        }
+
+        // Representante por grupo: más cargadores → fuente más rica → id menor.
+        Map<Integer, Integer> best = new LinkedHashMap<>();
+        for (int i = 0; i < n; i++) {
+            int r = find(parent, i);
+            Integer cur = best.get(r);
+            if (cur == null) { best.put(r, i); continue; }
+            Row cand = rows.get(i), champ = rows.get(cur);
+            boolean better = cand.chargers() != champ.chargers()
+                    ? cand.chargers() > champ.chargers()
+                    : sourcePri(cand.source()) != sourcePri(champ.source())
+                        ? sourcePri(cand.source()) > sourcePri(champ.source())
+                        : cand.id() < champ.id();
+            if (better) best.put(r, i);
+        }
+
+        try (Connection c = ds.getConnection();
+             PreparedStatement ps = c.prepareStatement("UPDATE station SET canonical_id = ? WHERE id = ?")) {
+            for (int i = 0; i < n; i++) {
+                long canonical = rows.get(best.get(find(parent, i))).id();
+                ps.setLong(1, canonical);
+                ps.setLong(2, rows.get(i).id());
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        } catch (Exception e) { log.warn("dedupe: no se pudo escribir canónicos: {}", e.getMessage()); return; }
+        int groups = best.size();
+        log.info("Dedup: {} estaciones → {} grupos ({} duplicados unificados)", n, groups, n - groups);
+    }
+
+    private static long gkey(long gx, long gy) { return gx * 1_000_003L + gy; }
+    private static int find(int[] p, int i) { while (p[i] != i) { p[i] = p[p[i]]; i = p[i]; } return i; }
+    private static void union(int[] p, int a, int b) { p[find(p, a)] = find(p, b); }
+    private static double haversine(double la1, double lo1, double la2, double lo2) {
+        double R = 6371000, dLa = Math.toRadians(la2 - la1), dLo = Math.toRadians(lo2 - lo1);
+        double x = Math.sin(dLa / 2) * Math.sin(dLa / 2)
+                + Math.cos(Math.toRadians(la1)) * Math.cos(Math.toRadians(la2)) * Math.sin(dLo / 2) * Math.sin(dLo / 2);
+        return 2 * R * Math.asin(Math.min(1, Math.sqrt(x)));
+    }
+    /** Prioridad de fuente para elegir el representante (más rica primero). */
+    private static int sourcePri(String s) {
+        return switch (s == null ? "" : s) {
+            case "essa" -> 4;
+            case "datos_gov_epm" -> 3;
+            case "openchargemap" -> 2;
+            case "openstreetmap" -> 1;
+            default -> 0;
+        };
     }
 
     // ── OpenStreetMap / Overpass (nacional, crowdsourced, SIN key) ──
@@ -371,10 +466,13 @@ public class StationService {
         }
     }
 
-    // ── Listado para el mapa (ligero) ──
+    // ── Listado para el mapa (consolidado por canónico) ──
+    //   Cada pin es un GRUPO de estaciones co-ubicadas: se unen conectores y
+    //   fuentes, se toma la mejor velocidad y los campos visibles del canónico.
     public List<Map<String, Object>> list() {
         String sql = """
-                SELECT s.id, s.name, s.operator, s.city, s.address, s.lat, s.lon, s.connectors, s.speed,
+                SELECT s.id, COALESCE(s.canonical_id, s.id) AS cluster,
+                       s.name, s.operator, s.city, s.address, s.lat, s.lon, s.connectors, s.speed, s.source,
                   (SELECT r.status FROM status_report r WHERE r.station_id = s.id AND r.charger_id IS NULL
                      ORDER BY r.created_at DESC LIMIT 1) AS community_status,
                   (SELECT count(*) FROM station_comment k WHERE k.station_id = s.id) AS comments,
@@ -383,26 +481,69 @@ public class StationService {
                 WHERE s.lat IS NOT NULL AND s.lon IS NOT NULL
                 ORDER BY s.city, s.name
                 """;
-        List<Map<String, Object>> out = new ArrayList<>();
+        Map<Long, Map<String, Object>> byCluster = new LinkedHashMap<>();
+        Map<Long, Set<String>> connByCluster = new LinkedHashMap<>();
+        Map<Long, Set<String>> srcByCluster = new LinkedHashMap<>();
+        Map<Long, int[]> sumByCluster = new LinkedHashMap<>();   // [comments, chargers]
+        Map<Long, String> speedByCluster = new LinkedHashMap<>();
         try (Connection c = ds.getConnection(); Statement st = c.createStatement(); ResultSet rs = st.executeQuery(sql)) {
             while (rs.next()) {
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("id", rs.getLong("id"));
-                m.put("name", rs.getString("name"));
-                m.put("operator", nz(rs.getString("operator")));
-                m.put("city", nz(rs.getString("city")));
-                m.put("address", nz(rs.getString("address")));
-                m.put("lat", rs.getObject("lat"));
-                m.put("lon", rs.getObject("lon"));
-                m.put("connectors", nz(rs.getString("connectors")));
-                m.put("speed", nz(rs.getString("speed")));
-                m.put("communityStatus", rs.getString("community_status"));
-                m.put("comments", rs.getInt("comments"));
-                m.put("chargers", rs.getInt("chargers"));
-                out.add(m);
+                long cluster = rs.getLong("cluster");
+                boolean isCanon = rs.getLong("id") == cluster;
+                Map<String, Object> m = byCluster.get(cluster);
+                if (m == null || isCanon) {
+                    if (m == null) { m = new LinkedHashMap<>(); byCluster.put(cluster, m); }
+                    if (isCanon || m.get("_canon") == null) {
+                        m.put("id", cluster);
+                        m.put("name", rs.getString("name"));
+                        m.put("operator", nz(rs.getString("operator")));
+                        m.put("city", nz(rs.getString("city")));
+                        m.put("address", nz(rs.getString("address")));
+                        m.put("lat", rs.getObject("lat"));
+                        m.put("lon", rs.getObject("lon"));
+                        m.put("communityStatus", rs.getString("community_status"));
+                        if (isCanon) m.put("_canon", Boolean.TRUE);
+                    }
+                }
+                for (String tok : splitConnectors(rs.getString("connectors")))
+                    connByCluster.computeIfAbsent(cluster, k -> new LinkedHashSet<>()).add(tok);
+                if (rs.getString("source") != null)
+                    srcByCluster.computeIfAbsent(cluster, k -> new LinkedHashSet<>()).add(rs.getString("source"));
+                int[] s = sumByCluster.computeIfAbsent(cluster, k -> new int[2]);
+                s[0] += rs.getInt("comments"); s[1] += rs.getInt("chargers");
+                speedByCluster.merge(cluster, nz(rs.getString("speed")), StationService::betterSpeed);
             }
         } catch (Exception e) { throw new RuntimeException("Error listando estaciones", e); }
+
+        List<Map<String, Object>> out = new ArrayList<>(byCluster.size());
+        for (Map.Entry<Long, Map<String, Object>> e : byCluster.entrySet()) {
+            long cl = e.getKey(); Map<String, Object> m = e.getValue();
+            m.remove("_canon");
+            m.put("connectors", String.join(", ", connByCluster.getOrDefault(cl, Set.of())));
+            m.put("speed", nz(speedByCluster.get(cl)));
+            m.put("sources", new ArrayList<>(srcByCluster.getOrDefault(cl, Set.of())));
+            int[] s = sumByCluster.getOrDefault(cl, new int[2]);
+            m.put("comments", s[0]);
+            m.put("chargers", s[1]);
+            out.add(m);
+        }
         return out;
+    }
+
+    /** Trocea el texto de conectores en estándares normalizados y sin repetir. */
+    private static Set<String> splitConnectors(String connectors) {
+        Set<String> out = new LinkedHashSet<>();
+        if (connectors == null || connectors.isBlank()) return out;
+        for (String t : connectors.split("[,/;]| y ")) {
+            String label = t.trim().replaceAll("\\s+", " ");
+            if (label.length() >= 2) out.add(normalizeConnector(label));
+        }
+        return out;
+    }
+    private static final List<String> SPEED_ORDER = List.of("Lenta", "Semi-rápida", "Rápida");
+    /** Devuelve la velocidad más alta entre dos (Rápida > Semi-rápida > Lenta). */
+    private static String betterSpeed(String a, String b) {
+        return SPEED_ORDER.indexOf(a) >= SPEED_ORDER.indexOf(b) ? a : b;
     }
 
     // ── Totales del catálogo (para saber qué cargamos) ──
@@ -456,14 +597,17 @@ public class StationService {
                     else out.put("communityStatus", null);
                 }
             }
-            // cargadores con su último estado
+            // cargadores con su último estado — de TODO el grupo (canónico + miembros)
             List<Map<String, Object>> chargers = new ArrayList<>();
             try (PreparedStatement ps = c.prepareStatement("""
                     SELECT ch.id, ch.label, ch.connector_type, ch.power_kw,
                       (SELECT r.status FROM status_report r WHERE r.charger_id = ch.id ORDER BY r.created_at DESC LIMIT 1) AS status,
                       (SELECT r.created_at FROM status_report r WHERE r.charger_id = ch.id ORDER BY r.created_at DESC LIMIT 1) AS status_at
-                    FROM charger ch WHERE ch.station_id = ? ORDER BY ch.label""")) {
+                    FROM charger ch JOIN station s ON s.id = ch.station_id
+                    WHERE s.id = ? OR s.canonical_id = ?
+                    ORDER BY ch.connector_type, ch.power_kw DESC NULLS LAST, ch.label""")) {
                 ps.setLong(1, id);
+                ps.setLong(2, id);
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
                         Map<String, Object> ch = new LinkedHashMap<>();
@@ -478,6 +622,23 @@ public class StationService {
                 }
             }
             out.put("chargers", chargers);
+
+            // Fuentes y conectores consolidados del grupo (canónico + miembros).
+            Set<String> sources = new LinkedHashSet<>();
+            Set<String> allConn = new LinkedHashSet<>();
+            try (PreparedStatement ps = c.prepareStatement(
+                    "SELECT source, connectors FROM station WHERE id = ? OR canonical_id = ?")) {
+                ps.setLong(1, id);
+                ps.setLong(2, id);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        if (rs.getString("source") != null) sources.add(rs.getString("source"));
+                        allConn.addAll(splitConnectors(rs.getString("connectors")));
+                    }
+                }
+            }
+            out.put("sources", new ArrayList<>(sources));
+            if (!allConn.isEmpty()) out.put("connectors", String.join(", ", allConn));
         } catch (Exception e) { throw new RuntimeException("Error consultando estación", e); }
         return out;
     }

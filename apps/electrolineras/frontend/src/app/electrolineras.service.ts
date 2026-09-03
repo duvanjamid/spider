@@ -7,6 +7,7 @@ export interface Station {
   id: number; name: string; operator: string; city: string; address: string;
   lat: number; lon: number; connectors: string; speed: string;
   communityStatus: string | null; comments: number; chargers: number;
+  sources?: string[];
 }
 export interface Charger {
   id: number; label: string; connectorType: string; powerKw: number | null;
@@ -17,6 +18,7 @@ export interface StationFull {
   lat: number; lon: number; connectors: string; speed: string; hours: string;
   website: string | null; source: string; updatedAt: string;
   communityStatus: string | null; communityStatusAt?: string; chargers: Charger[];
+  sources?: string[];
 }
 export interface Comment { by: string; body: string; at: string; }
 export interface Report { status: string; by: string; charger: string; at: string; }
