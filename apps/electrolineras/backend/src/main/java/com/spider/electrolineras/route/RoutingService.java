@@ -59,7 +59,7 @@ public class RoutingService {
     public List<Map<String, Object>> routes(double fromLat, double fromLon, double toLat, double toLon) {
         String url = "https://router.project-osrm.org/route/v1/driving/"
                 + fromLon + "," + fromLat + ";" + toLon + "," + toLat
-                + "?overview=full&geometries=geojson&alternatives=3";
+                + "?overview=full&geometries=geojson&alternatives=3&steps=true";
         List<Map<String, Object>> out = new ArrayList<>();
         try {
             HttpRequest req = HttpRequest.newBuilder(URI.create(url))
@@ -78,9 +78,33 @@ public class RoutingService {
                 m.put("distanceKm", Math.round(r.path("distance").asDouble() / 100.0) / 10.0);
                 m.put("durationMin", Math.round(r.path("duration").asDouble() / 60.0));
                 m.put("coordinates", coords);
+                m.put("via", viaSummary(r));   // vías principales por las que pasa
                 out.add(m);
             }
         } catch (Exception e) { log.warn("Routes falló: {}", e.getMessage()); }
         return out;
+    }
+
+    /** Resume "por dónde pasa" la ruta a partir de las vías más significativas. */
+    private static String viaSummary(JsonNode r) {
+        java.util.LinkedHashSet<String> roads = new java.util.LinkedHashSet<>();
+        for (JsonNode leg : r.path("legs")) {
+            String s = leg.path("summary").asText("");
+            if (!s.isBlank()) for (String road : s.split(",")) {
+                String t = road.trim();
+                if (!t.isEmpty()) roads.add(t);
+            }
+        }
+        // Si no hay summary, intenta con los nombres de vía de los steps.
+        if (roads.isEmpty()) {
+            for (JsonNode leg : r.path("legs"))
+                for (JsonNode st : leg.path("steps")) {
+                    String nm = st.path("name").asText("");
+                    if (!nm.isBlank()) roads.add(nm.trim());
+                    if (roads.size() >= 3) break;
+                }
+        }
+        java.util.List<String> top = new java.util.ArrayList<>(roads);
+        return String.join(" · ", top.subList(0, Math.min(3, top.size())));
     }
 }

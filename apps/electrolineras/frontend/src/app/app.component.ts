@@ -15,6 +15,7 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
 interface RouteOpt {
   distanceKm: number;
   durationMin: number;
+  via: string;                     // vías principales por las que pasa
   coordinates: [number, number][];
   stations: Station[];              // estaciones cercanas a esta ruta (ordenadas)
   routePos: Map<number, number>;    // id → km sobre la ruta
@@ -153,13 +154,16 @@ interface RouteOpt {
     .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: .82rem; color: var(--muted); cursor: pointer; }
     .trow.incompat { opacity: .5; }
     /* Opciones de ruta alternativas */
-    .routeopts { display: flex; gap: 8px; overflow-x: auto; margin: 0 0 12px; padding-bottom: 2px; }
-    .ropt { flex: 0 0 auto; min-width: 130px; text-align: left; display: flex; flex-direction: column; gap: 3px; cursor: pointer;
-            padding: 10px 12px; border-radius: 14px; border: 1px solid var(--border); background: var(--panel); color: var(--fg); transition: all .15s ease; }
+    .routeopts { display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; }
+    .ropt { width: 100%; text-align: left; display: flex; flex-direction: column; gap: 4px; cursor: pointer;
+            padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border); background: var(--panel); color: var(--fg); transition: all .15s ease; }
     .ropt.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); box-shadow: var(--glow); }
-    .ropt .rtitle { font-weight: 800; font-size: .9rem; }
-    .ropt .rmeta { color: var(--muted); font-size: .78rem; }
-    .ropt .rtags { display: flex; gap: 6px; margin-top: 3px; flex-wrap: wrap; }
+    .ropt .rhead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+    .ropt .rtitle { font-weight: 800; font-size: .95rem; }
+    .ropt .rmeta { color: var(--muted); font-size: .82rem; white-space: nowrap; }
+    .ropt .rvia { color: var(--muted); font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ropt .rvia i { color: var(--accent); font-size: .72rem; margin-right: 4px; }
+    .ropt .rtags { display: flex; gap: 6px; margin-top: 2px; flex-wrap: wrap; }
     .ropt .rt { font-size: .68rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: var(--panel-2); color: var(--muted); display: inline-flex; align-items: center; gap: 4px; }
     .ropt .rt.ok { color: #16a34a; background: color-mix(in srgb, #22c55e 15%, transparent); }
     .ropt .rt.bad { color: #ef4444; background: color-mix(in srgb, #ef4444 14%, transparent); }
@@ -177,6 +181,9 @@ interface RouteOpt {
                display: flex; align-items: center; gap: 8px; font-size: .82rem; font-weight: 600; color: var(--fg);
                background: var(--glass); backdrop-filter: blur(12px); border: 1px solid var(--border); border-radius: 999px; padding: 8px 14px; box-shadow: var(--shadow); }
     .maphint i { color: var(--accent); }
+    /* Controles sobre el mapa cuando hay una ruta (volver / quitar) */
+    .mapctl { position: absolute; top: 64px; left: 12px; z-index: 20; display: flex; gap: 8px; }
+    .mapctl button { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--border); background: var(--glass); backdrop-filter: blur(12px); color: var(--fg); cursor: pointer; font-size: 1rem; box-shadow: var(--shadow); }
 
     /* Info screen */
     .stat { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 16px; background: var(--panel); margin-bottom: 10px; }
@@ -247,7 +254,11 @@ interface RouteOpt {
             <input [(ngModel)]="query" (ngModelChange)="onFiltersChange()" placeholder="Filtrar lo visible…" />
             <button [class.on]="!!userPos()" (click)="locate()" title="Mi ubicación"><i class="fa-solid fa-location-crosshairs"></i></button>
           </div>
-          <div class="maphint" *ngIf="mapZoomLow()"><i class="fa-solid fa-magnifying-glass-plus"></i> Acércate para ver las estaciones del área</div>
+          <div class="mapctl" *ngIf="tripInfo()">
+            <button (click)="setTab('trip')" title="Volver al viaje"><i class="fa-solid fa-arrow-left"></i></button>
+            <button (click)="clearTripAndStay()" title="Quitar ruta"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <div class="maphint" *ngIf="mapZoomLow() && !tripInfo()"><i class="fa-solid fa-magnifying-glass-plus"></i> Acércate para ver las estaciones del área</div>
           <div class="maphint load" *ngIf="!mapZoomLow() && mapLoading()"><i class="fa-solid fa-spinner fa-spin"></i> Cargando estaciones…</div>
           <div #mapEl class="map"></div>
         </section>
@@ -332,18 +343,22 @@ interface RouteOpt {
                 </div>
               </div>
 
-              <!-- Opciones de ruta (alternativas) -->
-              <div class="routeopts" *ngIf="routeOptions().length > 1">
+              <!-- Opciones de ruta (estilo Waze/Maps) -->
+              <h3 class="sec" *ngIf="routeOptions().length" style="margin:2px 0 8px">
+                {{ routeOptions().length > 1 ? routeOptions().length + ' rutas — elige una' : 'Tu ruta' }}
+              </h3>
+              <div class="routeopts" *ngIf="routeOptions().length">
                 <button class="ropt" *ngFor="let o of routeOptions(); let i = index" [class.on]="activeIdx() === i" (click)="selectRoute(i)">
-                  <span class="rtitle">Ruta {{ i + 1 }}</span>
-                  <span class="rmeta">{{ o.distanceKm }} km · {{ fmtDur(o.durationMin) }}</span>
-                  <span class="rtags">
+                  <div class="rhead"><span class="rtitle">Ruta {{ i + 1 }}</span><span class="rmeta">{{ o.distanceKm }} km · {{ fmtDur(o.durationMin) }}</span></div>
+                  <div class="rvia" *ngIf="o.via"><i class="fa-solid fa-road"></i> {{ o.via }}</div>
+                  <div class="rtags">
                     <span class="rt" [class.ok]="o.reachable" [class.bad]="!o.reachable">
                       <i class="fa-solid" [class.fa-circle-check]="o.reachable" [class.fa-circle-exclamation]="!o.reachable"></i>
                       {{ o.reachable ? 'Llegas' : (o.reachableWithAdapter ? 'Con adaptador' : 'No llegas') }}
                     </span>
-                    <span class="rt" *ngIf="tripConnectors().length"><i class="fa-solid fa-plug"></i> {{ o.compatible }}</span>
-                  </span>
+                    <span class="rt" *ngIf="tripConnectors().length"><i class="fa-solid fa-plug"></i> {{ o.compatible }} compat.</span>
+                    <span class="rt" *ngIf="tripAutonomy && o.stops.size"><i class="fa-solid fa-bolt"></i> {{ o.stops.size }} parada(s)</span>
+                  </div>
                 </button>
               </div>
 
@@ -745,12 +760,31 @@ export class AppComponent implements OnInit, AfterViewInit {
     this.tab.set(t);
     if (t === 'map') setTimeout(() => {
       if (!this.map) return;
-      this.map.invalidateSize();  // el contenedor ya es visible: recalcula tamaño
-      // Si hay una ruta activa, encuadra a la RUTA (antes el fitBounds corría con
-      // el mapa oculto y daba un zoom incorrecto). Si no, carga por área visible.
-      if (this.tripBounds) { this.map.fitBounds(this.tripBounds); }
-      else { this.updateZoomHint(); this.loadViewport(); }
+      // Si hay una ruta activa, encuadra a la RUTA; si no, carga por área visible.
+      if (this.tripBounds && this.tripBounds.isValid()) this.focusRoute();
+      else { this.map.invalidateSize(); this.updateZoomHint(); this.loadViewport(); }
     }, 90);
+  }
+  /** Encuadra el mapa a la ruta de forma robusta (el contenedor recién visible
+   *  puede tener tamaño 0 → fitBounds daría zoom de "todo el planeta"). */
+  private focusRoute(): void {
+    if (!this.map || !this.tripBounds || !this.tripBounds.isValid()) return;
+    const fit = () => {
+      if (!this.map || !this.tripBounds) return;
+      this.map.invalidateSize(true);
+      this.map.fitBounds(this.tripBounds, { padding: [30, 30], maxZoom: 13 });
+    };
+    fit();
+    // Segundo pase tras asentar el tamaño; si aún quedó alejado, forzamos vista.
+    setTimeout(() => {
+      fit();
+      if (this.map && this.map.getZoom() < 5) this.map.setView(this.tripBounds!.getCenter(), 7);
+    }, 240);
+  }
+  /** Quita la ruta y deja el mapa en modo normal (carga por área visible). */
+  clearTripAndStay(): void {
+    this.clearTrip();
+    if (this.map) { this.map.invalidateSize(); this.updateZoomHint(); this.loadViewport(); }
   }
   clearFilters(): void { this.cityFilter = ''; this.connectorFilter = ''; this.speedFilter = ''; this.query = ''; this.onFiltersChange(); this.drawer.set(false); }
   clearCache(): void {
@@ -972,7 +1006,7 @@ export class AppComponent implements OnInit, AfterViewInit {
     const withAny = this.reachOf(near, A, total);
     const noRange = !A || A <= 0;
     return {
-      distanceKm: r.distanceKm, durationMin: r.durationMin, coordinates: coords,
+      distanceKm: r.distanceKm, durationMin: r.durationMin, via: (r as any).via || '', coordinates: coords,
       stations: near.map((n) => n.s), routePos: rp, stops: withCompat.stops,
       compatible: compat.length, total: near.length, reachKm: withCompat.reach,
       reachable: noRange || withCompat.reach >= total - 0.5,
@@ -992,7 +1026,17 @@ export class AppComponent implements OnInit, AfterViewInit {
     }
     return { reach: Math.min(reach, total), stops };
   }
-  /** Dibuja la ruta activa: verde hasta donde alcanzas, rojo a partir de ahí. */
+  // Paleta para los TRAMOS entre paradas de carga (se cicla).
+  private static readonly LEG_COLORS = ['#22c55e', '#3b82f6', '#8b5cf6', '#14b8a6', '#f59e0b', '#ec4899'];
+  /** Corta las coordenadas entre dos distancias acumuladas (tramo conectado). */
+  private sliceByDist(coords: [number, number][], cum: number[], a: number, b: number): [number, number][] {
+    let s = 0, e = coords.length - 1;
+    for (let i = 0; i < cum.length; i++) { if (cum[i] <= a) s = i; else break; }
+    for (let i = cum.length - 1; i >= 0; i--) { if (cum[i] >= b) e = i; else break; }
+    return coords.slice(s, Math.max(e + 1, s + 2));
+  }
+  /** Dibuja la ruta activa: un color por TRAMO (hasta cada parada) y rojo lo que
+   *  no alcanzas. Marca origen/destino, paradas de carga y el límite de autonomía. */
   private drawActive(): void {
     const opt = this.routeOptions()[this.activeIdx()];
     if (!opt || !this.map) return;
@@ -1001,20 +1045,41 @@ export class AppComponent implements OnInit, AfterViewInit {
     const cum: number[] = [0];
     for (let i = 1; i < coords.length; i++) cum[i] = cum[i - 1] + this.distanceKm(coords[i - 1], coords[i]);
     const total = cum[cum.length - 1];
-    const reach = (this.tripAutonomy && this.tripAutonomy > 0) ? Math.min(opt.reachKm, total) : total;
-    let split = coords.length - 1;
-    for (let k = 0; k < cum.length; k++) { if (cum[k] >= reach) { split = k; break; } }
-    const green = coords.slice(0, split + 1), red = coords.slice(split);
-    if (green.length > 1) L.polyline(green as L.LatLngExpression[], { color: '#22c55e', weight: 5, opacity: 0.9 }).addTo(this.routeLayer);
-    if (red.length > 1 && reach < total - 0.5) L.polyline(red as L.LatLngExpression[], { color: '#ef4444', weight: 5, opacity: 0.8, dashArray: '8 8' }).addTo(this.routeLayer);
+    const hasRange = !!(this.tripAutonomy && this.tripAutonomy > 0);
+    const reach = hasRange ? Math.min(opt.reachKm, total) : total;
+
+    // Posiciones de las paradas de carga (dentro del alcance), ordenadas.
+    const stopPos = [...opt.stops].map((id) => opt.routePos.get(id) ?? 0)
+      .filter((p) => p > 0.5 && p < reach - 0.5).sort((a, b) => a - b);
+    const bounds = [0, ...stopPos, reach];
+
+    // Un color por tramo entre paradas.
+    for (let i = 0; i < bounds.length - 1; i++) {
+      const seg = this.sliceByDist(coords, cum, bounds[i], bounds[i + 1]);
+      if (seg.length > 1) L.polyline(seg as L.LatLngExpression[], { color: AppComponent.LEG_COLORS[i % AppComponent.LEG_COLORS.length], weight: 5, opacity: 0.9 }).addTo(this.routeLayer);
+    }
+    // Tramo que NO alcanzas → rojo punteado.
+    if (reach < total - 0.5) {
+      const tail = this.sliceByDist(coords, cum, reach, total);
+      if (tail.length > 1) L.polyline(tail as L.LatLngExpression[], { color: '#ef4444', weight: 5, opacity: 0.85, dashArray: '8 8' }).addTo(this.routeLayer);
+    }
+
     const mk = (cls: string) => L.divIcon({ className: '', html: `<div class="od ${cls}"></div>`, iconSize: [16, 16], iconAnchor: [8, 8] });
     if (this.tripOD) { L.marker(this.tripOD.o, { icon: mk('o') }).addTo(this.routeLayer); L.marker(this.tripOD.d, { icon: mk('d') }).addTo(this.routeLayer); }
+    // Marcadores de parada de carga.
+    for (const p of stopPos) {
+      let idx = 0; for (let k = 0; k < cum.length; k++) { if (cum[k] <= p) idx = k; else break; }
+      const icon = L.divIcon({ className: '', html: '<div class="stopmk"><i class="fa-solid fa-bolt"></i></div>', iconSize: [24, 24], iconAnchor: [12, 12] });
+      L.marker(coords[idx], { icon, zIndexOffset: 400 }).addTo(this.routeLayer);
+    }
+    // Límite de autonomía (si no llegas).
     if (reach < total - 0.5) {
+      let split = coords.length - 1; for (let k = 0; k < cum.length; k++) { if (cum[k] >= reach) { split = k; break; } }
       const icon = L.divIcon({ className: '', html: '<div class="reachmk"><i class="fa-solid fa-battery-quarter"></i></div>', iconSize: [26, 26], iconAnchor: [13, 13] });
       L.marker(coords[split], { icon, zIndexOffset: 500 }).addTo(this.routeLayer);
     }
     this.tripBounds = L.latLngBounds(coords as L.LatLngExpression[]).pad(0.15);
-    if (this.tab() === 'map') { this.map.invalidateSize(); this.map.fitBounds(this.tripBounds); }
+    if (this.tab() === 'map') this.focusRoute();
   }
   activeRoute(): RouteOpt | null { return this.routeOptions()[this.activeIdx()] ?? null; }
 

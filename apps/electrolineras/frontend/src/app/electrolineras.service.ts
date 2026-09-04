@@ -23,7 +23,7 @@ export interface StationFull {
 export interface Comment { by: string; body: string; at: string; }
 export interface Report { status: string; by: string; charger: string; at: string; }
 export interface Place { name: string; lat: number; lon: number; }
-export interface RouteResult { distanceKm: number; durationMin: number; coordinates: [number, number][]; }
+export interface RouteResult { distanceKm: number; durationMin: number; coordinates: [number, number][]; via?: string; }
 
 @Injectable({ providedIn: 'root' })
 export class ElectrolinerasService {
