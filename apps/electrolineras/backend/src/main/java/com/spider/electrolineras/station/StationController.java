@@ -24,6 +24,7 @@ public final class StationController {
     public record ReportInput(Long chargerId, String status) {}
     public record CommentInput(String body) {}
     public record ChargerInput(String label, String connectorType, Double powerKw) {}
+    public record RateInput(Integer stars) {}
     public record VerifyInput(Boolean verified) {}
     public record SuggestInput(String kind, String value, String detail) {}
     public record ResolveInput(Long stationId, String kind, String value, Boolean approve) {}
@@ -85,6 +86,14 @@ public final class StationController {
 
         app.get("/stations/{id}/reports", ctx ->
                 ctx.json(reports.recent(Long.parseLong(ctx.pathParam("id")), 20)));
+
+        app.post("/stations/{id}/rate", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            RateInput in = ctx.body(RateInput.class);
+            if (in == null || in.stars() == null) { ctx.status(400).json(Map.of("error", "stars requerido")); return; }
+            stations.rate(user, Long.parseLong(ctx.pathParam("id")), in.stars());
+            ctx.status(201).json(Map.of("ok", true));
+        });
 
         app.get("/meta", ctx -> {
             var m = new java.util.LinkedHashMap<String, Object>(stations.stats());

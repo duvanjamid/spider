@@ -175,6 +175,17 @@ public class StationService {
             }
         } catch (Exception e) { log.debug("readCache {}: {}", key, e.getMessage()); return null; }
     }
+    /** Registra/actualiza la calificación (1–5) de un usuario para una estación. */
+    public void rate(String email, long stationId, int stars) {
+        int s = Math.max(1, Math.min(5, stars));
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement("""
+                INSERT INTO station_rating (station_id, owner_email, stars) VALUES (?, ?, ?)
+                ON CONFLICT (station_id, owner_email) DO UPDATE SET stars = EXCLUDED.stars, created_at = now()""")) {
+            ps.setLong(1, stationId); ps.setString(2, email); ps.setInt(3, s);
+            ps.executeUpdate();
+        } catch (Exception e) { throw new RuntimeException("No se pudo calificar", e); }
+    }
+
     /** Vacía la caché de APIs; el próximo sync vuelve a consultar las fuentes. */
     public int clearCache() {
         try (Connection c = ds.getConnection(); Statement st = c.createStatement()) {
@@ -770,7 +781,9 @@ public class StationService {
                   (SELECT r.status FROM status_report r WHERE r.station_id = s.id AND r.charger_id IS NULL
                      ORDER BY r.created_at DESC LIMIT 1) AS community_status,
                   (SELECT count(*) FROM station_comment k WHERE k.station_id = s.id) AS comments,
-                  (SELECT count(*) FROM charger ch WHERE ch.station_id = s.id) AS chargers
+                  (SELECT count(*) FROM charger ch WHERE ch.station_id = s.id) AS chargers,
+                  (SELECT count(*) FROM station_rating rt WHERE rt.station_id = s.id) AS rate_n,
+                  (SELECT coalesce(sum(rt.stars), 0) FROM station_rating rt WHERE rt.station_id = s.id) AS rate_sum
                 FROM station s
                 WHERE s.lat IS NOT NULL AND s.lon IS NOT NULL
                 """);
@@ -780,7 +793,7 @@ public class StationService {
         Map<Long, Map<String, Object>> byCluster = new LinkedHashMap<>();
         Map<Long, Set<String>> connByCluster = new LinkedHashMap<>();
         Map<Long, Set<String>> srcByCluster = new LinkedHashMap<>();
-        Map<Long, int[]> sumByCluster = new LinkedHashMap<>();   // [comments, chargers]
+        Map<Long, int[]> sumByCluster = new LinkedHashMap<>();   // [comments, chargers, rateN, rateSum]
         Map<Long, String> speedByCluster = new LinkedHashMap<>();
         Map<Long, Boolean> verByCluster = new LinkedHashMap<>();
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql.toString())) {
@@ -811,8 +824,9 @@ public class StationService {
                     connByCluster.computeIfAbsent(cluster, k -> new LinkedHashSet<>()).add(tok);
                 if (rs.getString("source") != null)
                     srcByCluster.computeIfAbsent(cluster, k -> new LinkedHashSet<>()).add(rs.getString("source"));
-                int[] s = sumByCluster.computeIfAbsent(cluster, k -> new int[2]);
+                int[] s = sumByCluster.computeIfAbsent(cluster, k -> new int[4]);
                 s[0] += rs.getInt("comments"); s[1] += rs.getInt("chargers");
+                s[2] += rs.getInt("rate_n"); s[3] += rs.getInt("rate_sum");
                 speedByCluster.merge(cluster, nz(rs.getString("speed")), StationService::betterSpeed);
                 verByCluster.merge(cluster, rs.getBoolean("verified"), (a, b) -> a || b);
             }
@@ -825,9 +839,11 @@ public class StationService {
             m.put("connectors", String.join(", ", connByCluster.getOrDefault(cl, Set.of())));
             m.put("speed", nz(speedByCluster.get(cl)));
             m.put("sources", new ArrayList<>(srcByCluster.getOrDefault(cl, Set.of())));
-            int[] s = sumByCluster.getOrDefault(cl, new int[2]);
+            int[] s = sumByCluster.getOrDefault(cl, new int[4]);
             m.put("comments", s[0]);
             m.put("chargers", s[1]);
+            m.put("ratings", s[2]);
+            m.put("rating", s[2] > 0 ? Math.round((double) s[3] / s[2] * 10.0) / 10.0 : 0);
             m.put("verified", verByCluster.getOrDefault(cl, false));
             out.add(m);
         }
@@ -949,6 +965,20 @@ public class StationService {
             }
             out.put("sources", new ArrayList<>(sources));
             if (!allConn.isEmpty()) out.put("connectors", String.join(", ", allConn));
+
+            // Calificación promedio del grupo (estrellas 1–5).
+            try (PreparedStatement ps = c.prepareStatement("""
+                    SELECT count(*) AS n, coalesce(avg(rt.stars), 0) AS avg
+                    FROM station_rating rt JOIN station s ON s.id = rt.station_id
+                    WHERE s.id = ? OR s.canonical_id = ?""")) {
+                ps.setLong(1, id); ps.setLong(2, id);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        out.put("ratings", rs.getInt("n"));
+                        out.put("rating", Math.round(rs.getDouble("avg") * 10.0) / 10.0);
+                    }
+                }
+            }
         } catch (Exception e) { throw new RuntimeException("Error consultando estación", e); }
         return out;
     }

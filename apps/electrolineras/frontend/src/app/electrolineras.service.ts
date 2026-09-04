@@ -7,7 +7,7 @@ export interface Station {
   id: number; name: string; operator: string; city: string; address: string;
   lat: number; lon: number; connectors: string; speed: string;
   communityStatus: string | null; comments: number; chargers: number;
-  sources?: string[]; verified?: boolean;
+  sources?: string[]; verified?: boolean; rating?: number; ratings?: number;
 }
 export interface Charger {
   id: number; label: string; connectorType: string; powerKw: number | null;
@@ -18,7 +18,7 @@ export interface StationFull {
   lat: number; lon: number; connectors: string; speed: string; hours: string;
   website: string | null; source: string; updatedAt: string;
   communityStatus: string | null; communityStatusAt?: string; chargers: Charger[];
-  sources?: string[]; verified?: boolean;
+  sources?: string[]; verified?: boolean; rating?: number; ratings?: number;
 }
 export interface Suggestion { stationId: number; stationName: string; stationCity: string; kind: string; value: string; votes: number; needed: number; detail: string | null; lastAt: string; }
 export interface Comment { by: string; body: string; at: string; }
@@ -49,6 +49,7 @@ export class ElectrolinerasService {
     return this.http.post(`${this.base}/stations/${id}/report`, { chargerId, status }, this.opts);
   }
   reports(id: number): Observable<Report[]> { return this.http.get<Report[]>(`${this.base}/stations/${id}/reports`, this.opts); }
+  rate(id: number, stars: number): Observable<unknown> { return this.http.post(`${this.base}/stations/${id}/rate`, { stars }, this.opts); }
   health(): Observable<{ env: string }> { return this.http.get<{ env: string }>(`${this.base}/health`, this.opts); }
   me(): Observable<{ email: string; admin: boolean; suggestionsPending: number }> { return this.http.get<{ email: string; admin: boolean; suggestionsPending: number }>(`${this.base}/me`, this.opts); }
   // Calidad de datos

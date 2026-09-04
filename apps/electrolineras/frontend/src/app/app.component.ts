@@ -31,7 +31,7 @@ interface RouteOpt {
 interface CarProfile {
   brand: string;
   autonomyKm: number | null;
-  cyclePct: number | null;   // ciclo de carga: % de batería que usas por tramo
+  cycle: string;             // ciclo de homologación: WLTP | CLTC | NEDC | EPA | Real
   connectors: string[];
   fastCharge: boolean;
 }
@@ -270,6 +270,22 @@ interface CarProfile {
     /* Formulario de perfil del vehículo */
     .pform label { display: block; font-size: .8rem; font-weight: 700; margin: 8px 0 4px; }
     .pin-in { width: 100%; padding: 11px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel-2); color: var(--fg); font-size: 1rem; margin-bottom: 6px; }
+    /* Estrellas */
+    .stars i { color: #f59e0b; font-size: .82rem; }
+    .stars i.dim { color: color-mix(in srgb, var(--muted) 45%, transparent); }
+    .crate { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+    .crate small { color: var(--muted); font-size: .76rem; }
+    .ratebox { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--panel-2); margin-bottom: 10px; font-size: .86rem; }
+    .stars.pick i { font-size: 1.5rem; cursor: pointer; padding: 0 2px; }
+    /* Perfil (drawer derecho) */
+    .pcard { display: inline-flex; align-items: center; gap: 8px; font-size: .78rem; font-weight: 800; color: var(--accent);
+             background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); padding: 6px 12px; border-radius: 999px; }
+    .psection { border-top: 1px solid var(--border); padding-top: 12px; }
+    .psection.admin { background: color-mix(in srgb, var(--accent) 5%, transparent); margin: 4px -16px -16px; padding: 14px 16px; border-radius: 0; }
+    .ptitle { font-weight: 800; font-size: .95rem; display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .ptitle i { color: var(--accent); }
+    :host ::ng-deep .w .p-button, :host ::ng-deep .w.p-button { width: 100%; }
+    :host ::ng-deep .mb { margin-bottom: 8px; display: block; }
   `],
   template: `
     <div class="app">
@@ -325,11 +341,15 @@ interface CarProfile {
                 <div class="grow">
                   <div class="nm">{{ s.name }}</div>
                   <div class="meta">{{ s.operator || 'Operador' }} · {{ s.city }}</div>
+                  <div class="crate" *ngIf="s.ratings">
+                    <span class="stars"><i class="fa-solid fa-star" *ngFor="let i of starArray" [class.dim]="!starOn(s.rating, i)"></i></span>
+                    <small>{{ s.rating }} · {{ s.ratings }}</small>
+                  </div>
                   <div class="chips">
                     <span class="chip spd" *ngIf="s.speed" [style.--sc]="speedColor(s.speed)"><i class="fa-solid fa-gauge-high"></i> {{ s.speed }}</span>
                     <span class="cchip" *ngFor="let ct of connList(s.connectors)" [style.--cc]="connColor(ct)">{{ ct }}</span>
                   </div>
-                  <div class="sbadges" *ngIf="s.sources?.length">
+                  <div class="sbadges" *ngIf="isAdmin() && s.sources?.length">
                     <span class="sbadge" *ngFor="let src of s.sources" [style.--sb]="sourceColor(src)">{{ sourceShort(src) }}</span>
                   </div>
                 </div>
@@ -349,12 +369,14 @@ interface CarProfile {
             <div class="s-head"><h1>Planear viaje</h1><p>Traza tu ruta y encuentra dónde cargar en el camino.</p></div>
             <div class="field"><i class="fa-solid fa-location-dot" style="color:#3b82f6"></i><input [(ngModel)]="tripOrigin" placeholder="Origen (o «mi ubicación»)" /></div>
             <div class="field"><i class="fa-solid fa-flag-checkered" style="color:var(--accent)"></i><input [(ngModel)]="tripDest" placeholder="Destino: ciudad o dirección" (keyup.enter)="plan()" /></div>
-            <div style="display:flex;gap:8px">
-              <div class="field" style="flex:1"><i class="fa-solid fa-battery-three-quarters muted"></i><input type="number" [(ngModel)]="tripAutonomy" placeholder="Autonomía (km)" /></div>
-              <div class="field" style="flex:1"><i class="fa-solid fa-gauge muted"></i><input type="number" [(ngModel)]="tripCycle" placeholder="Ciclo carga (%)" /></div>
+            <div class="field"><i class="fa-solid fa-battery-three-quarters muted"></i><input type="number" [(ngModel)]="tripAutonomy" placeholder="Autonomía homologada (km)" /></div>
+            <div class="field"><i class="fa-solid fa-certificate muted"></i>
+              <select [(ngModel)]="tripCycle" style="flex:1;border:none;background:none;color:var(--fg);font-size:1rem;outline:none">
+                <option *ngFor="let c of CYCLES" [value]="c.id">Ciclo {{ c.label }} · efectividad {{ cyclePct(c.id) }}%</option>
+              </select>
             </div>
-            <p class="muted" *ngIf="effectiveRange() > 0" style="font-size:.78rem;margin:-2px 2px 8px">
-              Rango efectivo: <b>{{ effectiveRange() }} km</b> por carga{{ hasProfile() ? ' · tomado de tu vehículo' : '' }}.
+            <p class="muted" *ngIf="effectiveRange() > 0" style="font-size:.78rem;margin:-2px 2px 10px">
+              Rango real estimado: <b>{{ effectiveRange() }} km</b> ({{ cyclePct(tripCycle) }}% de {{ tripAutonomy }} km){{ hasProfile() ? ' · de tu vehículo' : '' }}.
             </p>
 
             <div class="connpick">
@@ -513,16 +535,6 @@ interface CarProfile {
             </select></div>
           <p-button label="Limpiar filtros" [outlined]="true" icon="fa-solid fa-eraser" (onClick)="clearFilters()" />
           <p class="muted" style="font-size:.82rem">Tema claro/oscuro automático según tu dispositivo.</p>
-
-          <div class="adminbox" *ngIf="isAdmin()">
-            <label><i class="fa-solid fa-user-shield" style="color:var(--accent)"></i> Administración</label>
-            <p-button [label]="'Sugerencias pendientes' + (pendingCount() ? ' (' + pendingCount() + ')' : '')" [outlined]="true"
-                      icon="fa-solid fa-inbox" (onClick)="openReview()" />
-            <p class="muted" style="font-size:.8rem;margin:10px 0 8px">Vacía la caché de las fuentes y vuelve a consultarlas ahora.</p>
-            <p-button label="Limpiar caché" [outlined]="true" icon="fa-solid fa-broom" severity="danger"
-                      [loading]="clearingCache()" (onClick)="clearCache()" />
-            <p class="muted" *ngIf="cacheMsg()" style="font-size:.82rem;margin-top:8px">{{ cacheMsg() }}</p>
-          </div>
         </div>
       </aside>
 
@@ -541,7 +553,8 @@ interface CarProfile {
           <div class="d-head">
             <span class="dot" [style.background]="statusColor(d.communityStatus)" style="width:16px;height:16px;border-radius:50%;margin-top:5px"></span>
             <div class="grow"><h2>{{ d.name }} <span class="vbadge" *ngIf="d.verified" title="Datos verificados"><i class="fa-solid fa-circle-check"></i></span></h2>
-              <div class="d-meta">{{ d.operator }}<span *ngIf="d.city"> · {{ d.city }}</span><span *ngIf="dist(d) as km"> · a {{ km }}</span></div></div>
+              <div class="d-meta">{{ d.operator }}<span *ngIf="d.city"> · {{ d.city }}</span><span *ngIf="dist(d) as km"> · a {{ km }}</span></div>
+              <div class="crate" *ngIf="d.ratings"><span class="stars"><i class="fa-solid fa-star" *ngFor="let i of starArray" [class.dim]="!starOn(d.rating, i)"></i></span><small>{{ d.rating }} · {{ d.ratings }} voto(s)</small></div></div>
             <p-tag [value]="statusLabel(d.communityStatus)" [severity]="statusSeverity(d.communityStatus)" />
           </div>
 
@@ -560,7 +573,7 @@ interface CarProfile {
                   <a class="k" *ngIf="d.website" [href]="d.website" target="_blank" rel="noopener"><i class="fa-solid fa-up-right-from-square"></i> Sitio</a>
                 </div>
                 <div class="d-meta" *ngIf="d.address" style="margin-bottom:8px"><i class="fa-solid fa-location-dot"></i> {{ d.address }}</div>
-                <div class="sbadges" *ngIf="d.sources?.length" style="margin-bottom:12px">
+                <div class="sbadges" *ngIf="isAdmin() && d.sources?.length" style="margin-bottom:12px">
                   <span class="sbadge" *ngFor="let src of d.sources" [style.--sb]="sourceColor(src)"><i class="fa-solid fa-database"></i> {{ sourceLabel(src) }}</span>
                 </div>
                 <h3 class="sec">¿Está funcionando?</h3>
@@ -631,6 +644,13 @@ interface CarProfile {
 
             <p-tabPanel header="Comentarios" leftIcon="fa-solid fa-comments">
               <ng-template pTemplate="content">
+                <div class="ratebox">
+                  <span>Tu calificación:</span>
+                  <span class="stars pick">
+                    <i class="fa-solid fa-star" *ngFor="let i of starArray" [class.dim]="i > myStars()" (click)="rateStation(i)"></i>
+                  </span>
+                  <small class="muted" *ngIf="myStars()">¡Gracias!</small>
+                </div>
                 <div class="cmt-form">
                   <textarea [(ngModel)]="newComment" placeholder="Deja un comentario…"></textarea>
                   <p-button icon="fa-solid fa-paper-plane" (onClick)="sendComment()" [disabled]="!newComment.trim()" />
@@ -666,40 +686,52 @@ interface CarProfile {
         </div>
       </p-dialog>
 
-      <!-- Perfil del vehículo -->
-      <p-dialog [(visible)]="profileOpen" [modal]="true" [position]="'bottom'" [dismissableMask]="true"
-                [style]="{ width: '100%', maxWidth: '640px' }" header="Mi vehículo">
-        <div class="pform">
-          <label>Marca / modelo</label>
-          <input class="pin-in" [(ngModel)]="car.brand" placeholder="Ej. Renault Zoe, BYD Dolphin…" />
+      <!-- Perfil del usuario / vehículo (menú lateral derecho) -->
+      <div class="scrim" *ngIf="profileOpen()" (click)="profileOpen.set(false)"></div>
+      <aside class="drawer" [class.open]="profileOpen()">
+        <div class="dh"><i class="fa-solid fa-user" style="margin-right:8px;color:var(--accent)"></i> Mi perfil
+          <span class="spacer" style="flex:1"></span>
+          <button class="icon-btn" (click)="profileOpen.set(false)"><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="db">
+          <div class="pcard" *ngIf="isAdmin()"><i class="fa-solid fa-user-shield"></i> Administrador</div>
 
-          <div style="display:flex;gap:10px">
-            <div style="flex:1"><label>Autonomía (km)</label>
-              <input class="pin-in" type="number" [(ngModel)]="car.autonomyKm" placeholder="Ej. 300" /></div>
-            <div style="flex:1"><label>Ciclo de carga (%)</label>
-              <input class="pin-in" type="number" [(ngModel)]="car.cyclePct" placeholder="Ej. 80" /></div>
+          <div class="psection">
+            <div class="ptitle"><i class="fa-solid fa-car-side"></i> Mi vehículo</div>
+            <label>Marca / modelo</label>
+            <input class="pin-in" [(ngModel)]="car.brand" placeholder="Ej. Renault Zoe, BYD Dolphin…" />
+            <label>Autonomía homologada (km)</label>
+            <input class="pin-in" type="number" [(ngModel)]="car.autonomyKm" placeholder="Ej. 300" />
+            <label>Ciclo de homologación</label>
+            <select class="sel" [(ngModel)]="car.cycle">
+              <option *ngFor="let c of CYCLES" [value]="c.id">{{ c.label }} · efectividad {{ cyclePct(c.id) }}%</option>
+            </select>
+            <p class="muted" style="font-size:.76rem;margin:4px 0 8px">El ciclo indica cómo se midió la autonomía; ajustamos el rango real para que no te quedes sin batería.</p>
+            <label>Conectores de tu carro</label>
+            <p class="muted" style="font-size:.76rem;margin:0 0 8px">Incluye los que uses con adaptador.</p>
+            <div class="chips" style="margin-bottom:12px">
+              <button type="button" class="pchip" *ngFor="let ct of CONNECTOR_TYPES"
+                      [class.on]="car.connectors.includes(ct)" [style.--cc]="connColor(ct)" (click)="toggleCarConnector(ct)">
+                <i class="fa-solid fa-plug"></i> {{ ct }}
+              </button>
+            </div>
+            <label class="toggle" style="margin-bottom:14px">
+              <input type="checkbox" [(ngModel)]="car.fastCharge" /> Mi carro admite carga rápida (DC)
+            </label>
+            <p-button label="Guardar vehículo" icon="fa-solid fa-floppy-disk" (onClick)="saveProfile()" styleClass="w" />
           </div>
-          <p class="muted" style="font-size:.78rem;margin:2px 0 4px">El ciclo es cuánta batería usas por tramo antes de recargar (p.ej. cargas al 80%).</p>
 
-          <label>Conectores de tu carro</label>
-          <p class="muted" style="font-size:.78rem;margin:0 0 8px">Incluye los que uses con adaptador.</p>
-          <div class="chips" style="margin-bottom:12px">
-            <button type="button" class="pchip" *ngFor="let ct of CONNECTOR_TYPES"
-                    [class.on]="car.connectors.includes(ct)" [style.--cc]="connColor(ct)" (click)="toggleCarConnector(ct)">
-              <i class="fa-solid fa-plug"></i> {{ ct }}
-            </button>
-          </div>
-
-          <label class="toggle" style="margin-bottom:14px">
-            <input type="checkbox" [(ngModel)]="car.fastCharge" /> Mi carro admite carga rápida (DC)
-          </label>
-
-          <div class="report-btns">
-            <p-button label="Guardar vehículo" icon="fa-solid fa-floppy-disk" (onClick)="saveProfile()" />
-            <p-button label="Cerrar" [outlined]="true" (onClick)="profileOpen.set(false)" />
+          <!-- Administración (solo súper admin): fuentes, sugerencias, caché -->
+          <div class="psection admin" *ngIf="isAdmin()">
+            <div class="ptitle"><i class="fa-solid fa-screwdriver-wrench"></i> Administración</div>
+            <p-button [label]="'Sugerencias pendientes' + (pendingCount() ? ' (' + pendingCount() + ')' : '')" [outlined]="true"
+                      icon="fa-solid fa-inbox" (onClick)="openReview()" styleClass="w mb" />
+            <p-button label="Limpiar caché de fuentes" [outlined]="true" icon="fa-solid fa-broom" severity="danger"
+                      [loading]="clearingCache()" (onClick)="clearCache()" styleClass="w" />
+            <p class="muted" *ngIf="cacheMsg()" style="font-size:.82rem;margin-top:8px">{{ cacheMsg() }}</p>
+            <p class="muted" style="font-size:.76rem;margin-top:10px">Como admin ves las fuentes de datos y la verificación en el detalle de cada estación.</p>
           </div>
         </div>
-      </p-dialog>
+      </aside>
     </div>
   `,
 })
@@ -749,7 +781,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   readonly locating = signal(false);
 
   // Viaje
-  tripOrigin = ''; tripDest = ''; tripAutonomy: number | null = null; tripCycle: number | null = null;
+  tripOrigin = ''; tripDest = ''; tripAutonomy: number | null = null; tripCycle = 'WLTP';
   readonly planning = signal(false);
   readonly tripMsg = signal('');
   readonly tripInfo = signal<{ distanceKm: number; durationMin: number } | null>(null);
@@ -769,14 +801,26 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   // ── Perfil del vehículo (persistido en el dispositivo) ──
+  //   Ciclo = estándar de homologación. Cada uno tiene una "efectividad" real
+  //   aproximada (cuánto del rango homologado se logra de verdad) para no
+  //   quedarse sin batería.
+  readonly CYCLES: { id: string; label: string; factor: number }[] = [
+    { id: 'WLTP', label: 'WLTP', factor: 0.85 },
+    { id: 'CLTC', label: 'CLTC (China)', factor: 0.70 },
+    { id: 'NEDC', label: 'NEDC', factor: 0.68 },
+    { id: 'EPA', label: 'EPA (EE.UU.)', factor: 0.95 },
+    { id: 'Real', label: 'Rango real', factor: 1.00 },
+  ];
+  cycleFactor(id: string): number { return this.CYCLES.find((c) => c.id === id)?.factor ?? 0.85; }
+  cyclePct(id: string): number { return Math.round(this.cycleFactor(id) * 100); }
   readonly profileOpen = signal(false);
   readonly profile = signal<CarProfile>(this.loadProfile());
   car: CarProfile = this.loadProfile();   // modelo del formulario
   private loadProfile(): CarProfile {
-    try { const v = localStorage.getItem('elec.car'); if (v) return JSON.parse(v); } catch { }
-    return { brand: '', autonomyKm: null, cyclePct: 80, connectors: [], fastCharge: true };
+    try { const v = localStorage.getItem('elec.car'); if (v) { const p = JSON.parse(v); return { cycle: 'WLTP', ...p }; } } catch { }
+    return { brand: '', autonomyKm: null, cycle: 'WLTP', connectors: [], fastCharge: true };
   }
-  openProfile(): void { this.car = { ...this.loadProfile(), connectors: [...this.loadProfile().connectors] }; this.profileOpen.set(true); this.pushGuard(); }
+  openProfile(): void { const p = this.loadProfile(); this.car = { ...p, connectors: [...p.connectors] }; this.profileOpen.set(true); this.pushGuard(); }
   toggleCarConnector(t: string): void {
     const has = this.car.connectors.includes(t);
     this.car.connectors = has ? this.car.connectors.filter((x) => x !== t) : [...this.car.connectors, t];
@@ -788,7 +832,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     // Aplica como valores por defecto del planeador.
     if (p.connectors.length) { this.tripConnectors.set([...p.connectors]); try { localStorage.setItem('elec.myConnectors', JSON.stringify(p.connectors)); } catch { } }
     if (p.autonomyKm) this.tripAutonomy = p.autonomyKm;
-    if (p.cyclePct) this.tripCycle = p.cyclePct;
+    if (p.cycle) this.tripCycle = p.cycle;
     this.profileOpen.set(false);
   }
   hasProfile(): boolean { const p = this.profile(); return !!(p.brand || p.autonomyKm || p.connectors.length); }
@@ -836,7 +880,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     // Valores por defecto del planeador desde el perfil del vehículo.
     const p = this.profile();
     if (this.tripAutonomy == null && p.autonomyKm) this.tripAutonomy = p.autonomyKm;
-    if (this.tripCycle == null) this.tripCycle = p.cyclePct || 80;
+    if (p.cycle) this.tripCycle = p.cycle;
     if (!this.tripConnectors().length && p.connectors.length) this.tripConnectors.set([...p.connectors]);
 
     // Navegación por gestos (atrás/adelante nativos sin salir de la app).
@@ -1076,7 +1120,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // ── Detalle ──
   openDetail(s: Station): void {
-    this.detail.set(null); this.detailError.set(false); this.comments.set([]); this.reports.set([]); this.newComment = '';
+    this.detail.set(null); this.detailError.set(false); this.comments.set([]); this.reports.set([]); this.newComment = ''; this.myStars.set(0);
     this.detailStation = s;
     this.detailVisible = true;
     this.pushGuard();
@@ -1099,6 +1143,16 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     const d = this.detail(); if (!d || !this.newComment.trim()) return;
     this.api.addComment(d.id, this.newComment).subscribe({ next: () => { this.newComment = ''; this.api.comments(d.id).subscribe((c) => this.comments.set(c)); }, error: () => {} });
   }
+  // ── Calificación por estrellas ──
+  readonly starArray = [1, 2, 3, 4, 5];
+  readonly myStars = signal(0);
+  starOn(rating: number | undefined, i: number): boolean { return i <= Math.round(rating || 0); }
+  rateStation(n: number): void {
+    const d = this.detail(); if (!d) return;
+    this.myStars.set(n);
+    this.api.rate(d.id, n).subscribe({ next: () => this.refreshDetail(), error: () => {} });
+  }
+
   freeCount(d: StationFull): number { return (d.chargers || []).filter((c) => c.status === 'free').length; }
   freePct(d: StationFull): number { const n = d.chargers?.length || 0; return n ? (this.freeCount(d) / n) * 100 : 0; }
 
@@ -1157,10 +1211,10 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   routeKm(s: Station): number { return Math.round(this.routePos.get(s.id) ?? 0); }
   tripStopsCount(): number { return this.tripStops().size; }
   autonomyPct(distanceKm: number): number { const a = this.effectiveRange(); return a && a > 0 ? Math.min(100, Math.round((distanceKm / a) * 100)) : 0; }
-  /** Rango efectivo = autonomía × ciclo de carga (%). */
+  /** Rango efectivo = autonomía homologada × efectividad del ciclo. */
   effectiveRange(): number {
-    const a = this.tripAutonomy || 0; const c = this.tripCycle && this.tripCycle > 0 ? this.tripCycle : 100;
-    return a > 0 ? Math.round(a * c / 100) : 0;
+    const a = this.tripAutonomy || 0;
+    return a > 0 ? Math.round(a * this.cycleFactor(this.tripCycle)) : 0;
   }
   private tripOD?: { o: [number, number]; d: [number, number] };
   clearTrip(): void {
