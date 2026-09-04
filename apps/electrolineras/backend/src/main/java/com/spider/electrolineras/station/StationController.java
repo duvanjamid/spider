@@ -23,16 +23,22 @@ public final class StationController {
 
     public record ReportInput(Long chargerId, String status) {}
     public record CommentInput(String body) {}
+    public record ChargerInput(String label, String connectorType, Double powerKw) {}
+    public record VerifyInput(Boolean verified) {}
+    public record SuggestInput(String kind, String value, String detail) {}
+    public record ResolveInput(Long stationId, String kind, String value, Boolean approve) {}
 
     private final StationService stations;
     private final ReportService reports;
     private final CommentService comments;
+    private final SuggestionService suggestions;
     private final Identity identity = new Identity();
 
-    public StationController(StationService stations, ReportService reports, CommentService comments) {
+    public StationController(StationService stations, ReportService reports, CommentService comments, SuggestionService suggestions) {
         this.stations = stations;
         this.reports = reports;
         this.comments = comments;
+        this.suggestions = suggestions;
     }
 
     public void register(Ligero app) {
@@ -93,7 +99,67 @@ public final class StationController {
         // ── Identidad del visitante (para mostrar opciones de admin) ──
         app.get("/me", ctx -> {
             String user = email(ctx.header("Cookie"));
-            ctx.json(Map.of("email", user, "admin", Env.isAdmin(user)));
+            boolean admin = Env.isAdmin(user);
+            ctx.json(Map.of("email", user, "admin", admin,
+                    "suggestionsPending", admin ? suggestions.pendingCount() : 0));
+        });
+
+        // ── Fase 1: edición de cargadores (solo admin) ──
+        app.post("/stations/{id}/chargers", ctx -> {
+            if (!Env.isAdmin(email(ctx.header("Cookie")))) { ctx.status(403).json(Map.of("error", "solo admin")); return; }
+            long id = Long.parseLong(ctx.pathParam("id"));
+            ChargerInput in = ctx.body(ChargerInput.class);
+            if (in == null || in.connectorType() == null || in.connectorType().isBlank()) { ctx.status(400).json(Map.of("error", "tipo requerido")); return; }
+            String label = in.label() == null || in.label().isBlank() ? in.connectorType() : in.label();
+            long cid = stations.addCharger(id, label, in.connectorType(), in.powerKw());
+            ctx.status(201).json(Map.of("id", cid));
+        });
+        app.post("/chargers/{cid}/edit", ctx -> {
+            if (!Env.isAdmin(email(ctx.header("Cookie")))) { ctx.status(403).json(Map.of("error", "solo admin")); return; }
+            long cid = Long.parseLong(ctx.pathParam("cid"));
+            ChargerInput in = ctx.body(ChargerInput.class);
+            stations.editCharger(cid, in.label(), in.connectorType(), in.powerKw());
+            ctx.json(Map.of("ok", true));
+        });
+        app.post("/chargers/{cid}/delete", ctx -> {
+            if (!Env.isAdmin(email(ctx.header("Cookie")))) { ctx.status(403).json(Map.of("error", "solo admin")); return; }
+            stations.deleteCharger(Long.parseLong(ctx.pathParam("cid")));
+            ctx.json(Map.of("ok", true));
+        });
+        // Fija TODO el set de cargadores de una estación (admin) con el mismo
+        // formato de las sugerencias: 'CCS2:2|Tipo 2:2'.
+        app.post("/stations/{id}/chargers/set", ctx -> {
+            if (!Env.isAdmin(email(ctx.header("Cookie")))) { ctx.status(403).json(Map.of("error", "solo admin")); return; }
+            SuggestInput in = ctx.body(SuggestInput.class);
+            if (in == null || in.value() == null || in.value().isBlank()) { ctx.status(400).json(Map.of("error", "value requerido")); return; }
+            stations.applyChargers(Long.parseLong(ctx.pathParam("id")), in.value().trim());
+            ctx.json(Map.of("ok", true));
+        });
+        app.post("/stations/{id}/verify", ctx -> {
+            if (!Env.isAdmin(email(ctx.header("Cookie")))) { ctx.status(403).json(Map.of("error", "solo admin")); return; }
+            VerifyInput in = ctx.body(VerifyInput.class);
+            stations.setVerified(Long.parseLong(ctx.pathParam("id")), in == null || in.verified() == null ? true : in.verified());
+            ctx.json(Map.of("ok", true));
+        });
+
+        // ── Fase 2: sugerencias de la comunidad ──
+        app.post("/stations/{id}/suggest", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            long id = Long.parseLong(ctx.pathParam("id"));
+            SuggestInput in = ctx.body(SuggestInput.class);
+            if (in == null || in.kind() == null || in.value() == null || in.value().isBlank()) { ctx.status(400).json(Map.of("error", "kind y value requeridos")); return; }
+            ctx.status(201).json(suggestions.suggest(user, id, in.kind().trim(), in.value().trim(), in.detail()));
+        });
+        app.get("/suggestions", ctx -> {
+            if (!Env.isAdmin(email(ctx.header("Cookie")))) { ctx.status(403).json(Map.of("error", "solo admin")); return; }
+            ctx.json(suggestions.pending());
+        });
+        app.post("/suggestions/resolve", ctx -> {
+            if (!Env.isAdmin(email(ctx.header("Cookie")))) { ctx.status(403).json(Map.of("error", "solo admin")); return; }
+            ResolveInput in = ctx.body(ResolveInput.class);
+            if (in == null || in.stationId() == null || in.kind() == null || in.value() == null) { ctx.status(400).json(Map.of("error", "faltan campos")); return; }
+            suggestions.resolve(in.kind(), in.stationId(), in.value(), Boolean.TRUE.equals(in.approve()));
+            ctx.json(Map.of("ok", true));
         });
 
         // ── Limpiar caché de APIs (solo admin) + resync en segundo plano ──

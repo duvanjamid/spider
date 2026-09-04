@@ -294,11 +294,13 @@ public class StationService {
             ps.setString(12, el.toString());
             long stationId;
             try (ResultSet rs = ps.executeQuery()) { rs.next(); stationId = rs.getLong(1); }
-            int idx = 0;
-            for (String[] s : sockets) {
-                idx++;
-                Double kw = s[1] == null ? null : Double.parseDouble(s[1]);
-                insertCharger(c, stationId, s[0] + " #" + idx, s[0], kw);
+            if (!isVerified(c, stationId)) {
+                int idx = 0;
+                for (String[] s : sockets) {
+                    idx++;
+                    Double kw = s[1] == null ? null : Double.parseDouble(s[1]);
+                    insertCharger(c, stationId, s[0] + " #" + idx, s[0], kw);
+                }
             }
             return true;
         } catch (Exception e) { log.debug("Nodo OSM ignorado: {}", e.getMessage()); return false; }
@@ -382,7 +384,7 @@ public class StationService {
             ps.setString(11, row.toString());
             long stationId;
             try (ResultSet rs = ps.executeQuery()) { rs.next(); stationId = rs.getLong(1); }
-            ensureChargers(c, stationId, connectors);
+            if (!isVerified(c, stationId)) ensureChargers(c, stationId, connectors);
             return true;
         } catch (Exception e) {
             log.debug("Fila ignorada: {}", e.getMessage());
@@ -497,12 +499,14 @@ public class StationService {
             long stationId;
             try (ResultSet rs = ps.executeQuery()) { rs.next(); stationId = rs.getLong(1); }
             // cargadores con conector + potencia explícitos
-            int idx = 0;
-            for (JsonNode cn : poi.path("Connections")) {
-                idx++;
-                String t = firstNonBlank(text(cn.path("ConnectionType"), "Title"), "Conector " + idx);
-                Double kw = cn.path("PowerKW").isNumber() ? cn.path("PowerKW").asDouble() : null;
-                insertCharger(c, stationId, t + " #" + idx, normalizeConnector(t), kw);
+            if (!isVerified(c, stationId)) {
+                int idx = 0;
+                for (JsonNode cn : poi.path("Connections")) {
+                    idx++;
+                    String t = firstNonBlank(text(cn.path("ConnectionType"), "Title"), "Conector " + idx);
+                    Double kw = cn.path("PowerKW").isNumber() ? cn.path("PowerKW").asDouble() : null;
+                    insertCharger(c, stationId, t + " #" + idx, normalizeConnector(t), kw);
+                }
             }
             return true;
         } catch (Exception e) {
@@ -611,11 +615,13 @@ public class StationService {
             ps.setString(10, r.toString());
             long stationId;
             try (ResultSet rs = ps.executeQuery()) { rs.next(); stationId = rs.getLong(1); }
-            int idx = 0;
-            for (String[] s : connectors) {
-                idx++;
-                Double kw = s[1] == null ? null : Double.parseDouble(s[1]);
-                insertCharger(c, stationId, s[0] + " #" + idx, s[0], kw);
+            if (!isVerified(c, stationId)) {
+                int idx = 0;
+                for (String[] s : connectors) {
+                    idx++;
+                    Double kw = s[1] == null ? null : Double.parseDouble(s[1]);
+                    insertCharger(c, stationId, s[0] + " #" + idx, s[0], kw);
+                }
             }
             return true;
         } catch (Exception e) { log.debug("POI TomTom ignorado: {}", e.getMessage()); return false; }
@@ -633,6 +639,103 @@ public class StationService {
         if (u.contains("TESLA")) return "Tesla";
         if (u.contains("HOUSEHOLD") || u.contains("SCHUKO")) return "Schuko";
         return t;
+    }
+
+    // ── Correcciones manuales (Fase 1) ──────────────────────────────
+    private boolean isVerified(Connection c, long stationId) throws Exception {
+        try (PreparedStatement ps = c.prepareStatement("SELECT verified FROM station WHERE id = ?")) {
+            ps.setLong(1, stationId);
+            try (ResultSet rs = ps.executeQuery()) { return rs.next() && rs.getBoolean(1); }
+        }
+    }
+    private void markVerified(Connection c, long stationId) throws Exception {
+        try (PreparedStatement ps = c.prepareStatement("UPDATE station SET verified = TRUE WHERE id = ? OR canonical_id = ?")) {
+            ps.setLong(1, stationId); ps.setLong(2, stationId); ps.executeUpdate();
+        }
+    }
+    private long insertManualCharger(Connection c, long stationId, String label, String type, Double kw) throws Exception {
+        try (PreparedStatement ps = c.prepareStatement("""
+                INSERT INTO charger (station_id, label, connector_type, power_kw, manual)
+                VALUES (?, ?, ?, ?, TRUE)
+                ON CONFLICT (station_id, label) DO UPDATE SET
+                    connector_type = EXCLUDED.connector_type, power_kw = EXCLUDED.power_kw, manual = TRUE
+                RETURNING id""")) {
+            ps.setLong(1, stationId); ps.setString(2, label); ps.setString(3, type);
+            if (kw == null) ps.setNull(4, java.sql.Types.NUMERIC); else ps.setBigDecimal(4, java.math.BigDecimal.valueOf(kw));
+            try (ResultSet rs = ps.executeQuery()) { rs.next(); return rs.getLong(1); }
+        }
+    }
+    /** Potencia nominal por defecto según el tipo de conector (0 = desconocida). */
+    static double defaultKw(String type) {
+        String u = type == null ? "" : type.toUpperCase();
+        if (u.contains("CCS") || u.contains("CHADEMO") || u.contains("COMBO")) return 50;
+        if (u.contains("TIPO 2") || u.contains("TYPE 2") || u.contains("GB")) return 22;
+        if (u.contains("TIPO 1") || u.contains("TYPE 1")) return 7.4;
+        return 0;
+    }
+
+    public long addCharger(long stationId, String label, String type, Double kw) {
+        try (Connection c = ds.getConnection()) {
+            long id = insertManualCharger(c, stationId, label, type, kw);
+            markVerified(c, stationId);
+            return id;
+        } catch (Exception e) { throw new RuntimeException("No se pudo agregar el cargador", e); }
+    }
+    public void editCharger(long chargerId, String label, String type, Double kw) {
+        try (Connection c = ds.getConnection()) {
+            try (PreparedStatement ps = c.prepareStatement("UPDATE charger SET label=?, connector_type=?, power_kw=?, manual=TRUE WHERE id=?")) {
+                ps.setString(1, label); ps.setString(2, type);
+                if (kw == null) ps.setNull(3, java.sql.Types.NUMERIC); else ps.setBigDecimal(3, java.math.BigDecimal.valueOf(kw));
+                ps.setLong(4, chargerId); ps.executeUpdate();
+            }
+            try (PreparedStatement q = c.prepareStatement("UPDATE station SET verified=TRUE WHERE id = (SELECT station_id FROM charger WHERE id=?)")) {
+                q.setLong(1, chargerId); q.executeUpdate();
+            }
+        } catch (Exception e) { throw new RuntimeException("No se pudo editar el cargador", e); }
+    }
+    public void deleteCharger(long chargerId) {
+        try (Connection c = ds.getConnection()) {
+            long sid = -1;
+            try (PreparedStatement q = c.prepareStatement("SELECT station_id FROM charger WHERE id=?")) {
+                q.setLong(1, chargerId); try (ResultSet rs = q.executeQuery()) { if (rs.next()) sid = rs.getLong(1); }
+            }
+            try (PreparedStatement ps = c.prepareStatement("DELETE FROM charger WHERE id=?")) { ps.setLong(1, chargerId); ps.executeUpdate(); }
+            if (sid > 0) markVerified(c, sid);
+        } catch (Exception e) { throw new RuntimeException("No se pudo borrar el cargador", e); }
+    }
+    public void setVerified(long stationId, boolean v) {
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement("UPDATE station SET verified=? WHERE id=? OR canonical_id=?")) {
+            ps.setBoolean(1, v); ps.setLong(2, stationId); ps.setLong(3, stationId); ps.executeUpdate();
+        } catch (Exception e) { throw new RuntimeException("No se pudo cambiar verificación", e); }
+    }
+    /** Reemplaza los cargadores del grupo por los del spec 'CCS2:2|Tipo 2:2'. */
+    public void applyChargers(long stationId, String spec) {
+        try (Connection c = ds.getConnection()) {
+            List<Long> ids = new ArrayList<>();
+            try (PreparedStatement ps = c.prepareStatement("SELECT id FROM station WHERE id=? OR canonical_id=?")) {
+                ps.setLong(1, stationId); ps.setLong(2, stationId);
+                try (ResultSet rs = ps.executeQuery()) { while (rs.next()) ids.add(rs.getLong(1)); }
+            }
+            if (ids.isEmpty()) ids.add(stationId);
+            String inClause = String.join(",", ids.stream().map(String::valueOf).toList());
+            try (Statement st = c.createStatement()) { st.executeUpdate("DELETE FROM charger WHERE station_id IN (" + inClause + ")"); }
+            Set<String> types = new LinkedHashSet<>();
+            double maxKw = 0;
+            for (String part : spec.split("\\|")) {
+                String[] kv = part.split(":");
+                if (kv.length == 0 || kv[0].isBlank()) continue;
+                String type = kv[0].trim();
+                int n = 1;
+                if (kv.length >= 2) try { n = Math.max(1, Integer.parseInt(kv[1].trim())); } catch (Exception ignore) {}
+                double kw = defaultKw(type); maxKw = Math.max(maxKw, kw);
+                for (int i = 1; i <= n; i++) insertManualCharger(c, stationId, type + " #" + i, type, kw > 0 ? kw : null);
+                types.add(type);
+            }
+            String speed = maxKw >= 50 ? "Rápida" : maxKw >= 22 ? "Semi-rápida" : maxKw > 0 ? "Lenta" : null;
+            try (PreparedStatement ps = c.prepareStatement("UPDATE station SET connectors=?, speed=COALESCE(?, speed), verified=TRUE WHERE id=? OR canonical_id=?")) {
+                ps.setString(1, String.join(", ", types)); ps.setString(2, speed); ps.setLong(3, stationId); ps.setLong(4, stationId); ps.executeUpdate();
+            }
+        } catch (Exception e) { throw new RuntimeException("No se pudo aplicar la corrección de cargadores", e); }
     }
 
     private void insertCharger(Connection c, long stationId, String label, String connectorType, Double powerKw) throws Exception {
@@ -663,7 +766,7 @@ public class StationService {
         boolean bbox = minLat != null && minLon != null && maxLat != null && maxLon != null;
         StringBuilder sql = new StringBuilder("""
                 SELECT s.id, COALESCE(s.canonical_id, s.id) AS cluster,
-                       s.name, s.operator, s.city, s.address, s.lat, s.lon, s.connectors, s.speed, s.source,
+                       s.name, s.operator, s.city, s.address, s.lat, s.lon, s.connectors, s.speed, s.source, s.verified,
                   (SELECT r.status FROM status_report r WHERE r.station_id = s.id AND r.charger_id IS NULL
                      ORDER BY r.created_at DESC LIMIT 1) AS community_status,
                   (SELECT count(*) FROM station_comment k WHERE k.station_id = s.id) AS comments,
@@ -679,6 +782,7 @@ public class StationService {
         Map<Long, Set<String>> srcByCluster = new LinkedHashMap<>();
         Map<Long, int[]> sumByCluster = new LinkedHashMap<>();   // [comments, chargers]
         Map<Long, String> speedByCluster = new LinkedHashMap<>();
+        Map<Long, Boolean> verByCluster = new LinkedHashMap<>();
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql.toString())) {
             if (bbox) {
                 ps.setDouble(1, minLat); ps.setDouble(2, maxLat);
@@ -710,6 +814,7 @@ public class StationService {
                 int[] s = sumByCluster.computeIfAbsent(cluster, k -> new int[2]);
                 s[0] += rs.getInt("comments"); s[1] += rs.getInt("chargers");
                 speedByCluster.merge(cluster, nz(rs.getString("speed")), StationService::betterSpeed);
+                verByCluster.merge(cluster, rs.getBoolean("verified"), (a, b) -> a || b);
             }
         } catch (Exception e) { throw new RuntimeException("Error listando estaciones", e); }
 
@@ -723,6 +828,7 @@ public class StationService {
             int[] s = sumByCluster.getOrDefault(cl, new int[2]);
             m.put("comments", s[0]);
             m.put("chargers", s[1]);
+            m.put("verified", verByCluster.getOrDefault(cl, false));
             out.add(m);
         }
         return out;
@@ -782,6 +888,7 @@ public class StationService {
                     out.put("hours", nz(rs.getString("hours")));
                     out.put("website", rs.getString("website"));
                     out.put("source", rs.getString("source"));
+                    out.put("verified", rs.getBoolean("verified"));
                     out.put("updatedAt", String.valueOf(rs.getObject("updated_at")));
                 }
             }
@@ -834,6 +941,11 @@ public class StationService {
                         allConn.addAll(splitConnectors(rs.getString("connectors")));
                     }
                 }
+            }
+            // Suma también los tipos de los cargadores (incluye los manuales).
+            for (Map<String, Object> ch : chargers) {
+                String t = String.valueOf(ch.get("connectorType"));
+                if (t != null && !t.isBlank() && !t.equals("null")) allConn.add(normalizeConnector(t));
             }
             out.put("sources", new ArrayList<>(sources));
             if (!allConn.isEmpty()) out.put("connectors", String.join(", ", allConn));

@@ -12,6 +12,7 @@ import com.spider.electrolineras.station.CommentService;
 import com.spider.electrolineras.station.ReportService;
 import com.spider.electrolineras.station.StationController;
 import com.spider.electrolineras.station.StationService;
+import com.spider.electrolineras.station.SuggestionService;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +35,7 @@ public final class App {
         var stations = new StationService(ds);
         var reports = new ReportService(ds);
         var comments = new CommentService(ds);
+        var suggestions = new SuggestionService(ds, stations);
 
         // Sincronización del catálogo desde datos.gov.co (arranque + periódica).
         if (Env.syncOnStart()) {
@@ -50,7 +52,7 @@ public final class App {
 
         Ligero app = Ligero.create(Env.port());
         HealthController.register(app);
-        new StationController(stations, reports, comments).register(app);
+        new StationController(stations, reports, comments, suggestions).register(app);
         new RouteController(new RoutingService()).register(app);
 
         log.info("Backend '{}' escuchando en :{} (schema '{}', sync cada {} min)",

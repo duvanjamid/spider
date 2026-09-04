@@ -7,7 +7,7 @@ import { TabViewModule } from 'primeng/tabview';
 import { TagModule } from 'primeng/tag';
 import * as L from 'leaflet';
 import '@maplibre/maplibre-gl-leaflet'; // añade L.maplibreGL (capa base vectorial)
-import { Charger, Comment, ElectrolinerasService, Report, Station, StationFull } from './electrolineras.service';
+import { Charger, Comment, ElectrolinerasService, Report, Station, StationFull, Suggestion } from './electrolineras.service';
 
 type Tab = 'map' | 'near' | 'trip' | 'info';
 
@@ -235,6 +235,27 @@ interface RouteOpt {
     .dstate { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 34px 20px; text-align: center; color: var(--muted); }
     .dstate i { font-size: 1.6rem; color: var(--accent); }
     .dstate p { margin: 0; }
+    /* Verificada */
+    .vbadge { color: #22c55e; font-size: .9rem; }
+    /* Corrección / editor de cargadores */
+    .dq { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; border-top: 1px solid var(--border); padding-top: 12px; }
+    .dqbtn { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; padding: 9px 12px; border-radius: 12px; cursor: pointer;
+             border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--border)); background: color-mix(in srgb, var(--accent) 6%, var(--panel)); color: var(--fg); font-size: .86rem; font-weight: 600; }
+    .dqbtn i { color: var(--accent); }
+    .editor { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
+    .editor .ehead { font-weight: 800; margin-bottom: 2px; }
+    .erow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .erow .sel { flex: 1; }
+    .stepper { display: inline-flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 10px; padding: 4px 6px; background: var(--panel-2); }
+    .stepper button { width: 28px; height: 28px; border-radius: 8px; border: none; background: var(--panel); color: var(--fg); cursor: pointer; }
+    .stepper span { min-width: 18px; text-align: center; font-weight: 700; }
+    .erem { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--muted); cursor: pointer; }
+    .etotal { font-size: .84rem; color: var(--muted); margin: 4px 0 10px; }
+    /* Revisión admin */
+    .sug { display: flex; align-items: flex-start; gap: 10px; padding: 12px 0; border-top: 1px solid var(--border); }
+    .sug .grow { flex: 1; min-width: 0; } .sug .nm { font-weight: 700; }
+    .sug .votes { font-size: .78rem; color: var(--accent); font-weight: 700; margin-top: 4px; }
+    .sug .votes i { font-size: .72rem; margin-right: 4px; }
   `],
   template: `
     <div class="app">
@@ -474,7 +495,9 @@ interface RouteOpt {
 
           <div class="adminbox" *ngIf="isAdmin()">
             <label><i class="fa-solid fa-user-shield" style="color:var(--accent)"></i> Administración</label>
-            <p class="muted" style="font-size:.8rem;margin:0 0 8px">Vacía la caché de las fuentes y vuelve a consultarlas ahora.</p>
+            <p-button [label]="'Sugerencias pendientes' + (pendingCount() ? ' (' + pendingCount() + ')' : '')" [outlined]="true"
+                      icon="fa-solid fa-inbox" (onClick)="openReview()" />
+            <p class="muted" style="font-size:.8rem;margin:10px 0 8px">Vacía la caché de las fuentes y vuelve a consultarlas ahora.</p>
             <p-button label="Limpiar caché" [outlined]="true" icon="fa-solid fa-broom" severity="danger"
                       [loading]="clearingCache()" (onClick)="clearCache()" />
             <p class="muted" *ngIf="cacheMsg()" style="font-size:.82rem;margin-top:8px">{{ cacheMsg() }}</p>
@@ -496,7 +519,7 @@ interface RouteOpt {
         <div *ngIf="detail() as d">
           <div class="d-head">
             <span class="dot" [style.background]="statusColor(d.communityStatus)" style="width:16px;height:16px;border-radius:50%;margin-top:5px"></span>
-            <div class="grow"><h2>{{ d.name }}</h2>
+            <div class="grow"><h2>{{ d.name }} <span class="vbadge" *ngIf="d.verified" title="Datos verificados"><i class="fa-solid fa-circle-check"></i></span></h2>
               <div class="d-meta">{{ d.operator }}<span *ngIf="d.city"> · {{ d.city }}</span><span *ngIf="dist(d) as km"> · a {{ km }}</span></div></div>
             <p-tag [value]="statusLabel(d.communityStatus)" [severity]="statusSeverity(d.communityStatus)" />
           </div>
@@ -546,6 +569,42 @@ interface RouteOpt {
                   </div>
                 </div>
                 <p class="muted" *ngIf="!d.chargers?.length" style="padding:8px 0">Sin detalle de cargadores para esta estación.</p>
+
+                <!-- Corrección de datos: admin edita; usuario sugiere -->
+                <div class="dq" *ngIf="!editorOpen()">
+                  <button class="dqbtn" (click)="openEditor()">
+                    <i class="fa-solid" [class.fa-pen]="isAdmin()" [class.fa-lightbulb]="!isAdmin()"></i>
+                    {{ isAdmin() ? 'Editar cargadores' : '¿Los cargadores no coinciden? Sugerir corrección' }}
+                  </button>
+                  <button class="dqbtn" *ngIf="isAdmin()" (click)="verifyToggle()">
+                    <i class="fa-solid fa-circle-check"></i> {{ d.verified ? 'Quitar verificación' : 'Marcar verificada' }}
+                  </button>
+                  <p class="muted" *ngIf="suggestMsg()" style="font-size:.84rem;margin:8px 2px 0">{{ suggestMsg() }}</p>
+                </div>
+
+                <div class="editor" *ngIf="editorOpen()">
+                  <div class="ehead">{{ isAdmin() ? 'Editar cargadores' : 'Sugerir cuántos cargadores hay' }}</div>
+                  <p class="muted" style="font-size:.8rem;margin:0 0 10px">Indica cuántos hay de cada tipo (cada manguera cuenta como uno).</p>
+                  <div class="erow" *ngFor="let row of editRows(); let i = index">
+                    <select class="sel" [ngModel]="row.type" (ngModelChange)="setRowType(i, $event)">
+                      <option *ngFor="let t of CONNECTOR_TYPES" [value]="t">{{ t }}</option>
+                    </select>
+                    <div class="stepper">
+                      <button (click)="incRow(i, -1)"><i class="fa-solid fa-minus"></i></button>
+                      <span>{{ row.count }}</span>
+                      <button (click)="incRow(i, 1)"><i class="fa-solid fa-plus"></i></button>
+                    </div>
+                    <button class="erem" (click)="removeEditRow(i)"><i class="fa-solid fa-xmark"></i></button>
+                  </div>
+                  <button class="dqbtn" (click)="addEditRow()"><i class="fa-solid fa-plus"></i> Agregar tipo</button>
+                  <div class="etotal">Total: <b>{{ totalEditChargers() }}</b> cargador(es)</div>
+                  <p class="muted" *ngIf="suggestMsg()" style="font-size:.84rem;margin:2px 0 8px">{{ suggestMsg() }}</p>
+                  <div class="report-btns">
+                    <p-button *ngIf="isAdmin()" label="Guardar" icon="fa-solid fa-floppy-disk" [loading]="saving()" [disabled]="!totalEditChargers()" (onClick)="saveChargersAdmin()" />
+                    <p-button *ngIf="!isAdmin()" label="Enviar sugerencia" icon="fa-solid fa-paper-plane" [loading]="saving()" [disabled]="!totalEditChargers()" (onClick)="submitSuggestion()" />
+                    <p-button label="Cancelar" [outlined]="true" (onClick)="closeEditor()" />
+                  </div>
+                </div>
               </ng-template>
             </p-tabPanel>
 
@@ -566,6 +625,23 @@ interface RouteOpt {
               </ng-template>
             </p-tabPanel>
           </p-tabView>
+        </div>
+      </p-dialog>
+
+      <!-- Revisión de sugerencias (admin) -->
+      <p-dialog [(visible)]="reviewOpen" [modal]="true" [position]="'bottom'" [dismissableMask]="true"
+                [style]="{ width: '100%', maxWidth: '640px' }" header="Sugerencias de la comunidad">
+        <p class="muted" *ngIf="!reviewList().length" style="padding:16px 2px">No hay sugerencias pendientes. Las que reúnen {{ reviewList()[0]?.needed || 3 }} coincidencias se aprueban solas.</p>
+        <div class="sug" *ngFor="let s of reviewList()">
+          <div class="grow">
+            <div class="nm">{{ s.stationName }} <small class="muted">· {{ s.stationCity }}</small></div>
+            <div class="muted" style="font-size:.84rem">{{ sugKindLabel(s.kind) }}: <b>{{ sugText(s.value) }}</b></div>
+            <div class="votes"><i class="fa-solid fa-users"></i> {{ s.votes }}/{{ s.needed }} coincidencias</div>
+          </div>
+          <div class="cbtns">
+            <p-button label="Aprobar" size="small" severity="success" (onClick)="resolveSug(s, true)" />
+            <p-button label="Descartar" size="small" severity="danger" [text]="true" (onClick)="resolveSug(s, false)" />
+          </div>
         </div>
       </p-dialog>
     </div>
@@ -602,6 +678,15 @@ export class AppComponent implements OnInit, AfterViewInit {
   readonly comments = signal<Comment[]>([]);
   readonly reports = signal<Report[]>([]);
   newComment = '';
+
+  // ── Calidad de datos (editar/sugerir cargadores) ──
+  readonly editorOpen = signal(false);
+  readonly editRows = signal<{ type: string; count: number }[]>([]);
+  readonly suggestMsg = signal('');
+  readonly saving = signal(false);
+  readonly pendingCount = signal(0);
+  readonly reviewOpen = signal(false);
+  readonly reviewList = signal<Suggestion[]>([]);
 
   // Ubicación
   readonly userPos = signal<[number, number] | null>(null);
@@ -662,7 +747,7 @@ export class AppComponent implements OnInit, AfterViewInit {
   ngOnInit(): void {
     this.api.health().subscribe({ next: (h) => this.isTest.set(h.env === 'test'), error: () => {} });
     this.api.meta().subscribe({ next: (m) => this.meta.set(m), error: () => {} });
-    this.api.me().subscribe({ next: (u) => this.isAdmin.set(!!u.admin), error: () => {} });
+    this.api.me().subscribe({ next: (u) => { this.isAdmin.set(!!u.admin); this.pendingCount.set(u.suggestionsPending || 0); }, error: () => {} });
     // Ya NO se cargan todas las estaciones al inicio: el mapa pide por área
     // visible y la lista "Inicio" pide alrededor del usuario al ubicarse.
   }
@@ -901,6 +986,53 @@ export class AppComponent implements OnInit, AfterViewInit {
   }
   freeCount(d: StationFull): number { return (d.chargers || []).filter((c) => c.status === 'free').length; }
   freePct(d: StationFull): number { const n = d.chargers?.length || 0; return n ? (this.freeCount(d) / n) * 100 : 0; }
+
+  // ── Editor / sugerencias de cargadores ──
+  openEditor(): void {
+    const d = this.detail(); this.suggestMsg.set('');
+    const counts = new Map<string, number>();
+    for (const c of d?.chargers || []) { const t = this.normConn(c.connectorType || 'Tipo 2'); counts.set(t, (counts.get(t) || 0) + 1); }
+    const rows = [...counts.entries()].map(([type, count]) => ({ type, count }));
+    this.editRows.set(rows.length ? rows : [{ type: 'CCS2', count: 1 }]);
+    this.editorOpen.set(true);
+  }
+  closeEditor(): void { this.editorOpen.set(false); this.suggestMsg.set(''); }
+  addEditRow(): void { this.editRows.update((r) => [...r, { type: this.firstFreeType(r), count: 1 }]); }
+  removeEditRow(i: number): void { this.editRows.update((r) => r.filter((_, k) => k !== i)); }
+  setRowType(i: number, t: string): void { this.editRows.update((r) => r.map((x, k) => k === i ? { ...x, type: t } : x)); }
+  incRow(i: number, d: number): void { this.editRows.update((r) => r.map((x, k) => k === i ? { ...x, count: Math.max(0, Math.min(20, x.count + d)) } : x)); }
+  private firstFreeType(rows: { type: string; count: number }[]): string { const used = new Set(rows.map((r) => r.type)); return this.CONNECTOR_TYPES.find((t) => !used.has(t)) || 'Tipo 2'; }
+  chargerSpec(): string { return this.editRows().filter((r) => r.count > 0).map((r) => `${r.type}:${r.count}`).join('|'); }
+  totalEditChargers(): number { return this.editRows().reduce((a, r) => a + (r.count > 0 ? r.count : 0), 0); }
+
+  saveChargersAdmin(): void {
+    const d = this.detail(); const spec = this.chargerSpec();
+    if (!d || !spec) return; this.saving.set(true);
+    this.api.setChargers(d.id, spec).subscribe({
+      next: () => { this.saving.set(false); this.editorOpen.set(false); this.refreshDetail(); },
+      error: () => { this.saving.set(false); this.suggestMsg.set('No se pudo guardar.'); },
+    });
+  }
+  submitSuggestion(): void {
+    const d = this.detail(); const spec = this.chargerSpec();
+    if (!d || !spec) return; this.saving.set(true);
+    this.api.suggest(d.id, 'chargers', spec).subscribe({
+      next: (r) => {
+        this.saving.set(false);
+        if (r.autoApproved) { this.suggestMsg.set('¡Gracias! Se confirmó automáticamente (≥' + r.needed + ' coincidencias).'); this.editorOpen.set(false); this.refreshDetail(); }
+        else this.suggestMsg.set('¡Gracias! Tu sugerencia va ' + r.votes + '/' + r.needed + '; se aplicará sola al llegar a ' + r.needed + ' iguales.');
+      },
+      error: () => { this.saving.set(false); this.suggestMsg.set('No se pudo enviar la sugerencia.'); },
+    });
+  }
+  verifyToggle(): void { const d = this.detail(); if (d) this.api.verifyStation(d.id, !d.verified).subscribe({ next: () => this.refreshDetail(), error: () => {} }); }
+
+  // ── Revisión de sugerencias (admin) ──
+  openReview(): void { this.reviewOpen.set(true); this.loadReview(); this.drawer.set(false); }
+  private loadReview(): void { this.api.suggestionsPending().subscribe({ next: (l) => { this.reviewList.set(l); this.pendingCount.set(l.length); }, error: () => {} }); }
+  resolveSug(s: Suggestion, approve: boolean): void { this.api.resolveSuggestion(s.stationId, s.kind, s.value, approve).subscribe({ next: () => this.loadReview(), error: () => {} }); }
+  sugText(value: string): string { return value.split('|').map((p) => { const [t, n] = p.split(':'); return n ? `${t} ×${n}` : t; }).join(' · '); }
+  sugKindLabel(k: string): string { return k === 'chargers' ? 'Cargadores' : k === 'name' ? 'Nombre' : k === 'operator' ? 'Operador' : k; }
 
   // ── Viaje ──
   fmtDur(min: number): string { const h = Math.floor(min / 60), m = Math.round(min % 60); return h ? `${h}h ${m}m` : `${m}m`; }

@@ -38,6 +38,10 @@ public final class Env {
         return email != null && adminEmails().contains(email.trim().toLowerCase());
     }
 
+    // Nº de sugerencias iguales (mismo tipo+valor, distinta persona) para
+    // aprobar automáticamente una corrección de la comunidad.
+    public static int suggestionAutoApprove() { return Math.max(2, getInt("SUGGESTION_AUTO_APPROVE", 3)); }
+
     // ── Fuente de datos abierta: datos.gov.co (Socrata/SODA) ──
     //   Dataset EPM por defecto (estaciones de carga eléctrica). Sin key.
     public static String datosGovResource() { return get("DATOS_GOV_RESOURCE", "qqm3-dw2u"); }
