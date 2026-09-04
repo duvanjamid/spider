@@ -143,6 +143,49 @@ public class StationService {
         };
     }
 
+    // ── Caché de respuestas de APIs externas ────────────────────────
+    //   Devuelve la respuesta cacheada si está fresca (TTL); si no, llama a la
+    //   API y la guarda. Si la API falla, cae a la caché aunque esté vieja.
+    private String cachedGet(String key, java.util.concurrent.Callable<String> fetch) {
+        java.time.Duration ttl = java.time.Duration.ofHours(Env.cacheTtlHours());
+        String fresh = readCache(key, ttl);
+        if (fresh != null) { log.info("Caché HIT {} (sin llamar a la API)", key); return fresh; }
+        try {
+            String body = fetch.call();
+            if (body != null && !body.isBlank()) writeCache(key, body);
+            return body;
+        } catch (Exception e) {
+            String stale = readCache(key, null);
+            if (stale != null) { log.warn("API {} falló ({}), uso caché previa", key, e.getMessage()); return stale; }
+            log.warn("API {} falló y no hay caché: {}", key, e.getMessage());
+            return null;
+        }
+    }
+    private String readCache(String key, java.time.Duration maxAge) {
+        try (Connection c = ds.getConnection();
+             PreparedStatement ps = c.prepareStatement("SELECT payload, fetched_at FROM api_cache WHERE cache_key = ?")) {
+            ps.setString(1, key);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                if (maxAge != null) {
+                    java.sql.Timestamp ts = rs.getTimestamp("fetched_at");
+                    if (ts == null || ts.toInstant().isBefore(java.time.Instant.now().minus(maxAge))) return null;
+                }
+                return rs.getString("payload");
+            }
+        } catch (Exception e) { log.debug("readCache {}: {}", key, e.getMessage()); return null; }
+    }
+    private void writeCache(String key, String payload) {
+        try (Connection c = ds.getConnection();
+             PreparedStatement ps = c.prepareStatement("""
+                     INSERT INTO api_cache (cache_key, payload, fetched_at) VALUES (?, ?, now())
+                     ON CONFLICT (cache_key) DO UPDATE SET payload = EXCLUDED.payload, fetched_at = now()""")) {
+            ps.setString(1, key);
+            ps.setString(2, payload);
+            ps.executeUpdate();
+        } catch (Exception e) { log.debug("writeCache {}: {}", key, e.getMessage()); }
+    }
+
     // ── OpenStreetMap / Overpass (nacional, crowdsourced, SIN key) ──
     private static final String OVERPASS_UA = "spider-electrolineras/1.0 (https://claude.ai/code)";
 
@@ -157,30 +200,35 @@ public class StationService {
                 "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
                 "https://overpass.kumi.systems/api/interpreter",
         };
-        for (String url : endpoints) {
-            try {
-                HttpRequest req = HttpRequest.newBuilder(URI.create(url))
-                        .header("content-type", "application/x-www-form-urlencoded")
-                        .header("accept", "application/json")
-                        .header("User-Agent", OVERPASS_UA)
-                        .timeout(Duration.ofSeconds(95))
-                        .POST(HttpRequest.BodyPublishers.ofString(body)).build();
-                HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
-                if (res.statusCode() / 100 != 2 || !res.body().trim().startsWith("{")) {
-                    log.warn("Overpass {} en {} → {}", res.statusCode(), url, res.body().substring(0, Math.min(160, res.body().length())));
-                    continue;
+        String json = cachedGet("overpass:" + country, () -> {
+            for (String url : endpoints) {
+                try {
+                    HttpRequest req = HttpRequest.newBuilder(URI.create(url))
+                            .header("content-type", "application/x-www-form-urlencoded")
+                            .header("accept", "application/json")
+                            .header("User-Agent", OVERPASS_UA)
+                            .timeout(Duration.ofSeconds(95))
+                            .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+                    HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+                    if (res.statusCode() / 100 != 2 || !res.body().trim().startsWith("{")) {
+                        log.warn("Overpass {} en {} → {}", res.statusCode(), url, res.body().substring(0, Math.min(160, res.body().length())));
+                        continue;
+                    }
+                    return res.body();
+                } catch (Exception e) {
+                    log.warn("Overpass falló en {}: {}", url, e.getMessage());
                 }
-                JsonNode root = Json.MAPPER.readTree(res.body());
-                int n = 0;
-                for (JsonNode el : root.path("elements")) n += upsertFromOsm(el) ? 1 : 0;
-                log.info("Sync OpenStreetMap ({}): {} estaciones procesadas", url, n);
-                return n;
-            } catch (Exception e) {
-                log.warn("Overpass falló en {}: {}", url, e.getMessage());
             }
-        }
-        log.warn("Overpass: ningún servidor respondió; se omite OSM esta vez");
-        return 0;
+            throw new RuntimeException("ningún servidor Overpass respondió");
+        });
+        if (json == null) { log.warn("Overpass: sin datos (ni caché); se omite OSM esta vez"); return 0; }
+        try {
+            JsonNode root = Json.MAPPER.readTree(json);
+            int n = 0;
+            for (JsonNode el : root.path("elements")) n += upsertFromOsm(el) ? 1 : 0;
+            log.info("Sync OpenStreetMap: {} estaciones procesadas", n);
+            return n;
+        } catch (Exception e) { log.warn("Overpass parse falló: {}", e.getMessage()); return 0; }
     }
 
     private boolean upsertFromOsm(JsonNode el) {
@@ -273,22 +321,23 @@ public class StationService {
     public int syncDatosGov() {
         String url = Env.datosGovBase().replaceAll("/+$", "") + "/" + Env.datosGovResource() + ".json?$limit=5000";
         String token = Env.datosGovAppToken();
-        try {
+        String json = cachedGet("datos_gov:" + Env.datosGovResource(), () -> {
             HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(url))
                     .header("accept", "application/json").timeout(Duration.ofSeconds(30)).GET();
             if (!token.isBlank()) req.header("X-App-Token", token);
             HttpResponse<String> res = http.send(req.build(), HttpResponse.BodyHandlers.ofString());
-            if (res.statusCode() / 100 != 2) {
-                log.warn("datos.gov.co {} → {}", res.statusCode(), res.body());
-                return 0;
-            }
-            JsonNode rows = Json.MAPPER.readTree(res.body());
+            if (res.statusCode() / 100 != 2) throw new RuntimeException("HTTP " + res.statusCode());
+            return res.body();
+        });
+        if (json == null) return 0;
+        try {
+            JsonNode rows = Json.MAPPER.readTree(json);
             int n = 0;
             for (JsonNode row : rows) n += upsertFromGov(row) ? 1 : 0;
             log.info("Sync datos.gov.co: {} estaciones procesadas", n);
             return n;
         } catch (Exception e) {
-            log.warn("Sync falló (se continúa): {}", e.getMessage());
+            log.warn("datos.gov.co parse falló (se continúa): {}", e.getMessage());
             return 0;
         }
     }
@@ -373,22 +422,23 @@ public class StationService {
         String key = Env.openChargeMapKey();
         String url = "https://api.openchargemap.io/v3/poi?output=json&countrycode=" + Env.openChargeMapCountry()
                 + "&maxresults=" + Env.openChargeMapMax() + "&key=" + key;
-        try {
+        String json = cachedGet("ocm:" + Env.openChargeMapCountry(), () -> {
             HttpRequest req = HttpRequest.newBuilder(URI.create(url))
                     .header("accept", "application/json").header("X-API-Key", key)
                     .timeout(Duration.ofSeconds(40)).GET().build();
             HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
-            if (res.statusCode() / 100 != 2) {
-                log.warn("Open Charge Map {} → {}", res.statusCode(), res.body());
-                return 0;
-            }
-            JsonNode pois = Json.MAPPER.readTree(res.body());
+            if (res.statusCode() / 100 != 2) throw new RuntimeException("HTTP " + res.statusCode());
+            return res.body();
+        });
+        if (json == null) return 0;
+        try {
+            JsonNode pois = Json.MAPPER.readTree(json);
             int n = 0;
             for (JsonNode poi : pois) n += upsertFromOcm(poi) ? 1 : 0;
             log.info("Sync Open Charge Map: {} estaciones procesadas", n);
             return n;
         } catch (Exception e) {
-            log.warn("Sync OCM falló (se continúa): {}", e.getMessage());
+            log.warn("OCM parse falló (se continúa): {}", e.getMessage());
             return 0;
         }
     }
@@ -482,20 +532,22 @@ public class StationService {
         String key = Env.tomtomKey();
         int total = 0;
         for (double[] tile : TOMTOM_TILES) {
-            String url = "https://api.tomtom.com/search/2/nearbySearch/.json?key=" + URLEncoder.encode(key, StandardCharsets.UTF_8)
+            final String url = "https://api.tomtom.com/search/2/nearbySearch/.json?key=" + URLEncoder.encode(key, StandardCharsets.UTF_8)
                     + "&lat=" + tile[0] + "&lon=" + tile[1] + "&radius=50000&categorySet=7309&limit=100&countrySet=CO";
-            try {
+            String json = cachedGet("tomtom:" + tile[0] + "," + tile[1], () -> {
                 HttpRequest req = HttpRequest.newBuilder(URI.create(url))
                         .header("accept", "application/json").timeout(Duration.ofSeconds(30)).GET().build();
                 HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
-                if (res.statusCode() / 100 != 2) {
-                    log.warn("TomTom {} → {}", res.statusCode(), res.body().substring(0, Math.min(160, res.body().length())));
-                    continue;
-                }
-                JsonNode root = Json.MAPPER.readTree(res.body());
+                if (res.statusCode() / 100 != 2)
+                    throw new RuntimeException("HTTP " + res.statusCode() + ": " + res.body().substring(0, Math.min(160, res.body().length())));
+                return res.body();
+            });
+            if (json == null) continue;
+            try {
+                JsonNode root = Json.MAPPER.readTree(json);
                 for (JsonNode r : root.path("results")) total += upsertFromTomTom(r) ? 1 : 0;
             } catch (Exception e) {
-                log.warn("TomTom falló en tile {},{}: {}", tile[0], tile[1], e.getMessage());
+                log.warn("TomTom parse falló en tile {},{}: {}", tile[0], tile[1], e.getMessage());
             }
         }
         log.info("Sync TomTom: {} estaciones procesadas", total);

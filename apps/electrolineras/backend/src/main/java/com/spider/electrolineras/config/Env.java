@@ -33,6 +33,10 @@ public final class Env {
     public static int syncMinutes() { return getInt("SYNC_MINUTES", 360); }
     public static boolean syncOnStart() { return Boolean.parseBoolean(get("SYNC_ON_START", "true")); }
 
+    // ── Caché de las APIs externas ──
+    //   TTL en horas; nunca por debajo de 24 h (mínimo un día, como se pidió).
+    public static int cacheTtlHours() { return Math.max(24, getInt("API_CACHE_TTL_HOURS", 24)); }
+
     // ── OpenStreetMap / Overpass (NACIONAL, crowdsourced, SIN key) ──
     public static boolean overpassEnabled() { return Boolean.parseBoolean(get("OVERPASS_ENABLED", "true")); }
     public static String overpassUrl() { return get("OVERPASS_URL", "https://overpass-api.de/api/interpreter"); }
