@@ -51,17 +51,27 @@ interface CarProfile {
            padding: 0 14px; background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
     .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.12rem; }
     .brand > i { font-size: .95rem; color: #fff; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; background: var(--grad); box-shadow: var(--glow); }
-    /* Hero */
-    .hero { position: relative; overflow: hidden; border-radius: 22px; padding: 22px 20px 18px; margin-bottom: 16px; background: var(--panel); border: 1px solid var(--border); box-shadow: var(--shadow); }
-    .hero::before { content: ''; position: absolute; inset: 0; background: var(--grad-soft); }
-    .hero-glow { position: absolute; top: -50px; right: -34px; width: 170px; height: 170px; border-radius: 50%; background: var(--grad); filter: blur(46px); opacity: .32; }
-    .hero > * { position: relative; }
-    .hero .hi { font-size: .72rem; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--accent); }
-    .hero h1 { margin: 7px 0 3px; font-size: 1.95rem; font-weight: 800; letter-spacing: -.6px; color: var(--fg); }
-    .hero p { margin: 0 0 14px; color: var(--muted); }
+    /* Hero con mini-mapa de la zona del usuario */
+    .hero { position: relative; overflow: hidden; border-radius: 22px; height: 240px; margin-bottom: 16px;
+            background: var(--panel-2); border: 1px solid var(--border); box-shadow: var(--shadow); }
+    .hero-map { position: absolute; inset: 0; z-index: 0; filter: saturate(.92); }
+    .hero-map .leaflet-container { background: var(--bg-2); }
+    /* Radar palpitante mientras aún no hay ubicación (mapa de todo el país). */
+    .hero-locating { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; pointer-events: none; }
+    .hero-locating .radar { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 28%, transparent); }
+    .hero-locating .radar::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid var(--accent); opacity: .6; animation: ping 1.8s cubic-bezier(0,0,.2,1) infinite; }
+    /* Degradado inferior para que el título se lea sobre el mapa. */
+    .hero-fade { position: absolute; inset: 0; z-index: 1; pointer-events: none;
+                 background: linear-gradient(to top, var(--panel) 6%, color-mix(in srgb, var(--panel) 78%, transparent) 34%, transparent 62%); }
+    .hero-content { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; padding: 16px 18px; }
+    .hero .hi { font-size: .72rem; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--accent-strong); }
+    .hero h1 { margin: 5px 0 3px; font-size: 2.05rem; font-weight: 800; letter-spacing: -.6px;
+               background: linear-gradient(92deg, var(--accent-strong), var(--accent) 45%, #22a7ff);
+               -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; width: fit-content; }
+    .hero p { margin: 0 0 12px; color: var(--muted); font-weight: 600; }
     .hchips { display: flex; gap: 8px; flex-wrap: wrap; }
-    .hchip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 999px; font-size: .82rem; font-weight: 600; background: var(--glass); backdrop-filter: blur(8px); border: 1px solid var(--border); cursor: pointer; }
-    .hchip i { color: var(--accent); }
+    .hchip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 999px; font-size: .82rem; font-weight: 700; background: var(--glass); backdrop-filter: blur(8px); border: 1px solid var(--border); color: var(--fg); cursor: pointer; }
+    .hchip i { color: var(--accent-strong); }
     .hchip .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pdot 1.8s infinite; }
     @keyframes pdot { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
     @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
@@ -286,6 +296,10 @@ interface CarProfile {
     .vhero-txt { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
     .vhero-txt b { font-size: 1.05rem; font-weight: 800; }
     .vhero-txt small { color: var(--muted); font-size: .82rem; }
+    .vspecs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+    .vspec { background: var(--panel-2); border-radius: 12px; padding: 10px 8px; text-align: center; }
+    .vspec small { display: block; color: var(--muted); font-size: .72rem; margin-bottom: 3px; }
+    .vspec b { font-size: .92rem; }
     .bodypick { display: flex; flex-wrap: wrap; gap: 8px; }
     .bchip { display: inline-flex; align-items: center; gap: 7px; font-size: .84rem; font-weight: 700; padding: 8px 13px;
            border-radius: 12px; cursor: pointer; border: 1px solid var(--border); background: var(--panel-2); color: var(--fg); }
@@ -400,16 +414,19 @@ interface CarProfile {
         <!-- CERCA -->
         <section class="scr" *ngIf="tab() === 'near'">
           <div class="scroll">
-            <div class="hero">
-              <div class="hero-glow"></div>
-              <div class="hi">⚡ Energía para tu ruta</div>
-              <h1>Electrolineras</h1>
-              <p>{{ userPos() ? filtered().length + ' cerca de ti' : (meta()?.total ?? '—') + ' estaciones en Colombia' }}</p>
-              <div class="hchips">
-                <span class="hchip"><span class="pulse"></span> {{ activeCount() }} activas</span>
-                <span class="hchip"><i class="fa-solid fa-city"></i> {{ meta()?.cities ?? 0 }} ciudades</span>
-                <span class="hchip"><i class="fa-solid fa-layer-group"></i> {{ meta()?.bySource?.length ?? 0 }} fuentes</span>
-                <span class="hchip" (click)="locate()"><i class="fa-solid fa-location-crosshairs"></i> {{ userPos() ? 'Ubicado' : 'Ubicarme' }}</span>
+            <div class="hero" [class.located]="userPos()">
+              <div #heroMapEl class="hero-map"></div>
+              <div class="hero-locating" *ngIf="!userPos()"><span class="radar"></span></div>
+              <div class="hero-fade"></div>
+              <div class="hero-content">
+                <div class="hi">⚡ Energía para tu ruta</div>
+                <h1>Electrolineras</h1>
+                <p>{{ userPos() ? filtered().length + ' cerca de ti' : (locating() ? 'Buscando tu ubicación…' : (meta()?.total ?? '—') + ' estaciones en Colombia') }}</p>
+                <div class="hchips">
+                  <span class="hchip"><span class="pulse"></span> {{ activeCount() }} activas</span>
+                  <span class="hchip"><i class="fa-solid fa-city"></i> {{ meta()?.cities ?? 0 }} ciudades</span>
+                  <span class="hchip" (click)="locate()"><i class="fa-solid fa-location-crosshairs"></i> {{ userPos() ? 'Ubicado' : 'Ubicarme' }}</span>
+                </div>
               </div>
             </div>
             <div class="prompt" *ngIf="!userPos()">
@@ -619,13 +636,41 @@ interface CarProfile {
             <!-- Mi vehículo -->
             <div class="acc-group">
               <div class="acc-title"><i class="fa-solid fa-car-side"></i> Mi vehículo</div>
-              <div class="card">
+
+              <!-- Visualización (no editable) -->
+              <div class="card" *ngIf="!editingCar()">
+                <div class="vhero" [style.--vc]="profile().color || '#3b5bfd'">
+                  <div class="vhero-badge"><i [class]="carIconFor(profile().bodyType)"></i></div>
+                  <div class="vhero-txt">
+                    <b>{{ profile().brand || (hasProfile() ? bodyLabel(profile().bodyType) : 'Sin vehículo registrado') }}</b>
+                    <small *ngIf="hasProfile()">{{ bodyLabel(profile().bodyType) }}<span *ngIf="profile().autonomyKm"> · {{ profile().autonomyKm }} km ({{ profile().cycle }})</span></small>
+                    <small *ngIf="!hasProfile()">Regístralo para planear mejor tus viajes.</small>
+                  </div>
+                </div>
+
+                <div class="vspecs" *ngIf="hasProfile()">
+                  <div class="vspec"><small>Rango real</small><b>{{ profileRange(profile()) || '—' }} km</b></div>
+                  <div class="vspec"><small>Ciclo</small><b>{{ profile().cycle }} · {{ cyclePct(profile().cycle) }}%</b></div>
+                  <div class="vspec"><small>Carga rápida</small><b>{{ profile().fastCharge ? 'Sí (DC)' : 'No' }}</b></div>
+                </div>
+                <div class="chips" *ngIf="profile().connectors.length" style="margin-top:10px">
+                  <span class="cchip" *ngFor="let ct of profile().connectors" [style.--cc]="connColor(ct)">{{ ct }}</span>
+                </div>
+
+                <p-button [label]="hasProfile() ? 'Editar vehículo' : 'Agregar vehículo'"
+                          [icon]="hasProfile() ? 'fa-solid fa-pen' : 'fa-solid fa-plus'"
+                          [outlined]="hasProfile()" (onClick)="startEditCar()" styleClass="w" [style]="{ marginTop: '14px' }" />
+                <p class="muted" *ngIf="savedMsg()" style="text-align:center;font-size:.84rem;margin-top:8px;color:var(--accent-strong)">{{ savedMsg() }}</p>
+              </div>
+
+              <!-- Edición (formulario) -->
+              <div class="card" *ngIf="editingCar()">
                 <div class="vhero" [style.--vc]="car.color || '#3b5bfd'">
                   <div class="vhero-badge"><i [class]="carIcon()"></i></div>
                   <div class="vhero-txt">
-                    <b>{{ car.brand || 'Registra tu vehículo' }}</b>
+                    <b>{{ car.brand || 'Tu vehículo' }}</b>
                     <small *ngIf="car.autonomyKm">{{ car.autonomyKm }} km · {{ car.cycle }} · efectividad {{ cyclePct(car.cycle) }}%</small>
-                    <small *ngIf="!car.autonomyKm">Marca, autonomía y conectores para planear mejor.</small>
+                    <small *ngIf="!car.autonomyKm">Vista previa en tu color.</small>
                   </div>
                 </div>
 
@@ -665,8 +710,10 @@ interface CarProfile {
                 <label class="toggle" style="margin-bottom:14px">
                   <input type="checkbox" [(ngModel)]="car.fastCharge" /> Mi carro admite carga rápida (DC)
                 </label>
-                <p-button label="Guardar vehículo" icon="fa-solid fa-floppy-disk" (onClick)="saveProfile()" styleClass="w" />
-                <p class="muted" *ngIf="savedMsg()" style="text-align:center;font-size:.84rem;margin-top:8px;color:var(--accent-strong)">{{ savedMsg() }}</p>
+                <div style="display:flex;gap:8px;align-items:stretch">
+                  <span style="flex:1"><p-button label="Guardar" icon="fa-solid fa-floppy-disk" (onClick)="saveProfile()" styleClass="w" /></span>
+                  <p-button label="Cancelar" [outlined]="true" (onClick)="cancelEditCar()" />
+                </div>
               </div>
             </div>
 
@@ -886,6 +933,9 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   private api = inject(ElectrolinerasService);
   private zone = inject(NgZone);
   @ViewChild('mapEl') mapEl!: ElementRef<HTMLDivElement>;
+  @ViewChild('heroMapEl') heroMapEl?: ElementRef<HTMLDivElement>;
+  private heroMap?: L.Map;
+  private heroMarker?: L.Marker;
 
   readonly isTest = signal(false);
   readonly isAdmin = signal(false);
@@ -992,8 +1042,15 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     { id: 'moto', label: 'Moto', icon: 'fa-solid fa-motorcycle' },
   ];
   readonly CAR_COLORS = ['#3b5bfd', '#ef4444', '#111827', '#e5e7eb', '#f59e0b', '#10b981', '#8b5cf6', '#06b6d4'];
-  carIcon(): string { return this.BODY_TYPES.find((b) => b.id === this.car.bodyType)?.icon ?? 'fa-solid fa-car-side'; }
+  carIcon(): string { return this.carIconFor(this.car.bodyType); }
+  carIconFor(id: string): string { return this.BODY_TYPES.find((b) => b.id === id)?.icon ?? 'fa-solid fa-car-side'; }
+  bodyLabel(id: string): string { return this.BODY_TYPES.find((b) => b.id === id)?.label ?? 'Vehículo'; }
+  /** Rango real de un perfil (autonomía × factor del ciclo). */
+  profileRange(p: CarProfile): number { return p.autonomyKm ? Math.round(p.autonomyKm * this.cycleFactor(p.cycle)) : 0; }
 
+  readonly editingCar = signal(false);
+  startEditCar(): void { const p = this.loadProfile(); this.car = { ...p, connectors: [...p.connectors] }; this.savedMsg.set(''); this.editingCar.set(true); this.pushGuard(); }
+  cancelEditCar(): void { this.editingCar.set(false); }
   readonly savedMsg = signal('');
   readonly profile = signal<CarProfile>(this.loadProfile());
   car: CarProfile = this.loadProfile();   // modelo del formulario
@@ -1014,6 +1071,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     if (p.connectors.length) { this.tripConnectors.set([...p.connectors]); try { localStorage.setItem('elec.myConnectors', JSON.stringify(p.connectors)); } catch { } }
     if (p.autonomyKm) this.tripAutonomy = p.autonomyKm;
     if (p.cycle) this.tripCycle = p.cycle;
+    this.editingCar.set(false);
     this.savedMsg.set('✓ Vehículo guardado. Se usará al planear tu viaje.');
     setTimeout(() => this.savedMsg.set(''), 2600);
   }
@@ -1073,11 +1131,13 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   }
   ngOnDestroy(): void {
     if (typeof window !== 'undefined') window.removeEventListener('popstate', this.onPopState);
+    try { this.heroMap?.remove(); } catch { }
   }
   private pushGuard(): void { try { history.pushState({ spider: true }, ''); } catch { /* noop */ } }
   private onPopState = (): void => { this.zone.run(() => this.goBack()); this.pushGuard(); };
   /** Gesto/botón atrás: cierra la capa abierta; nunca sale de la app. */
   goBack(): void {
+    if (this.tab() === 'account' && this.editingCar()) { this.editingCar.set(false); return; }
     if (this.reviewOpen()) { this.reviewOpen.set(false); return; }
     if (this.detailVisible) {
       if (this.editorOpen()) { this.editorOpen.set(false); return; }
@@ -1150,6 +1210,8 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     this.map.on('moveend', () => { clearTimeout(this.moveTimer); this.moveTimer = setTimeout(() => this.zone.run(() => this.loadViewport()), 350); });
     this.updateZoomHint();
     this.locate();
+    // Mini-mapa del hero (pestaña "Inicio", visible al arrancar).
+    setTimeout(() => this.initHeroMap(), 200);
   }
 
   /** Pide al backend solo las estaciones del recuadro visible (si hay zoom). */
@@ -1181,7 +1243,8 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   setTab(t: Tab): void {
     const prev = this.tab();
     this.tab.set(t);
-    if (t === 'account') { const p = this.loadProfile(); this.car = { ...p, connectors: [...p.connectors] }; this.savedMsg.set(''); }
+    if (t === 'account') { const p = this.loadProfile(); this.car = { ...p, connectors: [...p.connectors] }; this.savedMsg.set(''); this.editingCar.set(false); }
+    if (t === 'near') setTimeout(() => this.initHeroMap(), 130);
     if (t !== 'near' && t !== prev) this.pushGuard();  // atrás vuelve a la anterior
     if (t === 'map') setTimeout(() => {
       if (!this.map) return;
@@ -1237,11 +1300,38 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
           // Centrar en el usuario dispara 'moveend' → carga las estaciones del área.
           this.map.setView(p, 13);
         }
+        this.setHeroMarker(p); // mini-mapa del hero centrado en el usuario
         this.loadNear(p);      // lista "Inicio": estaciones cercanas
       }),
       () => this.zone.run(() => this.locating.set(false)),
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
     );
+  }
+  /** Mini-mapa del hero: muestra la zona del usuario (o el país) como fondo. */
+  private initHeroMap(): void {
+    const el = this.heroMapEl?.nativeElement;
+    if (!el) return;
+    if (this.heroMap) { try { this.heroMap.remove(); } catch { } this.heroMap = undefined; this.heroMarker = undefined; }
+    const dark = this.isDark();
+    const pos = this.userPos();
+    const map = L.map(el, {
+      zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false,
+      doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false,
+    });
+    map.setView(pos ?? [4.65, -74.1], pos ? 13 : 5);
+    const key = (window as any).__CARTO_KEY || '';
+    const base = dark ? 'dark_all' : 'light_all';
+    L.tileLayer(`https://{s}.basemaps.cartocdn.com/${base}/{z}/{x}/{y}{r}.png` + (key ? '?key=' + key : ''),
+      { subdomains: 'abcd', maxZoom: 19 }).addTo(map);
+    this.heroMap = map;
+    setTimeout(() => { try { map.invalidateSize(); } catch { } }, 60);
+    if (pos) this.setHeroMarker(pos);
+  }
+  private setHeroMarker(p: [number, number]): void {
+    if (!this.heroMap) return;
+    const icon = L.divIcon({ className: '', html: '<div class="me"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
+    if (this.heroMarker) this.heroMarker.setLatLng(p); else this.heroMarker = L.marker(p, { icon }).addTo(this.heroMap);
+    try { this.heroMap.setView(p, 13, { animate: true }); } catch { }
   }
   private distanceKm(a: [number, number], b: [number, number]): number {
     const R = 6371, toRad = (x: number) => (x * Math.PI) / 180;
