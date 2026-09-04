@@ -105,12 +105,20 @@ public final class StationController {
 
         app.post("/sync", ctx -> ctx.json(Map.of("synced", stations.sync())));
 
-        // ── Identidad del visitante (para mostrar opciones de admin) ──
+        // ── Identidad del visitante (perfil + opciones de admin) ──
         app.get("/me", ctx -> {
-            String user = email(ctx.header("Cookie"));
+            Identity.Profile prof = identity.profileFromCookie(ctx.header("Cookie"));
+            boolean guest = prof == null;
+            String user = guest ? Identity.GUEST : prof.email();
             boolean admin = Env.isAdmin(user);
-            ctx.json(Map.of("email", user, "admin", admin,
-                    "suggestionsPending", admin ? suggestions.pendingCount() : 0));
+            var m = new java.util.LinkedHashMap<String, Object>();
+            m.put("email", user);
+            m.put("guest", guest);
+            m.put("admin", admin);
+            m.put("name", prof != null && prof.name() != null ? prof.name() : "");
+            m.put("picture", prof != null && prof.picture() != null ? prof.picture() : "");
+            m.put("suggestionsPending", admin ? suggestions.pendingCount() : 0);
+            ctx.json(m);
         });
 
         // ── Fase 1: edición de cargadores (solo admin) ──

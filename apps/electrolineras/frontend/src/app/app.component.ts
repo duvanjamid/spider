@@ -7,9 +7,9 @@ import { TabViewModule } from 'primeng/tabview';
 import { TagModule } from 'primeng/tag';
 import * as L from 'leaflet';
 import '@maplibre/maplibre-gl-leaflet'; // añade L.maplibreGL (capa base vectorial)
-import { Charger, Comment, ElectrolinerasService, Report, Station, StationFull, Suggestion } from './electrolineras.service';
+import { Charger, Comment, ElectrolinerasService, Me, Report, Station, StationFull, Suggestion } from './electrolineras.service';
 
-type Tab = 'map' | 'near' | 'trip' | 'info';
+type Tab = 'map' | 'near' | 'trip' | 'info' | 'account';
 
 /** Una opción de ruta ya analizada (estaciones, compatibilidad, alcance). */
 interface RouteOpt {
@@ -34,6 +34,8 @@ interface CarProfile {
   cycle: string;             // ciclo de homologación: WLTP | CLTC | NEDC | EPA | Real
   connectors: string[];
   fastCharge: boolean;
+  bodyType: string;          // silueta del vehículo: sedan | suv | hatch | pickup | van
+  color: string;             // color del vehículo (hex)
 }
 
 @Component({
@@ -55,7 +57,7 @@ interface CarProfile {
     .hero-glow { position: absolute; top: -50px; right: -34px; width: 170px; height: 170px; border-radius: 50%; background: var(--grad); filter: blur(46px); opacity: .32; }
     .hero > * { position: relative; }
     .hero .hi { font-size: .72rem; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--accent); }
-    .hero h1 { margin: 7px 0 3px; font-size: 1.95rem; font-weight: 800; letter-spacing: -.6px; background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .hero h1 { margin: 7px 0 3px; font-size: 1.95rem; font-weight: 800; letter-spacing: -.6px; color: var(--fg); }
     .hero p { margin: 0 0 14px; color: var(--muted); }
     .hchips { display: flex; gap: 8px; flex-wrap: wrap; }
     .hchip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 999px; font-size: .82rem; font-weight: 600; background: var(--glass); backdrop-filter: blur(8px); border: 1px solid var(--border); cursor: pointer; }
@@ -82,7 +84,7 @@ interface CarProfile {
     .map-search i { color: var(--muted); }
     .map-search input { flex: 1; border: none; background: none; color: var(--fg); font-size: 1rem; outline: none; }
     .map-search button { width: 34px; height: 34px; border-radius: 10px; border: none; background: var(--panel-2); color: var(--muted); cursor: pointer; }
-    .map-search button.on { background: var(--accent); color: #08130c; }
+    .map-search button.on { background: var(--accent); color: var(--on-accent); }
     /* z-index:0 CONFINA los z-index internos de Leaflet (controles llegan a 1000)
        para que no tapen el header, la nav ni el drawer. */
     .map { position: absolute; inset: 0; z-index: 0; }
@@ -137,12 +139,12 @@ interface CarProfile {
     .field input { flex: 1; border: none; background: none; color: var(--fg); font-size: 1rem; outline: none; }
     .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0; }
     .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 12px; text-align: center; box-shadow: var(--shadow); }
-    .kpi .v { font-size: 1.45rem; font-weight: 800; background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; } .kpi .l { color: var(--muted); font-size: .74rem; margin-top: 2px; }
+    .kpi .v { font-size: 1.45rem; font-weight: 800; color: var(--accent-strong); } .kpi .l { color: var(--muted); font-size: .74rem; margin-top: 2px; }
     .trow { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; cursor: pointer; background: var(--panel); }
     .trow.stop { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
     .trow .dot, .scard .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
     .trow .grow { flex: 1; min-width: 0; } .trow .nm { font-weight: 600; } .trow .ds { color: var(--muted); font-size: .8rem; }
-    .stopbadge { font-size: .68rem; font-weight: 800; color: #08130c; background: var(--accent); padding: 2px 8px; border-radius: 999px; }
+    .stopbadge { font-size: .68rem; font-weight: 800; color: var(--on-accent); background: var(--accent); padding: 2px 8px; border-radius: 999px; }
     .kpi.hi { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
     /* Selector de conectores del conductor (multi) */
     .connpick { margin: 4px 0 10px; }
@@ -199,22 +201,103 @@ interface CarProfile {
     /* Info screen */
     .stat { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 16px; background: var(--panel); margin-bottom: 10px; }
     .stat { animation: fadeUp .3s ease both; }
-    .stat .n { font-size: 1.7rem; font-weight: 800; min-width: 56px; text-align: center; background: var(--grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .stat .n { font-size: 1.7rem; font-weight: 800; min-width: 56px; text-align: center; color: var(--accent-strong); }
     .legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 8px 0; } .legend span { display: flex; align-items: center; gap: 6px; font-size: .85rem; }
     .legend .d { width: 12px; height: 12px; border-radius: 50%; }
     .note { background: color-mix(in srgb, var(--accent) 8%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-radius: 14px; padding: 14px; }
 
-    /* Bottom navigation */
-    .bottomnav { position: fixed; bottom: 0; left: 0; right: 0; z-index: 40; height: calc(var(--nav) + env(safe-area-inset-bottom));
-           padding-bottom: env(safe-area-inset-bottom); display: flex; background: color-mix(in srgb, var(--bg) 92%, transparent);
-           backdrop-filter: blur(12px); border-top: 1px solid var(--border); }
-    .bottomnav button { position: relative; flex: 1; border: none; background: none; color: var(--muted); cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: .68rem; font-weight: 600; transition: color .2s; }
-    .bottomnav button i { font-size: 1.15rem; transition: transform .2s ease; z-index: 1; }
-    .bottomnav button span { z-index: 1; }
-    .bottomnav button.on { color: var(--accent); }
-    .bottomnav button.on i { transform: translateY(-2px) scale(1.1); }
-    .bottomnav button::before { content: ''; position: absolute; top: 7px; left: 50%; transform: translateX(-50%) scale(.6); width: 48px; height: 30px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 15%, transparent); opacity: 0; transition: opacity .2s, transform .2s; }
-    .bottomnav button.on::before { opacity: 1; transform: translateX(-50%) scale(1); }
+    /* Bottom navigation con FAB central (estilo nativo) */
+    .bnav { position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
+           height: calc(var(--nav) + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
+           display: grid; grid-template-columns: repeat(5, 1fr); align-items: center;
+           background: color-mix(in srgb, var(--panel) 94%, transparent); backdrop-filter: blur(12px);
+           border-top: 1px solid var(--border); }
+    .bnav-item { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0;
+           background: none; border: none; color: var(--muted); font: inherit; font-size: .66rem; font-weight: 600; cursor: pointer; transition: color .15s; }
+    .bnav-item i { font-size: 1.18rem; }
+    .bnav-item.on { color: var(--accent-strong); }
+    .bnav-fab { justify-self: center; width: 58px; height: 58px; margin-top: -26px; border-radius: 50%;
+           border: 4px solid var(--bg); background: var(--accent); color: var(--on-accent); font-size: 1.35rem;
+           cursor: pointer; display: grid; place-items: center; transition: transform .08s;
+           box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 45%, transparent); }
+    .bnav-fab:active { transform: scale(.93); }
+    .bnav-fab.on { filter: brightness(1.05); }
+    .bnav-icwrap { position: relative; display: inline-flex; }
+    .bnav-ava { width: 24px; height: 24px; border-radius: 50%; overflow: hidden; display: inline-block; border: 1.5px solid var(--border); }
+    .bnav-ava img { width: 100%; height: 100%; object-fit: cover; }
+    .bnav-badge { position: absolute; top: -6px; right: -10px; min-width: 16px; height: 16px; padding: 0 4px;
+           border-radius: 999px; background: #ef4444; color: #fff; font-size: .62rem; font-weight: 800;
+           line-height: 16px; text-align: center; box-shadow: 0 0 0 2px var(--panel); }
+    @media (min-width: 900px) { .bnav { max-width: 520px; left: 50%; transform: translateX(-50%); border-radius: 18px 18px 0 0; } }
+
+    /* Campos nativos (cuenta) */
+    .inp, .card select.sel { width: 100%; padding: 11px 13px; border-radius: 12px; border: 1px solid var(--border);
+           background: var(--panel-2); color: var(--fg); font-size: 1rem; font-family: inherit; }
+    .inp:focus, .card select.sel:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+    .card { border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; background: var(--panel); box-shadow: var(--shadow); }
+    .card .fl:first-child { margin-top: 0; }
+    .fl { display: block; font-size: .78rem; font-weight: 700; color: var(--muted); margin: 12px 2px 6px; }
+    :host ::ng-deep .w .p-button, :host ::ng-deep .p-button.w { width: 100%; }
+
+    /* Cuenta: cabecera de perfil */
+    .profile { border-radius: 20px; overflow: hidden; border: 1px solid var(--border); background: var(--panel); box-shadow: var(--shadow); }
+    .pf-cover { height: 76px; background: linear-gradient(120deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #7c9bff)); }
+    .pf-body { padding: 0 18px 18px; text-align: center; margin-top: -42px; }
+    .pf-avatar { width: 82px; height: 82px; border-radius: 50%; margin: 0 auto 10px; background: var(--panel-2);
+           border: 3px solid var(--panel); box-shadow: 0 6px 18px rgba(0,0,0,.18); overflow: hidden;
+           display: grid; place-items: center; font-weight: 800; font-size: 1.8rem; color: var(--accent-strong); }
+    .pf-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .pf-name { font-weight: 800; font-size: 1.24rem; letter-spacing: -.2px; }
+    .pf-mail { color: var(--muted); font-size: .9rem; margin-top: 3px; word-break: break-all; }
+    .pf-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 12px; }
+    .pf-chip { display: inline-flex; align-items: center; gap: 7px; font-size: .76rem; font-weight: 700;
+           padding: 6px 12px; border-radius: 999px; background: var(--accent-weak); color: var(--accent-strong); }
+    .pf-chip.guest { background: color-mix(in srgb, #f59e0b 16%, transparent); color: #b3730a; }
+    .pf-chip.admin { background: color-mix(in srgb, #8b5cf6 16%, transparent); color: #7c3aed; }
+
+    /* Cuenta: grupos y menú */
+    .acc-group { margin-top: 18px; }
+    .acc-title { display: flex; align-items: center; gap: 8px; font-size: .72rem; font-weight: 800; letter-spacing: .5px;
+           text-transform: uppercase; color: var(--muted); margin: 0 4px 8px; }
+    .acc-title i { color: var(--accent-strong); }
+    .menu { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); overflow: hidden; box-shadow: var(--shadow); }
+    .menu button { display: flex; align-items: center; gap: 14px; padding: 15px 14px; background: none; border: none;
+           border-bottom: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 1rem; cursor: pointer; text-align: left; }
+    .menu button:last-child { border-bottom: none; }
+    .menu button:active { background: var(--panel-2); }
+    .menu button:disabled { opacity: .6; }
+    .menu button > i:first-child { width: 22px; text-align: center; color: var(--accent-strong); font-size: 1.05rem; }
+    .menu button > span { flex: 1; }
+    .menu button .go { color: var(--muted); font-size: .8rem; flex: none; }
+    .menu button .badge { background: var(--accent); color: var(--on-accent); border-radius: 999px; font-size: .72rem;
+           font-weight: 800; padding: 1px 8px; flex: none; }
+    .acc-cta { margin: 14px 0 2px; }
+    .acc-foot { text-align: center; color: var(--muted); font-size: .76rem; margin: 22px 0 2px; }
+    .logout { width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 14px;
+           border: 1px solid color-mix(in srgb, #ef4444 40%, var(--border)); border-radius: 14px; background: none;
+           color: #ef4444; font: inherit; font-weight: 700; font-size: .96rem; cursor: pointer; }
+    .logout:active { background: color-mix(in srgb, #ef4444 10%, transparent); }
+
+    /* Cuenta: vehículo (imagen tintada por color) */
+    .vhero { display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: 14px; margin-bottom: 6px;
+           background: color-mix(in srgb, var(--vc) 12%, var(--panel-2)); border: 1px solid color-mix(in srgb, var(--vc) 30%, var(--border)); }
+    .vhero-badge { width: 62px; height: 62px; border-radius: 16px; flex: none; display: grid; place-items: center;
+           background: color-mix(in srgb, var(--vc) 22%, var(--panel)); color: var(--vc); font-size: 2rem; }
+    .vhero-txt { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+    .vhero-txt b { font-size: 1.05rem; font-weight: 800; }
+    .vhero-txt small { color: var(--muted); font-size: .82rem; }
+    .bodypick { display: flex; flex-wrap: wrap; gap: 8px; }
+    .bchip { display: inline-flex; align-items: center; gap: 7px; font-size: .84rem; font-weight: 700; padding: 8px 13px;
+           border-radius: 12px; cursor: pointer; border: 1px solid var(--border); background: var(--panel-2); color: var(--fg); }
+    .bchip i { color: var(--muted); }
+    .bchip.on { border-color: var(--accent); background: var(--accent-weak); color: var(--accent-strong); }
+    .bchip.on i { color: var(--accent-strong); }
+    .colorpick { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .cdot { width: 34px; height: 34px; border-radius: 50%; cursor: pointer; border: 3px solid var(--panel);
+           box-shadow: 0 0 0 1px var(--border); padding: 0; }
+    .cdot.on { box-shadow: 0 0 0 2px var(--fg); }
+    .cdot.custom { position: relative; display: grid; place-items: center; background: var(--panel-2); color: var(--muted); overflow: hidden; }
+    .cdot.custom input { position: absolute; inset: -8px; opacity: 0; cursor: pointer; }
 
     /* Drawer */
     .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1990; }
@@ -293,8 +376,7 @@ interface CarProfile {
       <header class="hdr">
         <div class="brand"><i class="fa-solid fa-charging-station"></i> Electrolineras <span class="env" *ngIf="isTest()">test</span></div>
         <span class="spacer"></span>
-        <button class="icon-btn" (click)="openProfile()" aria-label="Mi vehículo"><i class="fa-solid fa-car-side"></i></button>
-        <button class="icon-btn" (click)="openDrawer()" aria-label="Menú"><i class="fa-solid fa-sliders"></i></button>
+        <button class="icon-btn" *ngIf="tab() === 'near' || tab() === 'map'" (click)="openDrawer()" aria-label="Filtros"><i class="fa-solid fa-sliders"></i></button>
       </header>
 
       <!-- Screens -->
@@ -484,8 +566,11 @@ interface CarProfile {
           <div class="scroll">
             <div class="s-head"><h1>Información</h1><p>De dónde salen los datos y cómo funciona.</p></div>
             <div class="stat"><div class="n">{{ meta()?.total ?? '—' }}</div><div><div style="font-weight:700">Estaciones cargadas</div><div class="muted" style="font-size:.84rem">en {{ meta()?.cities ?? 0 }} ciudad(es)</div></div></div>
-            <h3 class="sec">Fuentes de datos</h3>
-            <div class="stat" *ngFor="let s of meta()?.bySource || []"><div class="n">{{ s.count }}</div><div><div style="font-weight:700">{{ sourceLabel(s.source) }}</div><div class="muted" style="font-size:.84rem">{{ sourceDesc(s.source) }}</div></div></div>
+            <!-- El detalle de agregadores (fuentes) es solo para el administrador. -->
+            <ng-container *ngIf="isAdmin()">
+              <h3 class="sec">Agregadores (fuentes de datos)</h3>
+              <div class="stat" *ngFor="let s of meta()?.bySource || []"><div class="n">{{ s.count }}</div><div><div style="font-weight:700">{{ sourceLabel(s.source) }}</div><div class="muted" style="font-size:.84rem">{{ sourceDesc(s.source) }}</div></div></div>
+            </ng-container>
             <h3 class="sec">Velocidad de carga (color del pin)</h3>
             <div class="legend">
               <span><i class="d" style="background:#f97316"></i> Rápida (DC)</span>
@@ -499,19 +584,127 @@ interface CarProfile {
               <span><i class="d" style="box-shadow:0 0 0 2px #ef4444 inset;background:transparent;border:1px solid #ef4444"></i> Inactiva (borde rojo)</span>
             </div>
             <p class="muted" style="font-size:.86rem">El estado en vivo no está en datos abiertos; lo construimos entre todos. Cuando uses una estación, reporta si está activa/ocupada y comenta.</p>
-            <div class="note" style="margin-top:12px">
+            <div class="note" style="margin-top:12px" *ngIf="isAdmin()">
               <b>Agregación de fuentes.</b> Consolidamos varias fuentes de electrolineras de Colombia (OpenStreetMap, EPM, ESSA y —opcional— Open Charge Map) y unificamos las estaciones que están en el mismo punto para no repetir pines. Cada pin muestra las fuentes que lo respaldan.
             </div>
           </div>
         </section>
+
+        <!-- CUENTA -->
+        <section class="scr" *ngIf="tab() === 'account'">
+          <div class="scroll">
+            <!-- Cabecera de perfil -->
+            <div class="profile">
+              <div class="pf-cover"></div>
+              <div class="pf-body">
+                <div class="pf-avatar">
+                  <img *ngIf="me()?.picture && !avatarBroken" [src]="me()?.picture" alt="" (error)="avatarBroken = true" referrerpolicy="no-referrer" />
+                  <span *ngIf="!me()?.picture || avatarBroken">{{ initials() }}</span>
+                </div>
+                <div class="pf-name">{{ displayName() }}</div>
+                <div class="pf-mail" *ngIf="me()?.email && !isGuest()">{{ me()?.email }}</div>
+                <div class="pf-chips">
+                  <span class="pf-chip" *ngIf="!isGuest()"><i class="fa-brands fa-google"></i> Conectado con Google</span>
+                  <span class="pf-chip guest" *ngIf="isGuest()"><i class="fa-solid fa-user-clock"></i> Modo invitado</span>
+                  <span class="pf-chip admin" *ngIf="isAdmin()"><i class="fa-solid fa-user-shield"></i> Administrador</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="acc-cta" *ngIf="isGuest()">
+              <a href="/admin/" style="text-decoration:none"><p-button label="Entrar con Google" icon="fa-brands fa-google" styleClass="w" /></a>
+              <p class="muted" style="text-align:center;font-size:.82rem;margin:8px 4px 0">Inicia sesión para guardar tu vehículo y calificar estaciones.</p>
+            </div>
+
+            <!-- Mi vehículo -->
+            <div class="acc-group">
+              <div class="acc-title"><i class="fa-solid fa-car-side"></i> Mi vehículo</div>
+              <div class="card">
+                <div class="vhero" [style.--vc]="car.color || '#3b5bfd'">
+                  <div class="vhero-badge"><i [class]="carIcon()"></i></div>
+                  <div class="vhero-txt">
+                    <b>{{ car.brand || 'Registra tu vehículo' }}</b>
+                    <small *ngIf="car.autonomyKm">{{ car.autonomyKm }} km · {{ car.cycle }} · efectividad {{ cyclePct(car.cycle) }}%</small>
+                    <small *ngIf="!car.autonomyKm">Marca, autonomía y conectores para planear mejor.</small>
+                  </div>
+                </div>
+
+                <label class="fl">Marca / modelo</label>
+                <input class="inp" [(ngModel)]="car.brand" placeholder="Ej. Renault Zoe, BYD Dolphin…" />
+
+                <label class="fl">Tipo de vehículo</label>
+                <div class="bodypick">
+                  <button type="button" class="bchip" *ngFor="let b of BODY_TYPES" [class.on]="car.bodyType === b.id" (click)="car.bodyType = b.id">
+                    <i [class]="b.icon"></i> {{ b.label }}
+                  </button>
+                </div>
+
+                <label class="fl">Color</label>
+                <div class="colorpick">
+                  <button type="button" class="cdot" *ngFor="let c of CAR_COLORS" [style.background]="c" [class.on]="car.color === c" (click)="car.color = c" [attr.aria-label]="c"></button>
+                  <label class="cdot custom"><input type="color" [(ngModel)]="car.color" /><i class="fa-solid fa-eye-dropper"></i></label>
+                </div>
+
+                <label class="fl">Autonomía homologada (km)</label>
+                <input class="inp" type="number" [(ngModel)]="car.autonomyKm" placeholder="Ej. 300" />
+
+                <label class="fl">Ciclo de homologación</label>
+                <select class="sel" [(ngModel)]="car.cycle">
+                  <option *ngFor="let c of CYCLES" [value]="c.id">{{ c.label }} · efectividad {{ cyclePct(c.id) }}%</option>
+                </select>
+                <p class="muted" style="font-size:.76rem;margin:4px 2px 10px">El ciclo indica cómo se midió la autonomía; ajustamos el rango real para que no te quedes sin batería.</p>
+
+                <label class="fl">Conectores de tu carro</label>
+                <div class="chips" style="margin-bottom:12px">
+                  <button type="button" class="pchip" *ngFor="let ct of CONNECTOR_TYPES"
+                          [class.on]="car.connectors.includes(ct)" [style.--cc]="connColor(ct)" (click)="toggleCarConnector(ct)">
+                    <i class="fa-solid fa-plug"></i> {{ ct }}
+                  </button>
+                </div>
+
+                <label class="toggle" style="margin-bottom:14px">
+                  <input type="checkbox" [(ngModel)]="car.fastCharge" /> Mi carro admite carga rápida (DC)
+                </label>
+                <p-button label="Guardar vehículo" icon="fa-solid fa-floppy-disk" (onClick)="saveProfile()" styleClass="w" />
+                <p class="muted" *ngIf="savedMsg()" style="text-align:center;font-size:.84rem;margin-top:8px;color:var(--accent-strong)">{{ savedMsg() }}</p>
+              </div>
+            </div>
+
+            <!-- Administración (solo súper admin) -->
+            <div class="acc-group" *ngIf="isAdmin()">
+              <div class="acc-title"><i class="fa-solid fa-screwdriver-wrench"></i> Administración</div>
+              <div class="menu">
+                <button (click)="setTab('info')"><i class="fa-solid fa-layer-group"></i><span>Ver agregadores (fuentes)</span><i class="fa-solid fa-chevron-right go"></i></button>
+                <button (click)="openReview()"><i class="fa-solid fa-inbox"></i><span>Sugerencias pendientes</span>
+                  <span class="badge" *ngIf="pendingCount()">{{ pendingCount() }}</span><i class="fa-solid fa-chevron-right go"></i></button>
+                <button (click)="clearCache()" [disabled]="clearingCache()">
+                  <i class="fa-solid" [class.fa-broom]="!clearingCache()" [class.fa-spinner]="clearingCache()" [class.fa-spin]="clearingCache()"></i>
+                  <span>Invalidar caché de fuentes</span><i class="fa-solid fa-chevron-right go"></i></button>
+              </div>
+              <p class="muted" *ngIf="cacheMsg()" style="font-size:.84rem;margin-top:8px">{{ cacheMsg() }}</p>
+            </div>
+
+            <div class="acc-group" *ngIf="!isGuest()">
+              <button class="logout" (click)="logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Cerrar sesión</button>
+            </div>
+            <div class="acc-foot">Electrolineras · Spider<span *ngIf="isTest()"> · entorno test</span></div>
+          </div>
+        </section>
       </div>
 
-      <!-- Bottom nav -->
-      <nav class="bottomnav">
-        <button [class.on]="tab() === 'near'" (click)="setTab('near')"><i class="fa-solid fa-house"></i><span>Inicio</span></button>
-        <button [class.on]="tab() === 'map'" (click)="setTab('map')"><i class="fa-solid fa-map-location-dot"></i><span>Mapa</span></button>
-        <button [class.on]="tab() === 'trip'" (click)="setTab('trip')"><i class="fa-solid fa-route"></i><span>Viaje</span></button>
-        <button [class.on]="tab() === 'info'" (click)="setTab('info')"><i class="fa-solid fa-circle-info"></i><span>Info</span></button>
+      <!-- Bottom nav con FAB central (Viaje) -->
+      <nav class="bnav">
+        <button class="bnav-item" [class.on]="tab() === 'near'" (click)="setTab('near')"><i class="fa-solid fa-house"></i><span>Inicio</span></button>
+        <button class="bnav-item" [class.on]="tab() === 'map'" (click)="setTab('map')"><i class="fa-solid fa-map-location-dot"></i><span>Mapa</span></button>
+        <button class="bnav-fab" [class.on]="tab() === 'trip'" (click)="setTab('trip')" aria-label="Planear viaje"><i class="fa-solid fa-route"></i></button>
+        <button class="bnav-item" [class.on]="tab() === 'info'" (click)="setTab('info')"><i class="fa-solid fa-circle-info"></i><span>Info</span></button>
+        <button class="bnav-item" [class.on]="tab() === 'account'" (click)="setTab('account')" aria-label="Mi cuenta">
+          <span class="bnav-icwrap">
+            <span class="bnav-ava" *ngIf="me()?.picture && !avatarBroken"><img [src]="me()?.picture" alt="" (error)="avatarBroken = true" referrerpolicy="no-referrer" /></span>
+            <i class="fa-solid fa-circle-user" *ngIf="!me()?.picture || avatarBroken"></i>
+            <span class="bnav-badge" *ngIf="isAdmin() && pendingCount() > 0">{{ pendingCount() > 9 ? '9+' : pendingCount() }}</span>
+          </span>
+          <span>Cuenta</span></button>
       </nav>
 
       <!-- Drawer (filtros / ajustes) -->
@@ -686,52 +879,6 @@ interface CarProfile {
         </div>
       </p-dialog>
 
-      <!-- Perfil del usuario / vehículo (menú lateral derecho) -->
-      <div class="scrim" *ngIf="profileOpen()" (click)="profileOpen.set(false)"></div>
-      <aside class="drawer" [class.open]="profileOpen()">
-        <div class="dh"><i class="fa-solid fa-user" style="margin-right:8px;color:var(--accent)"></i> Mi perfil
-          <span class="spacer" style="flex:1"></span>
-          <button class="icon-btn" (click)="profileOpen.set(false)"><i class="fa-solid fa-xmark"></i></button></div>
-        <div class="db">
-          <div class="pcard" *ngIf="isAdmin()"><i class="fa-solid fa-user-shield"></i> Administrador</div>
-
-          <div class="psection">
-            <div class="ptitle"><i class="fa-solid fa-car-side"></i> Mi vehículo</div>
-            <label>Marca / modelo</label>
-            <input class="pin-in" [(ngModel)]="car.brand" placeholder="Ej. Renault Zoe, BYD Dolphin…" />
-            <label>Autonomía homologada (km)</label>
-            <input class="pin-in" type="number" [(ngModel)]="car.autonomyKm" placeholder="Ej. 300" />
-            <label>Ciclo de homologación</label>
-            <select class="sel" [(ngModel)]="car.cycle">
-              <option *ngFor="let c of CYCLES" [value]="c.id">{{ c.label }} · efectividad {{ cyclePct(c.id) }}%</option>
-            </select>
-            <p class="muted" style="font-size:.76rem;margin:4px 0 8px">El ciclo indica cómo se midió la autonomía; ajustamos el rango real para que no te quedes sin batería.</p>
-            <label>Conectores de tu carro</label>
-            <p class="muted" style="font-size:.76rem;margin:0 0 8px">Incluye los que uses con adaptador.</p>
-            <div class="chips" style="margin-bottom:12px">
-              <button type="button" class="pchip" *ngFor="let ct of CONNECTOR_TYPES"
-                      [class.on]="car.connectors.includes(ct)" [style.--cc]="connColor(ct)" (click)="toggleCarConnector(ct)">
-                <i class="fa-solid fa-plug"></i> {{ ct }}
-              </button>
-            </div>
-            <label class="toggle" style="margin-bottom:14px">
-              <input type="checkbox" [(ngModel)]="car.fastCharge" /> Mi carro admite carga rápida (DC)
-            </label>
-            <p-button label="Guardar vehículo" icon="fa-solid fa-floppy-disk" (onClick)="saveProfile()" styleClass="w" />
-          </div>
-
-          <!-- Administración (solo súper admin): fuentes, sugerencias, caché -->
-          <div class="psection admin" *ngIf="isAdmin()">
-            <div class="ptitle"><i class="fa-solid fa-screwdriver-wrench"></i> Administración</div>
-            <p-button [label]="'Sugerencias pendientes' + (pendingCount() ? ' (' + pendingCount() + ')' : '')" [outlined]="true"
-                      icon="fa-solid fa-inbox" (onClick)="openReview()" styleClass="w mb" />
-            <p-button label="Limpiar caché de fuentes" [outlined]="true" icon="fa-solid fa-broom" severity="danger"
-                      [loading]="clearingCache()" (onClick)="clearCache()" styleClass="w" />
-            <p class="muted" *ngIf="cacheMsg()" style="font-size:.82rem;margin-top:8px">{{ cacheMsg() }}</p>
-            <p class="muted" style="font-size:.76rem;margin-top:10px">Como admin ves las fuentes de datos y la verificación en el detalle de cada estación.</p>
-          </div>
-        </div>
-      </aside>
     </div>
   `,
 })
@@ -742,6 +889,29 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
 
   readonly isTest = signal(false);
   readonly isAdmin = signal(false);
+  readonly me = signal<Me | null>(null);
+  avatarBroken = false;
+  isGuest(): boolean { const m = this.me(); return !m || !!m.guest; }
+  displayName(): string {
+    const m = this.me();
+    if (m?.name) return m.name;
+    if (this.isGuest()) return 'Invitado';
+    const e = m?.email || '';
+    return e.includes('@') ? e.split('@')[0] : (e || 'Invitado');
+  }
+  initials(): string {
+    if (this.isGuest()) return '🙂';
+    const parts = this.displayName().trim().split(/\s+/).filter(Boolean);
+    const a = parts[0]?.[0] ?? '';
+    const b = parts.length > 1 ? parts[parts.length - 1][0] : '';
+    return (a + b).toUpperCase() || '·';
+  }
+  logout(): void {
+    this.api.logout().subscribe({
+      next: () => (window.location.href = '/admin/'),
+      error: () => (window.location.href = '/admin/'),
+    });
+  }
   readonly clearingCache = signal(false);
   readonly cacheMsg = signal('');
   readonly tab = signal<Tab>('near');
@@ -813,14 +983,25 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   ];
   cycleFactor(id: string): number { return this.CYCLES.find((c) => c.id === id)?.factor ?? 0.85; }
   cyclePct(id: string): number { return Math.round(this.cycleFactor(id) * 100); }
-  readonly profileOpen = signal(false);
+  // Tipos de vehículo (icono representativo) y paleta de colores.
+  readonly BODY_TYPES: { id: string; label: string; icon: string }[] = [
+    { id: 'car', label: 'Carro', icon: 'fa-solid fa-car-side' },
+    { id: 'suv', label: 'SUV', icon: 'fa-solid fa-car' },
+    { id: 'pickup', label: 'Pickup', icon: 'fa-solid fa-truck-pickup' },
+    { id: 'van', label: 'Van', icon: 'fa-solid fa-van-shuttle' },
+    { id: 'moto', label: 'Moto', icon: 'fa-solid fa-motorcycle' },
+  ];
+  readonly CAR_COLORS = ['#3b5bfd', '#ef4444', '#111827', '#e5e7eb', '#f59e0b', '#10b981', '#8b5cf6', '#06b6d4'];
+  carIcon(): string { return this.BODY_TYPES.find((b) => b.id === this.car.bodyType)?.icon ?? 'fa-solid fa-car-side'; }
+
+  readonly savedMsg = signal('');
   readonly profile = signal<CarProfile>(this.loadProfile());
   car: CarProfile = this.loadProfile();   // modelo del formulario
   private loadProfile(): CarProfile {
-    try { const v = localStorage.getItem('elec.car'); if (v) { const p = JSON.parse(v); return { cycle: 'WLTP', ...p }; } } catch { }
-    return { brand: '', autonomyKm: null, cycle: 'WLTP', connectors: [], fastCharge: true };
+    const def: CarProfile = { brand: '', autonomyKm: null, cycle: 'WLTP', connectors: [], fastCharge: true, bodyType: 'car', color: '#3b5bfd' };
+    try { const v = localStorage.getItem('elec.car'); if (v) { return { ...def, ...JSON.parse(v) }; } } catch { }
+    return def;
   }
-  openProfile(): void { const p = this.loadProfile(); this.car = { ...p, connectors: [...p.connectors] }; this.profileOpen.set(true); this.pushGuard(); }
   toggleCarConnector(t: string): void {
     const has = this.car.connectors.includes(t);
     this.car.connectors = has ? this.car.connectors.filter((x) => x !== t) : [...this.car.connectors, t];
@@ -833,7 +1014,8 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     if (p.connectors.length) { this.tripConnectors.set([...p.connectors]); try { localStorage.setItem('elec.myConnectors', JSON.stringify(p.connectors)); } catch { } }
     if (p.autonomyKm) this.tripAutonomy = p.autonomyKm;
     if (p.cycle) this.tripCycle = p.cycle;
-    this.profileOpen.set(false);
+    this.savedMsg.set('✓ Vehículo guardado. Se usará al planear tu viaje.');
+    setTimeout(() => this.savedMsg.set(''), 2600);
   }
   hasProfile(): boolean { const p = this.profile(); return !!(p.brand || p.autonomyKm || p.connectors.length); }
   openDrawer(): void { this.drawer.set(true); this.pushGuard(); }
@@ -873,7 +1055,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   ngOnInit(): void {
     this.api.health().subscribe({ next: (h) => this.isTest.set(h.env === 'test'), error: () => {} });
     this.api.meta().subscribe({ next: (m) => this.meta.set(m), error: () => {} });
-    this.api.me().subscribe({ next: (u) => { this.isAdmin.set(!!u.admin); this.pendingCount.set(u.suggestionsPending || 0); }, error: () => {} });
+    this.api.me().subscribe({ next: (u) => { this.me.set(u); this.isAdmin.set(!!u.admin); this.pendingCount.set(u.suggestionsPending || 0); }, error: () => {} });
     // Ya NO se cargan todas las estaciones al inicio: el mapa pide por área
     // visible y la lista "Inicio" pide alrededor del usuario al ubicarse.
 
@@ -896,7 +1078,6 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   private onPopState = (): void => { this.zone.run(() => this.goBack()); this.pushGuard(); };
   /** Gesto/botón atrás: cierra la capa abierta; nunca sale de la app. */
   goBack(): void {
-    if (this.profileOpen()) { this.profileOpen.set(false); return; }
     if (this.reviewOpen()) { this.reviewOpen.set(false); return; }
     if (this.detailVisible) {
       if (this.editorOpen()) { this.editorOpen.set(false); return; }
@@ -1000,6 +1181,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   setTab(t: Tab): void {
     const prev = this.tab();
     this.tab.set(t);
+    if (t === 'account') { const p = this.loadProfile(); this.car = { ...p, connectors: [...p.connectors] }; this.savedMsg.set(''); }
     if (t !== 'near' && t !== prev) this.pushGuard();  // atrás vuelve a la anterior
     if (t === 'map') setTimeout(() => {
       if (!this.map) return;

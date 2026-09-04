@@ -1,37 +1,48 @@
-// ── Tokens de tema. Claro por defecto; oscuro según el dispositivo. ──
+// ══════════════════════════════════════════════════════════════
+//  Tema de «electrolineras»: sobrio y nativo, estilo Waze/gastos.
+//  · Marca eléctrica: verde-esmeralda. Superficies limpias, esquinas
+//    redondeadas, sombras suaves, sin degradados pesados.
+//  · Claro / oscuro automático (prefers-color-scheme).
+// ══════════════════════════════════════════════════════════════
 :root {
-  --bg: #eef2f9;
-  --bg-2: #e6ebf5;
-  --panel: #ffffff;
-  --panel-2: #eef1f7;
-  --fg: #141922;
-  --muted: #5b6472;
-  --accent: #16a34a;
+  --bg: #f3f5fb;            // fondo claro azulado
+  --bg-2: #e9edf7;
+  --panel: #ffffff;         // superficie de tarjetas
+  --panel-2: #eef1f9;       // superficie sutil / campos
+  --fg: #131a2b;            // texto principal
+  --muted: #667089;         // texto secundario
+  --border: #e2e7f2;        // bordes / divisores
+  --accent: #3b5bfd;        // azul índigo (marca, estilo mapas)
+  --accent-strong: #2743d6; // acento con contraste (texto/iconos)
   --accent-2: #06b6d4;
-  --border: #e3e8f0;
-  --shadow: 0 1px 2px rgba(20, 26, 40, .05), 0 10px 30px rgba(20, 26, 40, .07);
-  --glow: 0 10px 34px rgba(22, 163, 74, .18);
-  --grad: linear-gradient(135deg, #16a34a, #06b6d4);
-  --grad-soft: linear-gradient(160deg, #16a34a14, #06b6d40a);
-  --glass: rgba(255, 255, 255, .68);
+  --accent-weak: color-mix(in srgb, var(--accent) 14%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, var(--panel));
+  --accent-line: color-mix(in srgb, var(--accent) 30%, var(--border));
+  --on-accent: #ffffff;     // texto sobre relleno de acento
+  --shadow: 0 1px 2px rgba(20, 26, 50, .05), 0 6px 20px rgba(20, 26, 50, .07);
+  --radius: 16px;
+  // Compatibilidad con componentes que aún referencian estos tokens.
+  --glow: var(--shadow);
+  --grad: var(--accent);
+  --grad-soft: var(--accent-soft);
+  --glass: color-mix(in srgb, var(--panel) 82%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0b0e14;
-    --bg-2: #0e131b;
-    --panel: #141a24;
-    --panel-2: #1b222e;
-    --fg: #e8ebf2;
-    --muted: #94a0b2;
-    --accent: #34d399;
+    --bg: #0b0f1a;
+    --bg-2: #0e1320;
+    --panel: #151a28;
+    --panel-2: #1d2333;
+    --fg: #e7ebf5;
+    --muted: #96a0ba;
+    --border: #262d40;
+    --accent: #6688ff;
+    --accent-strong: #93abff;
     --accent-2: #22d3ee;
-    --border: #232c3a;
-    --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 14px 40px rgba(0, 0, 0, .45);
-    --glow: 0 12px 40px rgba(52, 211, 153, .22);
-    --grad: linear-gradient(135deg, #34d399, #22d3ee);
-    --grad-soft: linear-gradient(160deg, #34d39918, #22d3ee0d);
-    --glass: rgba(20, 26, 36, .62);
+    --on-accent: #06122e;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .45), 0 8px 24px rgba(0, 0, 0, .42);
+    --glass: color-mix(in srgb, var(--panel) 78%, transparent);
   }
 }
 
@@ -85,3 +96,45 @@ h3 { margin: 18px 0 10px; }
   background: #16a34a; color: #fff; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.4); font-size: .72rem; }
 
 @media (prefers-reduced-motion: reduce) { .pin.live::after, .me::after { animation: none; } }
+
+// ── PrimeNG toma los tokens del tema (botones y tarjetas sobrios). ──
+.p-card {
+  background: var(--panel) !important;
+  color: var(--fg) !important;
+  border: 1px solid var(--border);
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow) !important;
+}
+.p-card .p-card-title { color: var(--fg); font-size: 1.02rem; font-weight: 800; }
+.p-card .p-card-subtitle { color: var(--muted); }
+
+// Botón: alto táctil, esquinas suaves, tipografía firme.
+.p-button {
+  border-radius: 12px !important;
+  font-weight: 700 !important;
+  padding: .68rem 1.05rem !important;
+  transition: transform .06s ease, filter .12s ease !important;
+}
+.p-button:active { transform: scale(.97); }
+// Primario: relleno esmeralda, texto oscuro (claro y legible, sin degradado).
+.p-button:not(.p-button-outlined):not(.p-button-text):not(.p-button-danger):not(.p-button-secondary):not(.p-button-success) {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: var(--on-accent) !important;
+}
+.p-button.p-button-text:not(.p-button-danger):not(.p-button-secondary),
+.p-button.p-button-outlined:not(.p-button-danger):not(.p-button-secondary) {
+  color: var(--accent-strong) !important;
+}
+.p-button.p-button-outlined:not(.p-button-danger):not(.p-button-secondary) {
+  border-color: var(--accent-line) !important;
+  background: transparent !important;
+}
+.p-button.p-button-danger.p-button-outlined { background: transparent !important; }
+
+// Diálogo (detalle de estación) con las mismas superficies.
+.p-dialog { border-radius: 18px !important; overflow: hidden; border: 1px solid var(--border) !important; }
+.p-dialog .p-dialog-header, .p-dialog .p-dialog-content { background: var(--panel) !important; color: var(--fg) !important; }
+.p-tabview .p-tabview-nav, .p-tabview .p-tabview-panels { background: transparent !important; }
+.p-tabview .p-tabview-nav li .p-tabview-nav-link { background: transparent !important; color: var(--muted) !important; border-color: var(--border) !important; }
+.p-tabview .p-tabview-nav li.p-highlight .p-tabview-nav-link { color: var(--accent-strong) !important; border-color: var(--accent) !important; }
