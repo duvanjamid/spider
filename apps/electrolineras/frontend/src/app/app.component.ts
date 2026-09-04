@@ -174,6 +174,8 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
     .drawer .db { padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
     .drawer label { font-size: .78rem; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .5px; display: block; margin-bottom: 6px; }
     .sel { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel-2); color: var(--fg); }
+    .adminbox { margin-top: 6px; padding: 14px; border-radius: 14px; border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--border)); background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
+    .adminbox > label { display: block; margin-bottom: 6px; }
 
     /* Detail sheet */
     .d-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 6px; }
@@ -395,6 +397,14 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
             </select></div>
           <p-button label="Limpiar filtros" [outlined]="true" icon="fa-solid fa-eraser" (onClick)="clearFilters()" />
           <p class="muted" style="font-size:.82rem">Tema claro/oscuro automático según tu dispositivo.</p>
+
+          <div class="adminbox" *ngIf="isAdmin()">
+            <label><i class="fa-solid fa-user-shield" style="color:var(--accent)"></i> Administración</label>
+            <p class="muted" style="font-size:.8rem;margin:0 0 8px">Vacía la caché de las fuentes y vuelve a consultarlas ahora.</p>
+            <p-button label="Limpiar caché" [outlined]="true" icon="fa-solid fa-broom" severity="danger"
+                      [loading]="clearingCache()" (onClick)="clearCache()" />
+            <p class="muted" *ngIf="cacheMsg()" style="font-size:.82rem;margin-top:8px">{{ cacheMsg() }}</p>
+          </div>
         </div>
       </aside>
 
@@ -493,6 +503,9 @@ export class AppComponent implements OnInit, AfterViewInit {
   @ViewChild('mapEl') mapEl!: ElementRef<HTMLDivElement>;
 
   readonly isTest = signal(false);
+  readonly isAdmin = signal(false);
+  readonly clearingCache = signal(false);
+  readonly cacheMsg = signal('');
   readonly tab = signal<Tab>('near');
   readonly drawer = signal(false);
   readonly stations = signal<Station[]>([]);      // cercanas al usuario (lista "Inicio")
@@ -572,6 +585,7 @@ export class AppComponent implements OnInit, AfterViewInit {
   ngOnInit(): void {
     this.api.health().subscribe({ next: (h) => this.isTest.set(h.env === 'test'), error: () => {} });
     this.api.meta().subscribe({ next: (m) => this.meta.set(m), error: () => {} });
+    this.api.me().subscribe({ next: (u) => this.isAdmin.set(!!u.admin), error: () => {} });
     // Ya NO se cargan todas las estaciones al inicio: el mapa pide por área
     // visible y la lista "Inicio" pide alrededor del usuario al ubicarse.
   }
@@ -670,6 +684,14 @@ export class AppComponent implements OnInit, AfterViewInit {
     if (t === 'map') setTimeout(() => { this.map?.invalidateSize(); this.updateZoomHint(); this.loadViewport(); }, 80);
   }
   clearFilters(): void { this.cityFilter = ''; this.connectorFilter = ''; this.speedFilter = ''; this.query = ''; this.onFiltersChange(); this.drawer.set(false); }
+  clearCache(): void {
+    if (this.clearingCache()) return;
+    this.clearingCache.set(true); this.cacheMsg.set('');
+    this.api.clearCache().subscribe({
+      next: (r) => { this.clearingCache.set(false); this.cacheMsg.set('Caché limpiada (' + r.cleared + ' entradas). Re-sincronizando fuentes en segundo plano…'); },
+      error: (e) => { this.clearingCache.set(false); this.cacheMsg.set(e?.status === 403 ? 'Solo administradores pueden limpiar la caché.' : 'No se pudo limpiar la caché.'); },
+    });
+  }
   tint(s: string | null): string { const c = this.statusColor(s); return `linear-gradient(135deg, ${c}26, ${c}0d)`; }
 
   // ── Ubicación ──

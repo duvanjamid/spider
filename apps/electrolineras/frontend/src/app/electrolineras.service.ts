@@ -49,6 +49,8 @@ export class ElectrolinerasService {
   }
   reports(id: number): Observable<Report[]> { return this.http.get<Report[]>(`${this.base}/stations/${id}/reports`, this.opts); }
   health(): Observable<{ env: string }> { return this.http.get<{ env: string }>(`${this.base}/health`, this.opts); }
+  me(): Observable<{ email: string; admin: boolean }> { return this.http.get<{ email: string; admin: boolean }>(`${this.base}/me`, this.opts); }
+  clearCache(): Observable<{ cleared: number; resync: boolean }> { return this.http.post<{ cleared: number; resync: boolean }>(`${this.base}/cache/clear`, {}, this.opts); }
   meta(): Observable<any> { return this.http.get<any>(`${this.base}/meta`, this.opts); }
   geocode(q: string): Observable<Place[]> { return this.http.get<Place[]>(`${this.base}/geocode?q=${encodeURIComponent(q)}`, this.opts); }
   route(from: [number, number], to: [number, number]): Observable<RouteResult> {

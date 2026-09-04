@@ -24,6 +24,20 @@ public final class Env {
     // ── Sesión de la plataforma (misma cookie/HMAC que el admin) ──
     public static String authJwtSecret() { return get("AUTH_JWT_SECRET", "dev-secret-change-me"); }
 
+    // ── Administradores (pueden limpiar la caché, etc.) ──
+    //   Lista de correos separada por comas. Configurable por entorno.
+    public static java.util.Set<String> adminEmails() {
+        java.util.Set<String> out = new java.util.LinkedHashSet<>();
+        for (String e : get("ADMIN_EMAILS", "mi13dj22@gmail.com").split(",")) {
+            String t = e.trim().toLowerCase();
+            if (!t.isEmpty()) out.add(t);
+        }
+        return out;
+    }
+    public static boolean isAdmin(String email) {
+        return email != null && adminEmails().contains(email.trim().toLowerCase());
+    }
+
     // ── Fuente de datos abierta: datos.gov.co (Socrata/SODA) ──
     //   Dataset EPM por defecto (estaciones de carga eléctrica). Sin key.
     public static String datosGovResource() { return get("DATOS_GOV_RESOURCE", "qqm3-dw2u"); }

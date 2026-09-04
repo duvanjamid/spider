@@ -175,6 +175,12 @@ public class StationService {
             }
         } catch (Exception e) { log.debug("readCache {}: {}", key, e.getMessage()); return null; }
     }
+    /** Vacía la caché de APIs; el próximo sync vuelve a consultar las fuentes. */
+    public int clearCache() {
+        try (Connection c = ds.getConnection(); Statement st = c.createStatement()) {
+            return st.executeUpdate("DELETE FROM api_cache");
+        } catch (Exception e) { throw new RuntimeException("No se pudo limpiar la caché", e); }
+    }
     private void writeCache(String key, String payload) {
         try (Connection c = ds.getConnection();
              PreparedStatement ps = c.prepareStatement("""

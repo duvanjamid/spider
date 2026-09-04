@@ -89,6 +89,21 @@ public final class StationController {
         });
 
         app.post("/sync", ctx -> ctx.json(Map.of("synced", stations.sync())));
+
+        // ── Identidad del visitante (para mostrar opciones de admin) ──
+        app.get("/me", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            ctx.json(Map.of("email", user, "admin", Env.isAdmin(user)));
+        });
+
+        // ── Limpiar caché de APIs (solo admin) + resync en segundo plano ──
+        app.post("/cache/clear", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            if (!Env.isAdmin(user)) { ctx.status(403).json(Map.of("error", "solo administradores")); return; }
+            int n = stations.clearCache();
+            new Thread(() -> { try { stations.sync(); } catch (Exception e) { /* log interno */ } }, "sync-after-clear").start();
+            ctx.json(Map.of("cleared", n, "resync", true));
+        });
     }
 
     private String email(String cookieHeader) { return identity.emailOrGuest(cookieHeader); }
