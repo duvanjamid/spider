@@ -57,32 +57,71 @@ public class RoutingService {
 
     /** Varias rutas alternativas por carretera. Cada una: distancia, duración y geometría [lat,lon]. */
     public List<Map<String, Object>> routes(double fromLat, double fromLon, double toLat, double toLon) {
-        String url = "https://router.project-osrm.org/route/v1/driving/"
-                + fromLon + "," + fromLat + ";" + toLon + "," + toLat
-                + "?overview=full&geometries=geojson&alternatives=3&steps=true";
         List<Map<String, Object>> out = new ArrayList<>();
+        // 1) Alternativas nativas de OSRM (a veces devuelve solo 1).
+        JsonNode root = osrm(fromLon + "," + fromLat + ";" + toLon + "," + toLat, true);
+        if (root != null) for (JsonNode r : root.path("routes")) {
+            Map<String, Object> m = parseRoute(r);
+            if (m != null) out.add(m);
+        }
+        // 2) Si hay menos de 3, sintetizamos rutas por un CORREDOR distinto
+        //    (enrutando por un punto desviado perpendicular al trayecto).
+        if (out.size() < 3) {
+            double mLat = (fromLat + toLat) / 2, mLon = (fromLon + toLon) / 2;
+            double dLat = toLat - fromLat, dLon = toLon - fromLon;
+            double len = Math.hypot(dLat, dLon);
+            if (len > 1e-6) {
+                double pLat = -dLon / len, pLon = dLat / len;          // perpendicular unitario
+                double base = Math.min(0.7, Math.max(0.15, len * 0.22)); // desvío proporcional
+                double[] offs = { base, -base, base * 1.7, -base * 1.7 };
+                for (double off : offs) {
+                    if (out.size() >= 3) break;
+                    double vLat = mLat + pLat * off, vLon = mLon + pLon * off;
+                    JsonNode r2 = osrm(fromLon + "," + fromLat + ";" + vLon + "," + vLat + ";" + toLon + "," + toLat, false);
+                    if (r2 == null) continue;
+                    Map<String, Object> m = parseRoute(r2.path("routes").path(0));
+                    if (m == null) continue;
+                    double dist = (double) m.get("distanceKm");
+                    double minKm = Double.MAX_VALUE; boolean dup = false;
+                    for (Map<String, Object> e : out) {
+                        double ed = (double) e.get("distanceKm");
+                        minKm = Math.min(minKm, ed);
+                        if (Math.abs(ed - dist) / Math.max(ed, 1) < 0.03) dup = true;   // casi igual → descartar
+                    }
+                    if (!dup && dist < minKm * 1.8) out.add(m);   // evita desvíos absurdos
+                }
+            }
+        }
+        return out;
+    }
+
+    /** Llama a OSRM y devuelve el JSON raíz (o null). */
+    private JsonNode osrm(String coordsPath, boolean alternatives) {
+        String url = "https://router.project-osrm.org/route/v1/driving/" + coordsPath
+                + "?overview=full&geometries=geojson&steps=true" + (alternatives ? "&alternatives=3" : "");
         try {
             HttpRequest req = HttpRequest.newBuilder(URI.create(url))
                     .header("User-Agent", UA).header("accept", "application/json")
                     .timeout(Duration.ofSeconds(20)).GET().build();
             HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
-            if (res.statusCode() / 100 != 2) { log.warn("OSRM {}", res.statusCode()); return out; }
-            JsonNode root = Json.MAPPER.readTree(res.body());
-            for (JsonNode r : root.path("routes")) {
-                List<double[]> coords = new ArrayList<>();
-                for (JsonNode c : r.path("geometry").path("coordinates")) {
-                    coords.add(new double[]{ c.path(1).asDouble(), c.path(0).asDouble() }); // [lat, lon]
-                }
-                if (coords.isEmpty()) continue;
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("distanceKm", Math.round(r.path("distance").asDouble() / 100.0) / 10.0);
-                m.put("durationMin", Math.round(r.path("duration").asDouble() / 60.0));
-                m.put("coordinates", coords);
-                m.put("via", viaSummary(r));   // vías principales por las que pasa
-                out.add(m);
-            }
-        } catch (Exception e) { log.warn("Routes falló: {}", e.getMessage()); }
-        return out;
+            if (res.statusCode() / 100 != 2) { log.warn("OSRM {}", res.statusCode()); return null; }
+            return Json.MAPPER.readTree(res.body());
+        } catch (Exception e) { log.warn("OSRM falló: {}", e.getMessage()); return null; }
+    }
+
+    /** Convierte un objeto route de OSRM a nuestro mapa (o null si no hay geometría). */
+    private Map<String, Object> parseRoute(JsonNode r) {
+        if (r == null || r.isMissingNode()) return null;
+        List<double[]> coords = new ArrayList<>();
+        for (JsonNode c : r.path("geometry").path("coordinates"))
+            coords.add(new double[]{ c.path(1).asDouble(), c.path(0).asDouble() }); // [lat, lon]
+        if (coords.isEmpty()) return null;
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("distanceKm", Math.round(r.path("distance").asDouble() / 100.0) / 10.0);
+        m.put("durationMin", Math.round(r.path("duration").asDouble() / 60.0));
+        m.put("coordinates", coords);
+        m.put("via", viaSummary(r));
+        return m;
     }
 
     /** Resume "por dónde pasa" la ruta a partir de las vías más significativas. */

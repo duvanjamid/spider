@@ -154,8 +154,10 @@ interface RouteOpt {
     .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: .82rem; color: var(--muted); cursor: pointer; }
     .trow.incompat { opacity: .5; }
     /* Opciones de ruta alternativas */
-    .routeopts { display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; }
-    .ropt { width: 100%; text-align: left; display: flex; flex-direction: column; gap: 4px; cursor: pointer;
+    /* Carrusel deslizable de rutas (estilo Waze/Maps) */
+    .routeopts { display: flex; gap: 10px; margin: 0 0 12px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding: 2px 2px 6px; }
+    .routeopts::-webkit-scrollbar { height: 4px; } .routeopts::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+    .ropt { flex: 0 0 86%; scroll-snap-align: center; text-align: left; display: flex; flex-direction: column; gap: 4px; cursor: pointer;
             padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border); background: var(--panel); color: var(--fg); transition: all .15s ease; }
     .ropt.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); box-shadow: var(--glow); }
     .ropt .rhead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
@@ -1081,16 +1083,13 @@ export class AppComponent implements OnInit, AfterViewInit {
   }
   private finishPlan(rs: { distanceKm: number; durationMin: number; coordinates: [number, number][] }[], pool: Station[]): void {
     const opts = rs.map((r) => this.computeRouteOption(r, pool));
-    // Mejor opción: primero que llegues; luego más compatibles; luego más corta.
-    let best = 0;
-    for (let i = 1; i < opts.length; i++) {
-      const sa = (opts[i].reachable ? 1e6 : 0) + opts[i].compatible * 1000 - opts[i].distanceKm;
-      const sb = (opts[best].reachable ? 1e6 : 0) + opts[best].compatible * 1000 - opts[best].distanceKm;
-      if (sa > sb) best = i;
-    }
+    // Ordena para que "Ruta 1" sea la MEJOR: primero que llegues, luego más
+    // cargadores compatibles, luego más corta.
+    const score = (o: RouteOpt) => (o.reachable ? 1e6 : 0) + o.compatible * 1000 - o.distanceKm;
+    opts.sort((a, b) => score(b) - score(a));
     this.routeOptions.set(opts);
     this.planning.set(false);
-    this.selectRoute(best);
+    this.selectRoute(0);
   }
   selectRoute(i: number): void {
     const opts = this.routeOptions();
