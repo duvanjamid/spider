@@ -76,4 +76,8 @@ h3 { margin: 18px 0 10px; }
 .od { width: 16px; height: 16px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,.4); }
 .od.o { background: #3b82f6; } .od.d { background: #16a34a; }
 
+// Marcador "hasta aquí te alcanza la autonomía" (límite verde→rojo de la ruta)
+.reachmk { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  background: #f59e0b; color: #1a1200; border: 2px solid #fff; box-shadow: 0 3px 8px rgba(0,0,0,.4); font-size: .8rem; }
+
 @media (prefers-reduced-motion: reduce) { .pin.live::after, .me::after { animation: none; } }

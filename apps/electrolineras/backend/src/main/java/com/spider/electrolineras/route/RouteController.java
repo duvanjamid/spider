@@ -24,6 +24,14 @@ public final class RouteController {
             if (from == null || to == null) { ctx.status(400).json(Map.of("error", "from y to = 'lat,lon'")); return; }
             ctx.json(routing.route(from[0], from[1], to[0], to[1]));
         });
+
+        // Varias rutas alternativas (para elegir la mejor según cargadores).
+        app.get("/routes", ctx -> {
+            double[] from = parse(ctx.queryParam("from"));
+            double[] to = parse(ctx.queryParam("to"));
+            if (from == null || to == null) { ctx.status(400).json(Map.of("error", "from y to = 'lat,lon'")); return; }
+            ctx.json(routing.routes(from[0], from[1], to[0], to[1]));
+        });
     }
 
     private static double[] parse(String s) {

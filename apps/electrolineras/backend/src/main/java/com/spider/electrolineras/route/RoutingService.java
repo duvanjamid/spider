@@ -49,12 +49,18 @@ public class RoutingService {
         return out;
     }
 
-    /** Ruta por carretera entre dos puntos. Devuelve distancia, duración y geometría [lat,lon]. */
+    /** Ruta por carretera entre dos puntos (la principal). */
     public Map<String, Object> route(double fromLat, double fromLon, double toLat, double toLon) {
+        List<Map<String, Object>> all = routes(fromLat, fromLon, toLat, toLon);
+        return all.isEmpty() ? new LinkedHashMap<>() : all.get(0);
+    }
+
+    /** Varias rutas alternativas por carretera. Cada una: distancia, duración y geometría [lat,lon]. */
+    public List<Map<String, Object>> routes(double fromLat, double fromLon, double toLat, double toLon) {
         String url = "https://router.project-osrm.org/route/v1/driving/"
                 + fromLon + "," + fromLat + ";" + toLon + "," + toLat
-                + "?overview=full&geometries=geojson";
-        Map<String, Object> out = new LinkedHashMap<>();
+                + "?overview=full&geometries=geojson&alternatives=3";
+        List<Map<String, Object>> out = new ArrayList<>();
         try {
             HttpRequest req = HttpRequest.newBuilder(URI.create(url))
                     .header("User-Agent", UA).header("accept", "application/json")
@@ -62,16 +68,19 @@ public class RoutingService {
             HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() / 100 != 2) { log.warn("OSRM {}", res.statusCode()); return out; }
             JsonNode root = Json.MAPPER.readTree(res.body());
-            JsonNode r0 = root.path("routes").path(0);
-            if (r0.isMissingNode()) return out;
-            List<double[]> coords = new ArrayList<>();
-            for (JsonNode c : r0.path("geometry").path("coordinates")) {
-                coords.add(new double[]{ c.path(1).asDouble(), c.path(0).asDouble() }); // [lat, lon]
+            for (JsonNode r : root.path("routes")) {
+                List<double[]> coords = new ArrayList<>();
+                for (JsonNode c : r.path("geometry").path("coordinates")) {
+                    coords.add(new double[]{ c.path(1).asDouble(), c.path(0).asDouble() }); // [lat, lon]
+                }
+                if (coords.isEmpty()) continue;
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("distanceKm", Math.round(r.path("distance").asDouble() / 100.0) / 10.0);
+                m.put("durationMin", Math.round(r.path("duration").asDouble() / 60.0));
+                m.put("coordinates", coords);
+                out.add(m);
             }
-            out.put("distanceKm", Math.round(r0.path("distance").asDouble() / 100.0) / 10.0);
-            out.put("durationMin", Math.round(r0.path("duration").asDouble() / 60.0));
-            out.put("coordinates", coords);
-        } catch (Exception e) { log.warn("Route falló: {}", e.getMessage()); }
+        } catch (Exception e) { log.warn("Routes falló: {}", e.getMessage()); }
         return out;
     }
 }

@@ -56,4 +56,7 @@ export class ElectrolinerasService {
   route(from: [number, number], to: [number, number]): Observable<RouteResult> {
     return this.http.get<RouteResult>(`${this.base}/route?from=${from[0]},${from[1]}&to=${to[0]},${to[1]}`, this.opts);
   }
+  routes(from: [number, number], to: [number, number]): Observable<RouteResult[]> {
+    return this.http.get<RouteResult[]>(`${this.base}/routes?from=${from[0]},${from[1]}&to=${to[0]},${to[1]}`, this.opts);
+  }
 }

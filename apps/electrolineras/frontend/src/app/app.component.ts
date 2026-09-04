@@ -11,6 +11,21 @@ import { Charger, Comment, ElectrolinerasService, Report, Station, StationFull }
 
 type Tab = 'map' | 'near' | 'trip' | 'info';
 
+/** Una opción de ruta ya analizada (estaciones, compatibilidad, alcance). */
+interface RouteOpt {
+  distanceKm: number;
+  durationMin: number;
+  coordinates: [number, number][];
+  stations: Station[];              // estaciones cercanas a esta ruta (ordenadas)
+  routePos: Map<number, number>;    // id → km sobre la ruta
+  stops: Set<number>;              // paradas de carga sugeridas (compatibles)
+  compatible: number;              // nº de estaciones compatibles en la ruta
+  total: number;                   // nº total de estaciones en la ruta
+  reachKm: number;                 // hasta dónde alcanzas encadenando cargas compatibles
+  reachable: boolean;              // ¿llegas al destino?
+  reachableWithAdapter: boolean;   // ¿llegarías si usaras un adaptador?
+}
+
 @Component({
   selector: 'app-root',
   standalone: true,
@@ -137,6 +152,24 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
     .triprow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: .82rem; color: var(--muted); cursor: pointer; }
     .trow.incompat { opacity: .5; }
+    /* Opciones de ruta alternativas */
+    .routeopts { display: flex; gap: 8px; overflow-x: auto; margin: 0 0 12px; padding-bottom: 2px; }
+    .ropt { flex: 0 0 auto; min-width: 130px; text-align: left; display: flex; flex-direction: column; gap: 3px; cursor: pointer;
+            padding: 10px 12px; border-radius: 14px; border: 1px solid var(--border); background: var(--panel); color: var(--fg); transition: all .15s ease; }
+    .ropt.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); box-shadow: var(--glow); }
+    .ropt .rtitle { font-weight: 800; font-size: .9rem; }
+    .ropt .rmeta { color: var(--muted); font-size: .78rem; }
+    .ropt .rtags { display: flex; gap: 6px; margin-top: 3px; flex-wrap: wrap; }
+    .ropt .rt { font-size: .68rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: var(--panel-2); color: var(--muted); display: inline-flex; align-items: center; gap: 4px; }
+    .ropt .rt.ok { color: #16a34a; background: color-mix(in srgb, #22c55e 15%, transparent); }
+    .ropt .rt.bad { color: #ef4444; background: color-mix(in srgb, #ef4444 14%, transparent); }
+    /* Banner de alcance */
+    .reachbanner { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px; margin: 0 0 12px; font-size: .86rem; border: 1px solid var(--border); }
+    .reachbanner i { font-size: 1.15rem; margin-top: 1px; flex: none; }
+    .reachbanner.ok { background: color-mix(in srgb, #22c55e 10%, var(--panel)); border-color: color-mix(in srgb, #22c55e 35%, var(--border)); }
+    .reachbanner.ok i { color: #22c55e; }
+    .reachbanner.bad { background: color-mix(in srgb, #ef4444 9%, var(--panel)); border-color: color-mix(in srgb, #ef4444 32%, var(--border)); }
+    .reachbanner.bad i { color: #ef4444; }
     .okbadge { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; flex: none;
                color: #fff; background: #22c55e; font-size: .7rem; }
     /* Aviso sobre el mapa (acércate / cargando) */
@@ -296,6 +329,32 @@ type Tab = 'map' | 'near' | 'trip' | 'info';
                 <div class="kpi" [class.hi]="tripConnectors().length">
                   <div class="v">{{ tripConnectors().length ? tripCompatible().length : tripStations().length }}</div>
                   <div class="l">{{ tripConnectors().length ? 'compatibles' : 'en ruta' }}</div>
+                </div>
+              </div>
+
+              <!-- Opciones de ruta (alternativas) -->
+              <div class="routeopts" *ngIf="routeOptions().length > 1">
+                <button class="ropt" *ngFor="let o of routeOptions(); let i = index" [class.on]="activeIdx() === i" (click)="selectRoute(i)">
+                  <span class="rtitle">Ruta {{ i + 1 }}</span>
+                  <span class="rmeta">{{ o.distanceKm }} km · {{ fmtDur(o.durationMin) }}</span>
+                  <span class="rtags">
+                    <span class="rt" [class.ok]="o.reachable" [class.bad]="!o.reachable">
+                      <i class="fa-solid" [class.fa-circle-check]="o.reachable" [class.fa-circle-exclamation]="!o.reachable"></i>
+                      {{ o.reachable ? 'Llegas' : (o.reachableWithAdapter ? 'Con adaptador' : 'No llegas') }}
+                    </span>
+                    <span class="rt" *ngIf="tripConnectors().length"><i class="fa-solid fa-plug"></i> {{ o.compatible }}</span>
+                  </span>
+                </button>
+              </div>
+
+              <!-- Estado de alcance de la ruta activa -->
+              <div class="reachbanner" *ngIf="tripAutonomy && activeRoute() as ar" [class.ok]="ar.reachable" [class.bad]="!ar.reachable">
+                <i class="fa-solid" [class.fa-circle-check]="ar.reachable" [class.fa-battery-quarter]="!ar.reachable"></i>
+                <div *ngIf="ar.reachable">Llegas al destino{{ tripConnectors().length ? ' encadenando cargadores compatibles' : '' }} ({{ tripStopsCount() }} parada(s)).</div>
+                <div *ngIf="!ar.reachable">
+                  Con {{ tripAutonomy }} km de autonomía{{ tripConnectors().length ? ' y tus conectores' : '' }} llegas ~{{ roundKm(ar.reachKm) }} de {{ ar.distanceKm }} km.
+                  <span *ngIf="ar.reachableWithAdapter"><b>Con un adaptador</b> sí completarías la ruta.</span>
+                  <span *ngIf="!ar.reachableWithAdapter">Faltan cargadores en el tramo final.</span>
                 </div>
               </div>
 
@@ -541,6 +600,9 @@ export class AppComponent implements OnInit, AfterViewInit {
   readonly tripStations = signal<Station[]>([]);
   readonly tripStops = signal<Set<number>>(new Set());
   private routePos = new Map<number, number>();
+  readonly routeOptions = signal<RouteOpt[]>([]);
+  readonly activeIdx = signal(0);
+  private tripBounds?: L.LatLngBounds;
 
   // Conectores que puede usar el conductor (varios, por adaptadores). Persistido.
   readonly CONNECTOR_TYPES = ['CCS2', 'CHAdeMO', 'Tipo 2', 'Tipo 1', 'GB/T', 'Tesla'];
@@ -681,7 +743,14 @@ export class AppComponent implements OnInit, AfterViewInit {
 
   setTab(t: Tab): void {
     this.tab.set(t);
-    if (t === 'map') setTimeout(() => { this.map?.invalidateSize(); this.updateZoomHint(); this.loadViewport(); }, 80);
+    if (t === 'map') setTimeout(() => {
+      if (!this.map) return;
+      this.map.invalidateSize();  // el contenedor ya es visible: recalcula tamaño
+      // Si hay una ruta activa, encuadra a la RUTA (antes el fitBounds corría con
+      // el mapa oculto y daba un zoom incorrecto). Si no, carga por área visible.
+      if (this.tripBounds) { this.map.fitBounds(this.tripBounds); }
+      else { this.updateZoomHint(); this.loadViewport(); }
+    }, 90);
   }
   clearFilters(): void { this.cityFilter = ''; this.connectorFilter = ''; this.speedFilter = ''; this.query = ''; this.onFiltersChange(); this.drawer.set(false); }
   clearCache(): void {
@@ -801,29 +870,72 @@ export class AppComponent implements OnInit, AfterViewInit {
 
   // ── Viaje ──
   fmtDur(min: number): string { const h = Math.floor(min / 60), m = Math.round(min % 60); return h ? `${h}h ${m}m` : `${m}m`; }
+  roundKm(x: number): number { return Math.round(x); }
   isStop(s: Station): boolean { return this.tripStops().has(s.id); }
   routeKm(s: Station): number { return Math.round(this.routePos.get(s.id) ?? 0); }
   tripStopsCount(): number { return this.tripStops().size; }
   autonomyPct(distanceKm: number): number { const a = this.tripAutonomy; return a && a > 0 ? Math.min(100, Math.round((distanceKm / a) * 100)) : 0; }
-  clearTrip(): void { this.routeLayer.clearLayers(); this.tripInfo.set(null); this.tripStations.set([]); this.tripStops.set(new Set()); this.tripMsg.set(''); }
+  private tripOD?: { o: [number, number]; d: [number, number] };
+  clearTrip(): void {
+    this.routeLayer.clearLayers(); this.tripInfo.set(null); this.tripStations.set([]);
+    this.tripStops.set(new Set()); this.tripMsg.set(''); this.routeOptions.set([]); this.tripBounds = undefined;
+  }
 
   plan(): void {
     if (!this.tripDest.trim()) return;
-    this.planning.set(true); this.tripMsg.set('');
+    this.planning.set(true); this.tripMsg.set(''); this.routeOptions.set([]);
     this.resolveOrigin().then((origin) => {
       if (!origin) { this.planning.set(false); this.tripMsg.set('No pude ubicar el origen. Escríbelo o usa «mi ubicación».'); return; }
       this.api.geocode(this.tripDest).subscribe({
         next: (places) => {
           if (!places.length) { this.planning.set(false); this.tripMsg.set('No encontré ese destino en Colombia.'); return; }
           const dest: [number, number] = [places[0].lat, places[0].lon];
-          this.api.route(origin, dest).subscribe({
-            next: (r) => { this.planning.set(false); this.drawRoute(origin, dest, r); },
+          this.tripOD = { o: origin, d: dest };
+          this.api.routes(origin, dest).subscribe({
+            next: (rs) => {
+              if (!rs || !rs.length) { this.planning.set(false); this.tripMsg.set('No pude calcular la ruta (intenta de nuevo).'); return; }
+              // Un solo fetch de estaciones que cubra TODAS las alternativas.
+              let minLat = 90, minLon = 180, maxLat = -90, maxLon = -180;
+              for (const r of rs) for (const c of r.coordinates) {
+                minLat = Math.min(minLat, c[0]); maxLat = Math.max(maxLat, c[0]);
+                minLon = Math.min(minLon, c[1]); maxLon = Math.max(maxLon, c[1]);
+              }
+              const bbox: [number, number, number, number] = [minLat - 0.1, minLon - 0.1, maxLat + 0.1, maxLon + 0.1];
+              this.api.stations(bbox, 6000).subscribe({
+                next: (pool) => this.finishPlan(rs, pool),
+                error: () => this.finishPlan(rs, this.stations()),
+              });
+            },
             error: () => { this.planning.set(false); this.tripMsg.set('No pude calcular la ruta (intenta de nuevo).'); },
           });
         },
         error: () => { this.planning.set(false); this.tripMsg.set('No pude buscar el destino.'); },
       });
     });
+  }
+  private finishPlan(rs: { distanceKm: number; durationMin: number; coordinates: [number, number][] }[], pool: Station[]): void {
+    const opts = rs.map((r) => this.computeRouteOption(r, pool));
+    // Mejor opción: primero que llegues; luego más compatibles; luego más corta.
+    let best = 0;
+    for (let i = 1; i < opts.length; i++) {
+      const sa = (opts[i].reachable ? 1e6 : 0) + opts[i].compatible * 1000 - opts[i].distanceKm;
+      const sb = (opts[best].reachable ? 1e6 : 0) + opts[best].compatible * 1000 - opts[best].distanceKm;
+      if (sa > sb) best = i;
+    }
+    this.routeOptions.set(opts);
+    this.planning.set(false);
+    this.selectRoute(best);
+  }
+  selectRoute(i: number): void {
+    const opts = this.routeOptions();
+    if (i < 0 || i >= opts.length) return;
+    this.activeIdx.set(i);
+    const opt = opts[i];
+    this.tripInfo.set({ distanceKm: opt.distanceKm, durationMin: opt.durationMin });
+    this.tripStations.set(opt.stations);
+    this.tripStops.set(opt.stops);
+    this.routePos = opt.routePos;
+    this.drawActive();
   }
   private resolveOrigin(): Promise<[number, number] | null> {
     const o = this.tripOrigin.trim().toLowerCase();
@@ -837,47 +949,74 @@ export class AppComponent implements OnInit, AfterViewInit {
     }
     return new Promise((res) => { this.api.geocode(this.tripOrigin).subscribe({ next: (pl) => res(pl.length ? [pl[0].lat, pl[0].lon] : null), error: () => res(null) }); });
   }
-  private drawRoute(origin: [number, number], dest: [number, number], r: { distanceKm: number; durationMin: number; coordinates: [number, number][] }): void {
-    if (!r || !r.coordinates || !r.coordinates.length) { this.tripMsg.set('Ruta no disponible.'); return; }
-    this.tripInfo.set({ distanceKm: r.distanceKm, durationMin: r.durationMin });
-    this.routeLayer.clearLayers();
-    L.polyline(r.coordinates as L.LatLngExpression[], { color: '#22c55e', weight: 5, opacity: 0.85 }).addTo(this.routeLayer);
-    const mk = (cls: string) => L.divIcon({ className: '', html: `<div class="od ${cls}"></div>`, iconSize: [16, 16], iconAnchor: [8, 8] });
-    L.marker(origin, { icon: mk('o') }).addTo(this.routeLayer);
-    L.marker(dest, { icon: mk('d') }).addTo(this.routeLayer);
-    if (this.map) { this.map.invalidateSize(); this.map.fitBounds(L.latLngBounds(r.coordinates as L.LatLngExpression[]).pad(0.15)); }
-    // Carga las estaciones del CORREDOR de la ruta (su bounding box) para no
-    // depender de lo que haya en el viewport ni del catálogo completo.
-    let minLat = 90, minLon = 180, maxLat = -90, maxLon = -180;
-    for (const c of r.coordinates) { minLat = Math.min(minLat, c[0]); maxLat = Math.max(maxLat, c[0]); minLon = Math.min(minLon, c[1]); maxLon = Math.max(maxLon, c[1]); }
-    const pad = 0.1;
-    const bbox: [number, number, number, number] = [minLat - pad, minLon - pad, maxLat + pad, maxLon + pad];
-    this.api.stations(bbox, 4000).subscribe({
-      next: (list) => this.computeAlongRoute(r.coordinates, list),
-      error: () => this.computeAlongRoute(r.coordinates, this.stations()),
-    });
-  }
-  private computeAlongRoute(coords: [number, number][], pool: Station[]): void {
+
+  /** Analiza una ruta: estaciones cercanas, compatibles, paradas y alcance. */
+  private computeRouteOption(r: { distanceKm: number; durationMin: number; coordinates: [number, number][] }, pool: Station[]): RouteOpt {
+    const coords = r.coordinates;
     const cum: number[] = [0];
     for (let i = 1; i < coords.length; i++) cum[i] = cum[i - 1] + this.distanceKm(coords[i - 1], coords[i]);
+    const total = cum[cum.length - 1] || r.distanceKm;
     const THRESH = 8, step = Math.max(1, Math.floor(coords.length / 400));
     const near: { s: Station; pos: number }[] = [];
-    this.routePos.clear();
+    const rp = new Map<number, number>();
     for (const s of pool) {
       if (s.lat == null || s.lon == null) continue;
       let best = Infinity, bestIdx = 0;
       for (let i = 0; i < coords.length; i += step) { const d = this.distanceKm([s.lat, s.lon], coords[i]); if (d < best) { best = d; bestIdx = i; } }
-      if (best <= THRESH) { near.push({ s, pos: cum[bestIdx] }); this.routePos.set(s.id, cum[bestIdx]); }
+      if (best <= THRESH) { near.push({ s, pos: cum[bestIdx] }); rp.set(s.id, cum[bestIdx]); }
     }
     near.sort((a, b) => a.pos - b.pos);
-    this.tripStations.set(near.map((n) => n.s));
-    const stops = new Set<number>(); const a = this.tripAutonomy;
-    if (a && a > 0 && near.length) {
-      const range = a * 0.9; let lastPos = 0, candidate: { s: Station; pos: number } | null = null;
-      for (const n of near) { if (n.pos - lastPos <= range) candidate = n; else { if (candidate) { stops.add(candidate.s.id); lastPos = candidate.pos; } candidate = n; } }
-    }
-    this.tripStops.set(stops);
+    const compat = near.filter((n) => this.isCompatible(n.s));
+    const A = this.tripAutonomy;
+    const withCompat = this.reachOf(compat, A, total);
+    const withAny = this.reachOf(near, A, total);
+    const noRange = !A || A <= 0;
+    return {
+      distanceKm: r.distanceKm, durationMin: r.durationMin, coordinates: coords,
+      stations: near.map((n) => n.s), routePos: rp, stops: withCompat.stops,
+      compatible: compat.length, total: near.length, reachKm: withCompat.reach,
+      reachable: noRange || withCompat.reach >= total - 0.5,
+      reachableWithAdapter: withAny.reach >= total - 0.5,
+    };
   }
+  /** Cuánto avanzas encadenando cargas (paradas) sin quedarte sin autonomía. */
+  private reachOf(list: { s: Station; pos: number }[], A: number | null, total: number): { reach: number; stops: Set<number> } {
+    const stops = new Set<number>();
+    if (!A || A <= 0) return { reach: total, stops };
+    let reach = A, i = 0;
+    while (reach < total && i < list.length) {
+      let far: { s: Station; pos: number } | null = null;
+      while (i < list.length && list[i].pos <= reach) { far = list[i]; i++; }
+      if (!far) break;                 // hueco: no hay cargador al alcance
+      stops.add(far.s.id); reach = far.pos + A;
+    }
+    return { reach: Math.min(reach, total), stops };
+  }
+  /** Dibuja la ruta activa: verde hasta donde alcanzas, rojo a partir de ahí. */
+  private drawActive(): void {
+    const opt = this.routeOptions()[this.activeIdx()];
+    if (!opt || !this.map) return;
+    this.routeLayer.clearLayers();
+    const coords = opt.coordinates;
+    const cum: number[] = [0];
+    for (let i = 1; i < coords.length; i++) cum[i] = cum[i - 1] + this.distanceKm(coords[i - 1], coords[i]);
+    const total = cum[cum.length - 1];
+    const reach = (this.tripAutonomy && this.tripAutonomy > 0) ? Math.min(opt.reachKm, total) : total;
+    let split = coords.length - 1;
+    for (let k = 0; k < cum.length; k++) { if (cum[k] >= reach) { split = k; break; } }
+    const green = coords.slice(0, split + 1), red = coords.slice(split);
+    if (green.length > 1) L.polyline(green as L.LatLngExpression[], { color: '#22c55e', weight: 5, opacity: 0.9 }).addTo(this.routeLayer);
+    if (red.length > 1 && reach < total - 0.5) L.polyline(red as L.LatLngExpression[], { color: '#ef4444', weight: 5, opacity: 0.8, dashArray: '8 8' }).addTo(this.routeLayer);
+    const mk = (cls: string) => L.divIcon({ className: '', html: `<div class="od ${cls}"></div>`, iconSize: [16, 16], iconAnchor: [8, 8] });
+    if (this.tripOD) { L.marker(this.tripOD.o, { icon: mk('o') }).addTo(this.routeLayer); L.marker(this.tripOD.d, { icon: mk('d') }).addTo(this.routeLayer); }
+    if (reach < total - 0.5) {
+      const icon = L.divIcon({ className: '', html: '<div class="reachmk"><i class="fa-solid fa-battery-quarter"></i></div>', iconSize: [26, 26], iconAnchor: [13, 13] });
+      L.marker(coords[split], { icon, zIndexOffset: 500 }).addTo(this.routeLayer);
+    }
+    this.tripBounds = L.latLngBounds(coords as L.LatLngExpression[]).pad(0.15);
+    if (this.tab() === 'map') { this.map.invalidateSize(); this.map.fitBounds(this.tripBounds); }
+  }
+  activeRoute(): RouteOpt | null { return this.routeOptions()[this.activeIdx()] ?? null; }
 
   // ── Estado / colores / textos ──
   statusColor(s: string | null): string { return s === 'active' ? '#22c55e' : s === 'inactive' ? '#ef4444' : '#9aa3b2'; }
