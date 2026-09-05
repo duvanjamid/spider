@@ -25,6 +25,8 @@ public final class StationController {
     public record CommentInput(String body) {}
     public record ChargerInput(String label, String connectorType, Double powerKw) {}
     public record RateInput(Integer stars) {}
+    public record VehicleInput(String brand, Integer autonomyKm, String cycle,
+                               java.util.List<String> connectors, Boolean fastCharge, String bodyType, String color) {}
     public record VerifyInput(Boolean verified) {}
     public record SuggestInput(String kind, String value, String detail) {}
     public record ResolveInput(Long stationId, String kind, String value, Boolean approve) {}
@@ -92,6 +94,30 @@ public final class StationController {
             RateInput in = ctx.body(RateInput.class);
             if (in == null || in.stars() == null) { ctx.status(400).json(Map.of("error", "stars requerido")); return; }
             stations.rate(user, Long.parseLong(ctx.pathParam("id")), in.stars());
+            ctx.status(201).json(Map.of("ok", true));
+        });
+
+        // Calificación que ESTE usuario dio (para no re-votar, sino editar).
+        app.get("/stations/{id}/rating/me", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            ctx.json(Map.of("stars", stations.myRating(user, Long.parseLong(ctx.pathParam("id")))));
+        });
+
+        // ── Vehículo del usuario (persistido en BD, no en el navegador) ──
+        app.get("/vehicle", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            var v = stations.getVehicle(user);
+            ctx.json(v == null ? Map.of() : v);
+        });
+        app.post("/vehicle", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            if (identity.emailFromCookie(ctx.header("Cookie")) == null) {
+                ctx.status(401).json(Map.of("error", "inicia sesión para guardar tu vehículo")); return;
+            }
+            VehicleInput in = ctx.body(VehicleInput.class);
+            if (in == null) { ctx.status(400).json(Map.of("error", "cuerpo requerido")); return; }
+            stations.saveVehicle(user, in.brand(), in.autonomyKm(), in.cycle(),
+                    in.connectors(), in.fastCharge() == null || in.fastCharge(), in.bodyType(), in.color());
             ctx.status(201).json(Map.of("ok", true));
         });
 

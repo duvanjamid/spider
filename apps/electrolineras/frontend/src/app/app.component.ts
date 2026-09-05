@@ -130,8 +130,23 @@ interface CarProfile {
     .speedband { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; margin: 4px 0 12px;
                  color: #fff; background: linear-gradient(135deg, var(--sc), color-mix(in srgb, var(--sc) 55%, #0b0e14)); box-shadow: 0 8px 22px color-mix(in srgb, var(--sc) 32%, transparent); }
     .speedband .bi { font-size: 1.35rem; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: rgba(255,255,255,.18); flex: none; }
-    .speedband .bt { font-weight: 800; font-size: 1.02rem; line-height: 1.1; }
-    .speedband .bs { font-size: .76rem; opacity: .9; }
+    .speedband .bt { font-weight: 800; font-size: 1.02rem; line-height: 1.1; display: flex; align-items: center; gap: 8px; }
+    .speedband .bs { font-size: .76rem; opacity: .9; margin-top: 3px; }
+    .speedband .kwtag { font-size: .68rem; font-weight: 800; padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,.22); }
+    /* Resumen de cargadores "de un vistazo" */
+    .cgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 2px 0 10px; }
+    .cg { position: relative; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 13px;
+          border: 1px solid color-mix(in srgb, var(--cc) 38%, var(--border)); background: color-mix(in srgb, var(--cc) 9%, var(--panel)); }
+    .cg-count { font-size: 1.35rem; font-weight: 800; color: var(--cc); line-height: 1; }
+    .cg-count span { font-size: .8rem; opacity: .7; margin-left: 1px; }
+    .cg-body { display: flex; flex-direction: column; min-width: 0; }
+    .cg-body b { font-weight: 700; font-size: .9rem; }
+    .cg-body small { color: var(--muted); font-size: .74rem; }
+    .cg > i { margin-left: auto; color: var(--cc); opacity: .6; }
+    /* Estado por cargador (feedback) */
+    .cfb { padding: 10px 0; border-top: 1px solid var(--border); }
+    .cfb-h { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .cfb .cbtns { display: flex; gap: 6px; flex-wrap: wrap; }
 
     /* Progress bar */
     .pbar { height: 8px; border-radius: 999px; background: var(--panel-2); overflow: hidden; }
@@ -799,66 +814,121 @@ interface CarProfile {
           </div>
 
           <p-tabView>
+            <!-- ─────────── INFO: de un vistazo ─────────── -->
             <p-tabPanel header="Info" leftIcon="fa-solid fa-circle-info">
               <ng-template pTemplate="content">
                 <div class="speedband" *ngIf="d.speed" [style.--sc]="speedColor(d.speed)">
                   <span class="bi"><i class="fa-solid fa-bolt"></i></span>
-                  <div><div class="bt">Carga {{ d.speed.toLowerCase() }}</div><div class="bs">{{ speedDesc(d.speed) }}</div></div>
+                  <div><div class="bt">Carga {{ d.speed.toLowerCase() }} <span class="kwtag">{{ speedRange(d.speed) }}</span></div>
+                    <div class="bs">{{ speedDesc(d.speed) }}</div></div>
                 </div>
-                <div class="chips" *ngIf="connList(d.connectors).length" style="margin:2px 0 12px">
-                  <span class="cchip" *ngFor="let ct of connList(d.connectors)" [style.--cc]="connColor(ct)">{{ ct }}</span>
+
+                <!-- Resumen de cargadores: qué tipos y cuántos -->
+                <h3 class="sec">Cargadores <span class="muted" style="font-weight:600">· {{ d.chargers?.length || 0 }} en total</span></h3>
+                <div class="cgrid" *ngIf="chargerGroups(d).length; else noCh">
+                  <div class="cg" *ngFor="let g of chargerGroups(d)" [style.--cc]="connColor(g.type)" [title]="connInfo(g.type)">
+                    <div class="cg-count">{{ g.count }}<span>×</span></div>
+                    <div class="cg-body"><b>{{ g.type }}</b><small *ngIf="g.kw">{{ g.kw }} kW</small><small *ngIf="!g.kw">potencia s/d</small></div>
+                    <i class="fa-solid fa-plug"></i>
+                  </div>
                 </div>
+                <ng-template #noCh><p class="muted" style="padding:2px 0 10px">Sin detalle de cargadores para esta estación.</p></ng-template>
+
+                <p class="muted" style="font-size:.76rem;margin:4px 2px 12px">
+                  <i class="fa-solid fa-circle-info"></i>
+                  Lenta ≤ 22 kW (AC) · Semi-rápida 22–49 kW · Rápida ≥ 50 kW (DC). Todos los conectores mostrados son estándares reales.
+                </p>
+
                 <div class="kv">
                   <span class="k" *ngIf="d.hours"><i class="fa-solid fa-clock"></i> {{ d.hours }}</span>
                   <a class="k" *ngIf="d.website" [href]="d.website" target="_blank" rel="noopener"><i class="fa-solid fa-up-right-from-square"></i> Sitio</a>
                 </div>
                 <div class="d-meta" *ngIf="d.address" style="margin-bottom:8px"><i class="fa-solid fa-location-dot"></i> {{ d.address }}</div>
-                <div class="sbadges" *ngIf="isAdmin() && d.sources?.length" style="margin-bottom:12px">
-                  <span class="sbadge" *ngFor="let src of d.sources" [style.--sb]="sourceColor(src)"><i class="fa-solid fa-database"></i> {{ sourceLabel(src) }}</span>
-                </div>
-                <h3 class="sec">¿Está funcionando?</h3>
-                <div class="report-btns">
-                  <p-button label="Activa" icon="fa-solid fa-circle-check" severity="success" [outlined]="d.communityStatus !== 'active'" (onClick)="reportStation('active')" />
-                  <p-button label="Inactiva" icon="fa-solid fa-circle-xmark" severity="danger" [outlined]="d.communityStatus !== 'inactive'" (onClick)="reportStation('inactive')" />
-                </div>
+
+                <!-- Solo admin: fuentes de datos + edición + verificación -->
+                <ng-container *ngIf="isAdmin()">
+                  <div class="sbadges" *ngIf="d.sources?.length" style="margin:10px 0 6px">
+                    <span class="sbadge" *ngFor="let src of d.sources" [style.--sb]="sourceColor(src)"><i class="fa-solid fa-database"></i> {{ sourceLabel(src) }}</span>
+                  </div>
+                  <div class="dq" *ngIf="!editorOpen()">
+                    <button class="dqbtn" (click)="openEditor()"><i class="fa-solid fa-pen"></i> Editar cargadores</button>
+                    <button class="dqbtn" (click)="verifyToggle()"><i class="fa-solid fa-circle-check"></i> {{ d.verified ? 'Quitar verificación' : 'Marcar verificada' }}</button>
+                    <p class="muted" *ngIf="suggestMsg()" style="font-size:.84rem;margin:8px 2px 0">{{ suggestMsg() }}</p>
+                  </div>
+                  <div class="editor" *ngIf="editorOpen()">
+                    <div class="ehead">Editar cargadores</div>
+                    <p class="muted" style="font-size:.8rem;margin:0 0 10px">Indica cuántos hay de cada tipo (cada manguera cuenta como uno).</p>
+                    <div class="erow" *ngFor="let row of editRows(); let i = index">
+                      <select class="sel" [ngModel]="row.type" (ngModelChange)="setRowType(i, $event)">
+                        <option *ngFor="let t of CONNECTOR_TYPES" [value]="t">{{ t }}</option>
+                      </select>
+                      <div class="stepper">
+                        <button (click)="incRow(i, -1)"><i class="fa-solid fa-minus"></i></button>
+                        <span>{{ row.count }}</span>
+                        <button (click)="incRow(i, 1)"><i class="fa-solid fa-plus"></i></button>
+                      </div>
+                      <button class="erem" (click)="removeEditRow(i)"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <button class="dqbtn" (click)="addEditRow()"><i class="fa-solid fa-plus"></i> Agregar tipo</button>
+                    <div class="etotal">Total: <b>{{ totalEditChargers() }}</b> cargador(es)</div>
+                    <div class="report-btns">
+                      <p-button label="Guardar" icon="fa-solid fa-floppy-disk" [loading]="saving()" [disabled]="!totalEditChargers()" (onClick)="saveChargersAdmin()" />
+                      <p-button label="Cancelar" [outlined]="true" (onClick)="closeEditor()" />
+                    </div>
+                  </div>
+                </ng-container>
               </ng-template>
             </p-tabPanel>
 
-            <p-tabPanel header="Cargadores" leftIcon="fa-solid fa-plug">
+            <!-- ─────────── FEEDBACK: aporte de la comunidad ─────────── -->
+            <p-tabPanel header="Feedback" leftIcon="fa-solid fa-comments">
               <ng-template pTemplate="content">
-                <div class="prow" style="margin:2px 0 14px" *ngIf="d.chargers?.length">
-                  <span class="lbl">{{ freeCount(d) }} de {{ d.chargers.length }} libres</span>
-                  <div class="pbar" style="flex:1"><i [style.width.%]="freePct(d)" style="background:#22c55e"></i></div>
+                <!-- Tu calificación (una sola, editable) -->
+                <div class="ratebox">
+                  <div>
+                    <div style="font-weight:700">Tu calificación</div>
+                    <small class="muted">{{ myStars() ? 'Toca para cambiarla' : 'Toca una estrella para calificar' }}</small>
+                  </div>
+                  <span class="spacer" style="flex:1"></span>
+                  <span class="stars pick">
+                    <i class="fa-solid fa-star" *ngFor="let i of starArray" [class.dim]="i > myStars()" (click)="rateStation(i)"></i>
+                  </span>
                 </div>
-                <div class="charger" *ngFor="let c of d.chargers">
-                  <div class="grow">
-                    <div class="nm">{{ c.label }}</div>
-                    <div class="muted" style="font-size:.82rem">{{ c.connectorType || '—' }}<span *ngIf="c.powerKw"> · {{ c.powerKw }} kW</span>
-                      <span *ngIf="c.status"> · <b [style.color]="chargerColor(c.status)">{{ chargerLabel(c.status) }}</b></span></div>
+                <p class="muted" *ngIf="d.ratings" style="font-size:.82rem;margin:-4px 2px 12px">
+                  Promedio de la comunidad: <b>{{ d.rating }}</b> / 5 · {{ d.ratings }} voto(s).
+                </p>
+
+                <!-- Estado operativo de la estación (movido aquí) -->
+                <h3 class="sec">¿Está operativa?</h3>
+                <p class="muted" *ngIf="d.communityStatus" style="font-size:.82rem;margin:0 2px 6px">
+                  Último reporte: <b [style.color]="statusColor(d.communityStatus)">{{ statusLabel(d.communityStatus) }}</b>
+                  <span *ngIf="d.communityStatusAt"> · {{ fmtWhen(d.communityStatusAt) }}</span>
+                </p>
+                <div class="report-btns">
+                  <p-button label="Sí, operativa" icon="fa-solid fa-circle-check" severity="success" [outlined]="d.communityStatus !== 'active'" (onClick)="reportStation('active')" />
+                  <p-button label="Fuera de servicio" icon="fa-solid fa-circle-xmark" severity="danger" [outlined]="d.communityStatus !== 'inactive'" (onClick)="reportStation('inactive')" />
+                </div>
+
+                <!-- Estado por cargador -->
+                <h3 class="sec" *ngIf="d.chargers?.length" style="margin-top:16px">Estado por cargador</h3>
+                <div class="cfb" *ngFor="let c of d.chargers">
+                  <div class="cfb-h">
+                    <span class="cchip" [style.--cc]="connColor(c.connectorType)">{{ c.connectorType || 'Cargador' }}</span>
+                    <span class="muted" *ngIf="c.powerKw" style="font-size:.8rem">{{ c.powerKw }} kW</span>
+                    <span class="spacer" style="flex:1"></span>
+                    <b *ngIf="c.status" [style.color]="chargerColor(c.status)" style="font-size:.82rem">{{ chargerLabel(c.status) }}</b>
                   </div>
                   <div class="cbtns">
-                    <p-button label="Libre" size="small" severity="success" [text]="true" (onClick)="reportCharger(c, 'free')" />
-                    <p-button label="Ocupado" size="small" severity="warn" [text]="true" (onClick)="reportCharger(c, 'busy')" />
-                    <p-button label="Dañado" size="small" severity="danger" [text]="true" (onClick)="reportCharger(c, 'broken')" />
+                    <p-button label="Libre" size="small" severity="success" [outlined]="c.status !== 'free'" (onClick)="reportCharger(c, 'free')" />
+                    <p-button label="Ocupado" size="small" severity="warn" [outlined]="c.status !== 'busy'" (onClick)="reportCharger(c, 'busy')" />
+                    <p-button label="Dañado" size="small" severity="danger" [outlined]="c.status !== 'broken'" (onClick)="reportCharger(c, 'broken')" />
                   </div>
                 </div>
-                <p class="muted" *ngIf="!d.chargers?.length" style="padding:8px 0">Sin detalle de cargadores para esta estación.</p>
-
-                <!-- Corrección de datos: admin edita; usuario sugiere -->
-                <div class="dq" *ngIf="!editorOpen()">
-                  <button class="dqbtn" (click)="openEditor()">
-                    <i class="fa-solid" [class.fa-pen]="isAdmin()" [class.fa-lightbulb]="!isAdmin()"></i>
-                    {{ isAdmin() ? 'Editar cargadores' : '¿Los cargadores no coinciden? Sugerir corrección' }}
-                  </button>
-                  <button class="dqbtn" *ngIf="isAdmin()" (click)="verifyToggle()">
-                    <i class="fa-solid fa-circle-check"></i> {{ d.verified ? 'Quitar verificación' : 'Marcar verificada' }}
-                  </button>
-                  <p class="muted" *ngIf="suggestMsg()" style="font-size:.84rem;margin:8px 2px 0">{{ suggestMsg() }}</p>
-                </div>
-
-                <div class="editor" *ngIf="editorOpen()">
-                  <div class="ehead">{{ isAdmin() ? 'Editar cargadores' : 'Sugerir cuántos cargadores hay' }}</div>
-                  <p class="muted" style="font-size:.8rem;margin:0 0 10px">Indica cuántos hay de cada tipo (cada manguera cuenta como uno).</p>
+                <button class="dqbtn" *ngIf="!isAdmin() && !editorOpen()" (click)="openEditor()" style="margin-top:10px">
+                  <i class="fa-solid fa-lightbulb"></i> ¿Los cargadores no coinciden? Sugerir corrección
+                </button>
+                <div class="editor" *ngIf="!isAdmin() && editorOpen()">
+                  <div class="ehead">Sugerir cuántos cargadores hay</div>
                   <div class="erow" *ngFor="let row of editRows(); let i = index">
                     <select class="sel" [ngModel]="row.type" (ngModelChange)="setRowType(i, $event)">
                       <option *ngFor="let t of CONNECTOR_TYPES" [value]="t">{{ t }}</option>
@@ -872,31 +942,21 @@ interface CarProfile {
                   </div>
                   <button class="dqbtn" (click)="addEditRow()"><i class="fa-solid fa-plus"></i> Agregar tipo</button>
                   <div class="etotal">Total: <b>{{ totalEditChargers() }}</b> cargador(es)</div>
-                  <p class="muted" *ngIf="suggestMsg()" style="font-size:.84rem;margin:2px 0 8px">{{ suggestMsg() }}</p>
                   <div class="report-btns">
-                    <p-button *ngIf="isAdmin()" label="Guardar" icon="fa-solid fa-floppy-disk" [loading]="saving()" [disabled]="!totalEditChargers()" (onClick)="saveChargersAdmin()" />
-                    <p-button *ngIf="!isAdmin()" label="Enviar sugerencia" icon="fa-solid fa-paper-plane" [loading]="saving()" [disabled]="!totalEditChargers()" (onClick)="submitSuggestion()" />
+                    <p-button label="Enviar sugerencia" icon="fa-solid fa-paper-plane" [loading]="saving()" [disabled]="!totalEditChargers()" (onClick)="submitSuggestion()" />
                     <p-button label="Cancelar" [outlined]="true" (onClick)="closeEditor()" />
                   </div>
                 </div>
-              </ng-template>
-            </p-tabPanel>
 
-            <p-tabPanel header="Comentarios" leftIcon="fa-solid fa-comments">
-              <ng-template pTemplate="content">
-                <div class="ratebox">
-                  <span>Tu calificación:</span>
-                  <span class="stars pick">
-                    <i class="fa-solid fa-star" *ngFor="let i of starArray" [class.dim]="i > myStars()" (click)="rateStation(i)"></i>
-                  </span>
-                  <small class="muted" *ngIf="myStars()">¡Gracias!</small>
-                </div>
+                <!-- Comentarios -->
+                <h3 class="sec" style="margin-top:16px">Comentarios</h3>
                 <div class="cmt-form">
-                  <textarea [(ngModel)]="newComment" placeholder="Deja un comentario…"></textarea>
+                  <textarea [(ngModel)]="newComment" placeholder="Cuenta tu experiencia…"></textarea>
                   <p-button icon="fa-solid fa-paper-plane" (onClick)="sendComment()" [disabled]="!newComment.trim()" />
                 </div>
                 <div class="cmt" *ngFor="let k of comments()"><div class="who">{{ k.by }} <small>{{ fmtWhen(k.at) }}</small></div><div>{{ k.body }}</div></div>
                 <p class="muted" *ngIf="!comments().length">Sé el primero en comentar.</p>
+
                 <h3 class="sec" *ngIf="reports().length" style="margin-top:12px">Actividad reciente</h3>
                 <div class="act" *ngFor="let r of reports()">
                   <span [style.color]="anyColor(r.status)">●</span>
@@ -1065,15 +1125,46 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   }
   saveProfile(): void {
     const p: CarProfile = { ...this.car, connectors: [...this.car.connectors] };
-    this.profile.set(p);
+    this.applyProfile(p);
+    // Persistencia: en BD si hay sesión; caché local siempre (invitado/offline).
     try { localStorage.setItem('elec.car', JSON.stringify(p)); } catch { }
-    // Aplica como valores por defecto del planeador.
+    if (!this.isGuest()) {
+      this.api.saveVehicle(p).subscribe({ error: () => {} });
+    }
+    this.editingCar.set(false);
+    this.savedMsg.set(this.isGuest()
+      ? '✓ Guardado en este dispositivo. Inicia sesión para sincronizarlo.'
+      : '✓ Vehículo guardado en tu cuenta. Se usará al planear tu viaje.');
+    setTimeout(() => this.savedMsg.set(''), 3000);
+  }
+  /** Aplica un perfil a la UI y a los valores por defecto del planeador. */
+  private applyProfile(p: CarProfile): void {
+    this.profile.set(p);
     if (p.connectors.length) { this.tripConnectors.set([...p.connectors]); try { localStorage.setItem('elec.myConnectors', JSON.stringify(p.connectors)); } catch { } }
     if (p.autonomyKm) this.tripAutonomy = p.autonomyKm;
     if (p.cycle) this.tripCycle = p.cycle;
-    this.editingCar.set(false);
-    this.savedMsg.set('✓ Vehículo guardado. Se usará al planear tu viaje.');
-    setTimeout(() => this.savedMsg.set(''), 2600);
+  }
+  /** Trae el vehículo desde la BD (fuente de verdad para usuarios logueados). */
+  private loadVehicleFromServer(): void {
+    this.api.getVehicle().subscribe({
+      next: (v) => {
+        if (!v || (!v.brand && v.autonomyKm == null && !(v.connectors && v.connectors.length))) return; // sin vehículo aún
+        const def = this.loadProfile();
+        const p: CarProfile = {
+          brand: v.brand ?? def.brand,
+          autonomyKm: v.autonomyKm ?? def.autonomyKm,
+          cycle: v.cycle || def.cycle,
+          connectors: v.connectors ?? [],
+          fastCharge: v.fastCharge ?? true,
+          bodyType: v.bodyType || 'car',
+          color: v.color || '#3b5bfd',
+        };
+        this.applyProfile(p);
+        this.car = { ...p, connectors: [...p.connectors] };
+        try { localStorage.setItem('elec.car', JSON.stringify(p)); } catch { }
+      },
+      error: () => {},
+    });
   }
   hasProfile(): boolean { const p = this.profile(); return !!(p.brand || p.autonomyKm || p.connectors.length); }
   openDrawer(): void { this.drawer.set(true); this.pushGuard(); }
@@ -1113,7 +1204,10 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   ngOnInit(): void {
     this.api.health().subscribe({ next: (h) => this.isTest.set(h.env === 'test'), error: () => {} });
     this.api.meta().subscribe({ next: (m) => this.meta.set(m), error: () => {} });
-    this.api.me().subscribe({ next: (u) => { this.me.set(u); this.isAdmin.set(!!u.admin); this.pendingCount.set(u.suggestionsPending || 0); }, error: () => {} });
+    this.api.me().subscribe({ next: (u) => {
+      this.me.set(u); this.isAdmin.set(!!u.admin); this.pendingCount.set(u.suggestionsPending || 0);
+      if (!u.guest) this.loadVehicleFromServer();   // el vehículo vive en BD por usuario
+    }, error: () => {} });
     // Ya NO se cargan todas las estaciones al inicio: el mapa pide por área
     // visible y la lista "Inicio" pide alrededor del usuario al ubicarse.
 
@@ -1399,6 +1493,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     this.api.station(s.id).subscribe({ next: (d) => this.detail.set(d), error: () => this.detailError.set(true) });
     this.api.comments(s.id).subscribe({ next: (c) => this.comments.set(c), error: () => {} });
     this.api.reports(s.id).subscribe({ next: (r) => this.reports.set(r), error: () => {} });
+    this.api.myRating(s.id).subscribe({ next: (r) => this.myStars.set(r.stars || 0), error: () => {} });
   }
   retryDetail(): void { if (this.detailStation) this.openDetail(this.detailStation); }
   private refreshDetail(): void {
@@ -1718,9 +1813,36 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     return s === 'Rápida' ? '#f97316' : s === 'Semi-rápida' ? '#14b8a6' : s === 'Lenta' ? '#3b82f6' : '#9aa3b2';
   }
   speedDesc(s: string | null): string {
-    return s === 'Rápida' ? 'Corriente directa · ideal para viajes'
-      : s === 'Semi-rápida' ? 'Corriente alterna · recarga en un par de horas'
-      : s === 'Lenta' ? 'Corriente alterna · recarga nocturna' : 'Velocidad sin dato';
+    return s === 'Rápida' ? 'Corriente directa (DC) · 50 kW o más — ideal para viajes'
+      : s === 'Semi-rápida' ? 'Corriente alterna (AC) · 22–49 kW — recarga en un par de horas'
+      : s === 'Lenta' ? 'Corriente alterna (AC) · hasta 22 kW — recarga lenta / nocturna' : 'Velocidad sin dato';
+  }
+  /** Rango de potencia (kW) según la velocidad, para dejar claro el criterio. */
+  speedRange(s: string | null): string {
+    return s === 'Rápida' ? '≥ 50 kW' : s === 'Semi-rápida' ? '22–49 kW' : s === 'Lenta' ? '≤ 22 kW' : '—';
+  }
+  /** Explicación breve de cada tipo de conector (todos son estándares reales). */
+  connInfo(type: string): string {
+    const t = (type || '').toLowerCase();
+    if (t.includes('ccs')) return 'CCS2 — carga rápida DC, el estándar en Europa/Colombia';
+    if (t.includes('chademo')) return 'CHAdeMO — carga rápida DC (Nissan Leaf y otros); estándar japonés real';
+    if (t === 'tipo 2' || t.includes('type 2') || t.includes('mennekes')) return 'Tipo 2 (Mennekes) — carga AC, el más común';
+    if (t === 'tipo 1' || t.includes('type 1') || t.includes('j1772')) return 'Tipo 1 (J1772) — carga AC, autos asiáticos/americanos';
+    if (t.includes('gb/t') || t.includes('gbt')) return 'GB/T — estándar chino (BYD, etc.)';
+    if (t.includes('tesla')) return 'Tesla — conector propio de Tesla';
+    return type;
+  }
+  /** Agrupa los cargadores por tipo → [{type, count, kw}] para el resumen "de un vistazo". */
+  chargerGroups(d: StationFull): { type: string; count: number; kw: number | null }[] {
+    const map = new Map<string, { type: string; count: number; kw: number | null }>();
+    for (const c of (d.chargers || [])) {
+      const t = c.connectorType || 'Otro';
+      const g = map.get(t) || { type: t, count: 0, kw: null };
+      g.count++;
+      if (c.powerKw && (g.kw == null || c.powerKw > g.kw)) g.kw = c.powerKw;
+      map.set(t, g);
+    }
+    return [...map.values()];
   }
   fmtWhen(s: string): string { if (!s) return ''; const d = new Date(s.replace(' ', 'T')); return isNaN(d.getTime()) ? s : d.toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' }); }
 }

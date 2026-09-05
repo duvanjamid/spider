@@ -19,6 +19,7 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -184,6 +185,62 @@ public class StationService {
             ps.setLong(1, stationId); ps.setString(2, email); ps.setInt(3, s);
             ps.executeUpdate();
         } catch (Exception e) { throw new RuntimeException("No se pudo calificar", e); }
+    }
+
+    /** Calificación (1–5) que ESTE usuario dio a la estación (0 si no ha votado). */
+    public int myRating(String email, long stationId) {
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement("""
+                SELECT rt.stars FROM station_rating rt JOIN station s ON s.id = rt.station_id
+                WHERE (s.id = ? OR s.canonical_id = ?) AND rt.owner_email = ?
+                ORDER BY rt.created_at DESC LIMIT 1""")) {
+            ps.setLong(1, stationId); ps.setLong(2, stationId); ps.setString(3, email);
+            try (ResultSet rs = ps.executeQuery()) { return rs.next() ? rs.getInt(1) : 0; }
+        } catch (Exception e) { return 0; }
+    }
+
+    /** Perfil del vehículo del usuario (o null si no tiene). */
+    public Map<String, Object> getVehicle(String email) {
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(
+                "SELECT brand, autonomy_km, cycle, connectors, fast_charge, body_type, color FROM car_profile WHERE owner_email = ?")) {
+            ps.setString(1, email);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("brand", nz(rs.getString("brand")));
+                m.put("autonomyKm", rs.getObject("autonomy_km"));
+                m.put("cycle", nz(rs.getString("cycle")));
+                String cs = nz(rs.getString("connectors"));
+                List<String> conns = cs.isBlank() ? List.of() : Arrays.stream(cs.split(",")).map(String::trim).filter(x -> !x.isBlank()).toList();
+                m.put("connectors", conns);
+                m.put("fastCharge", rs.getBoolean("fast_charge"));
+                m.put("bodyType", nz(rs.getString("body_type")));
+                m.put("color", nz(rs.getString("color")));
+                return m;
+            }
+        } catch (Exception e) { throw new RuntimeException("No se pudo leer el vehículo", e); }
+    }
+
+    /** Guarda (upsert) el perfil del vehículo del usuario. */
+    public void saveVehicle(String email, String brand, Integer autonomyKm, String cycle,
+                            List<String> connectors, boolean fastCharge, String bodyType, String color) {
+        String conns = connectors == null ? "" : String.join(",", connectors);
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement("""
+                INSERT INTO car_profile (owner_email, brand, autonomy_km, cycle, connectors, fast_charge, body_type, color, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, now())
+                ON CONFLICT (owner_email) DO UPDATE SET
+                    brand = EXCLUDED.brand, autonomy_km = EXCLUDED.autonomy_km, cycle = EXCLUDED.cycle,
+                    connectors = EXCLUDED.connectors, fast_charge = EXCLUDED.fast_charge,
+                    body_type = EXCLUDED.body_type, color = EXCLUDED.color, updated_at = now()""")) {
+            ps.setString(1, email);
+            ps.setString(2, brand == null ? "" : brand);
+            if (autonomyKm == null) ps.setNull(3, java.sql.Types.INTEGER); else ps.setInt(3, autonomyKm);
+            ps.setString(4, cycle == null || cycle.isBlank() ? "WLTP" : cycle);
+            ps.setString(5, conns);
+            ps.setBoolean(6, fastCharge);
+            ps.setString(7, bodyType == null || bodyType.isBlank() ? "car" : bodyType);
+            ps.setString(8, color == null || color.isBlank() ? "#3b5bfd" : color);
+            ps.executeUpdate();
+        } catch (Exception e) { throw new RuntimeException("No se pudo guardar el vehículo", e); }
     }
 
     /** Vacía la caché de APIs; el próximo sync vuelve a consultar las fuentes. */

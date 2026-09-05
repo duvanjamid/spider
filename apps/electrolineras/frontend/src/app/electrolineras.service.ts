@@ -22,6 +22,7 @@ export interface StationFull {
 }
 export interface Suggestion { stationId: number; stationName: string; stationCity: string; kind: string; value: string; votes: number; needed: number; detail: string | null; lastAt: string; }
 export interface Me { email: string; guest: boolean; admin: boolean; name?: string; picture?: string; suggestionsPending?: number; }
+export interface Vehicle { brand?: string; autonomyKm?: number | null; cycle?: string; connectors?: string[]; fastCharge?: boolean; bodyType?: string; color?: string; }
 export interface Comment { by: string; body: string; at: string; }
 export interface Report { status: string; by: string; charger: string; at: string; }
 export interface Place { name: string; lat: number; lon: number; }
@@ -51,6 +52,9 @@ export class ElectrolinerasService {
   }
   reports(id: number): Observable<Report[]> { return this.http.get<Report[]>(`${this.base}/stations/${id}/reports`, this.opts); }
   rate(id: number, stars: number): Observable<unknown> { return this.http.post(`${this.base}/stations/${id}/rate`, { stars }, this.opts); }
+  myRating(id: number): Observable<{ stars: number }> { return this.http.get<{ stars: number }>(`${this.base}/stations/${id}/rating/me`, this.opts); }
+  getVehicle(): Observable<Vehicle> { return this.http.get<Vehicle>(`${this.base}/vehicle`, this.opts); }
+  saveVehicle(v: Vehicle): Observable<unknown> { return this.http.post(`${this.base}/vehicle`, v, this.opts); }
   health(): Observable<{ env: string }> { return this.http.get<{ env: string }>(`${this.base}/health`, this.opts); }
   me(): Observable<Me> { return this.http.get<Me>(`${this.base}/me`, this.opts); }
   /** Cierra la sesión de la plataforma (cookie compartida que emite admin). */
