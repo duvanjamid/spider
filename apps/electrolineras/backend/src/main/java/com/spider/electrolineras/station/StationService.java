@@ -243,6 +243,46 @@ public class StationService {
         } catch (Exception e) { throw new RuntimeException("No se pudo guardar el vehículo", e); }
     }
 
+    /** Reporta (upsert) el precio COP/kWh que un usuario pagó en una estación. */
+    public void reportPrice(String email, long stationId, double priceCop) {
+        double p = Math.max(0, Math.min(99999, priceCop));
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement("""
+                INSERT INTO station_price (station_id, owner_email, price_cop) VALUES (?, ?, ?)
+                ON CONFLICT (station_id, owner_email) DO UPDATE SET price_cop = EXCLUDED.price_cop, created_at = now()""")) {
+            ps.setLong(1, stationId); ps.setString(2, email); ps.setBigDecimal(3, java.math.BigDecimal.valueOf(p));
+            ps.executeUpdate();
+        } catch (Exception e) { throw new RuntimeException("No se pudo reportar el precio", e); }
+    }
+    /** Precio COP/kWh que ESTE usuario reportó (0 si no ha reportado). */
+    public double myPrice(String email, long stationId) {
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement("""
+                SELECT sp.price_cop FROM station_price sp JOIN station s ON s.id = sp.station_id
+                WHERE (s.id = ? OR s.canonical_id = ?) AND sp.owner_email = ? ORDER BY sp.created_at DESC LIMIT 1""")) {
+            ps.setLong(1, stationId); ps.setLong(2, stationId); ps.setString(3, email);
+            try (ResultSet rs = ps.executeQuery()) { return rs.next() ? rs.getDouble(1) : 0; }
+        } catch (Exception e) { return 0; }
+    }
+    /** Fija (o borra con null) la tarifa oficial COP/kWh de una estación (admin). */
+    public void setAdminPrice(long stationId, Double priceCop) {
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(
+                "UPDATE station SET price_admin = ? WHERE id = ? OR canonical_id = ?")) {
+            if (priceCop == null) ps.setNull(1, java.sql.Types.NUMERIC);
+            else ps.setBigDecimal(1, java.math.BigDecimal.valueOf(Math.max(0, priceCop)));
+            ps.setLong(2, stationId); ps.setLong(3, stationId);
+            ps.executeUpdate();
+        } catch (Exception e) { throw new RuntimeException("No se pudo fijar la tarifa", e); }
+    }
+    /** Precio a mostrar por prioridad admin → comunidad → externa. Escribe en `out`. */
+    private void putPrice(Map<String, Object> out, Double admin, Double ext, double commSum, int commN) {
+        Long price = null; String src = null; Integer count = null;
+        if (admin != null && admin > 0) { price = Math.round(admin); src = "admin"; }
+        else if (commN > 0) { price = Math.round(commSum / commN); src = "community"; count = commN; }
+        else if (ext != null && ext > 0) { price = Math.round(ext); src = "external"; }
+        out.put("priceKwh", price);            // COP/kWh a mostrar (o null)
+        out.put("priceSource", src);           // admin | community | external | null
+        out.put("priceCount", count == null ? 0 : count);
+    }
+
     /** Vacía la caché de APIs; el próximo sync vuelve a consultar las fuentes. */
     public int clearCache() {
         try (Connection c = ds.getConnection(); Statement st = c.createStatement()) {
@@ -541,15 +581,17 @@ public class StationService {
         String speed = maxKw >= 50 ? "Rápida" : maxKw >= 22 ? "Semi-rápida" : maxKw > 0 ? "Lenta" : null;
         boolean operational = poi.path("StatusType").path("IsOperational").asBoolean(true);
 
+        Double priceExt = parseUsageCost(text(poi, "UsageCost"));
         String sql = """
                 INSERT INTO station (source, external_id, name, operator, city, address, lat, lon,
-                                     connectors, speed, hours, website, source_active, raw, updated_at)
-                VALUES ('openchargemap', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, now())
+                                     connectors, speed, hours, website, source_active, price_ext, raw, updated_at)
+                VALUES ('openchargemap', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, now())
                 ON CONFLICT (source, external_id) DO UPDATE SET
                     name = EXCLUDED.name, operator = EXCLUDED.operator, city = EXCLUDED.city,
                     address = EXCLUDED.address, lat = EXCLUDED.lat, lon = EXCLUDED.lon,
                     connectors = EXCLUDED.connectors, speed = EXCLUDED.speed,
-                    source_active = EXCLUDED.source_active, raw = EXCLUDED.raw, updated_at = now()
+                    source_active = EXCLUDED.source_active, price_ext = EXCLUDED.price_ext,
+                    raw = EXCLUDED.raw, updated_at = now()
                 RETURNING id
                 """;
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
@@ -563,7 +605,8 @@ public class StationService {
             ps.setString(8, conn.length() > 0 ? conn.toString() : null);
             ps.setString(9, speed);
             ps.setBoolean(10, operational);
-            ps.setString(11, poi.toString());
+            if (priceExt == null) ps.setNull(11, java.sql.Types.NUMERIC); else ps.setBigDecimal(11, java.math.BigDecimal.valueOf(priceExt));
+            ps.setString(12, poi.toString());
             long stationId;
             try (ResultSet rs = ps.executeQuery()) { rs.next(); stationId = rs.getLong(1); }
             // cargadores con conector + potencia explícitos
@@ -840,7 +883,10 @@ public class StationService {
                   (SELECT count(*) FROM station_comment k WHERE k.station_id = s.id) AS comments,
                   (SELECT count(*) FROM charger ch WHERE ch.station_id = s.id) AS chargers,
                   (SELECT count(*) FROM station_rating rt WHERE rt.station_id = s.id) AS rate_n,
-                  (SELECT coalesce(sum(rt.stars), 0) FROM station_rating rt WHERE rt.station_id = s.id) AS rate_sum
+                  (SELECT coalesce(sum(rt.stars), 0) FROM station_rating rt WHERE rt.station_id = s.id) AS rate_sum,
+                  s.price_admin, s.price_ext,
+                  (SELECT coalesce(sum(sp.price_cop), 0) FROM station_price sp WHERE sp.station_id = s.id) AS price_sum,
+                  (SELECT count(*) FROM station_price sp WHERE sp.station_id = s.id) AS price_n
                 FROM station s
                 WHERE s.lat IS NOT NULL AND s.lon IS NOT NULL
                 """);
@@ -851,6 +897,7 @@ public class StationService {
         Map<Long, Set<String>> connByCluster = new LinkedHashMap<>();
         Map<Long, Set<String>> srcByCluster = new LinkedHashMap<>();
         Map<Long, int[]> sumByCluster = new LinkedHashMap<>();   // [comments, chargers, rateN, rateSum]
+        Map<Long, double[]> priceByCluster = new LinkedHashMap<>(); // [adminMax, extMax, commSum, commN]
         Map<Long, String> speedByCluster = new LinkedHashMap<>();
         Map<Long, Boolean> verByCluster = new LinkedHashMap<>();
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql.toString())) {
@@ -884,6 +931,10 @@ public class StationService {
                 int[] s = sumByCluster.computeIfAbsent(cluster, k -> new int[4]);
                 s[0] += rs.getInt("comments"); s[1] += rs.getInt("chargers");
                 s[2] += rs.getInt("rate_n"); s[3] += rs.getInt("rate_sum");
+                double[] pr = priceByCluster.computeIfAbsent(cluster, k -> new double[4]);
+                double pa = rs.getDouble("price_admin"); if (!rs.wasNull()) pr[0] = Math.max(pr[0], pa);
+                double pe = rs.getDouble("price_ext");   if (!rs.wasNull()) pr[1] = Math.max(pr[1], pe);
+                pr[2] += rs.getDouble("price_sum"); pr[3] += rs.getInt("price_n");
                 speedByCluster.merge(cluster, nz(rs.getString("speed")), StationService::betterSpeed);
                 verByCluster.merge(cluster, rs.getBoolean("verified"), (a, b) -> a || b);
             }
@@ -902,6 +953,8 @@ public class StationService {
             m.put("ratings", s[2]);
             m.put("rating", s[2] > 0 ? Math.round((double) s[3] / s[2] * 10.0) / 10.0 : 0);
             m.put("verified", verByCluster.getOrDefault(cl, false));
+            double[] pr = priceByCluster.getOrDefault(cl, new double[4]);
+            putPrice(m, pr[0] > 0 ? pr[0] : null, pr[1] > 0 ? pr[1] : null, pr[2], (int) pr[3]);
             out.add(m);
         }
         return out;
@@ -1036,6 +1089,24 @@ public class StationService {
                     }
                 }
             }
+
+            // Precio COP/kWh por capas (admin → comunidad → externa) en el grupo.
+            Double admin = null, ext = null; double commSum = 0; int commN = 0;
+            try (PreparedStatement ps = c.prepareStatement("""
+                    SELECT max(s.price_admin) AS admin, max(s.price_ext) AS ext,
+                      coalesce(sum((SELECT coalesce(sum(price_cop),0) FROM station_price sp WHERE sp.station_id = s.id)),0) AS csum,
+                      coalesce(sum((SELECT count(*) FROM station_price sp WHERE sp.station_id = s.id)),0) AS cn
+                    FROM station s WHERE s.id = ? OR s.canonical_id = ?""")) {
+                ps.setLong(1, id); ps.setLong(2, id);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        double a = rs.getDouble("admin"); if (!rs.wasNull()) admin = a;
+                        double e = rs.getDouble("ext"); if (!rs.wasNull()) ext = e;
+                        commSum = rs.getDouble("csum"); commN = rs.getInt("cn");
+                    }
+                }
+            }
+            putPrice(out, admin, ext, commSum, commN);
         } catch (Exception e) { throw new RuntimeException("Error consultando estación", e); }
         return out;
     }
@@ -1057,6 +1128,26 @@ public class StationService {
     private static String text(JsonNode n, String f) {
         JsonNode v = n.path(f);
         return v.isMissingNode() || v.isNull() ? null : v.asText();
+    }
+    /**
+     * Intenta sacar un COP/kWh del texto libre {@code UsageCost} de OCM.
+     * Conservador: solo si el texto menciona "kWh" y el número resultante es una
+     * magnitud plausible en pesos (≥ 50). Así evitamos confundir "0.20 USD/kWh"
+     * o "Free" con una tarifa en COP. Devuelve null si no aplica.
+     */
+    static Double parseUsageCost(String txt) {
+        if (txt == null) return null;
+        String t = txt.toLowerCase();
+        if (!t.contains("kwh") && !t.contains("kw/h") && !t.contains("kw-h")) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("([0-9][0-9.,]*)").matcher(t);
+        while (m.find()) {
+            String num = m.group(1).replace(".", "").replace(",", ".");   // "1.200,50" → "1200.50"
+            try {
+                double v = Double.parseDouble(num);
+                if (v >= 50 && v <= 99999) return Math.round(v * 100.0) / 100.0;
+            } catch (NumberFormatException ignore) { }
+        }
+        return null;
     }
     private static String firstNonBlank(String... xs) {
         for (String x : xs) if (x != null && !x.isBlank()) return x;

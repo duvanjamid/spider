@@ -27,6 +27,7 @@ public final class StationController {
     public record RateInput(Integer stars) {}
     public record VehicleInput(String brand, Integer autonomyKm, String cycle,
                                java.util.List<String> connectors, Boolean fastCharge, String bodyType, String color) {}
+    public record PriceInput(Double priceCop) {}
     public record VerifyInput(Boolean verified) {}
     public record SuggestInput(String kind, String value, String detail) {}
     public record ResolveInput(Long stationId, String kind, String value, Boolean approve) {}
@@ -101,6 +102,26 @@ public final class StationController {
         app.get("/stations/{id}/rating/me", ctx -> {
             String user = email(ctx.header("Cookie"));
             ctx.json(Map.of("stars", stations.myRating(user, Long.parseLong(ctx.pathParam("id")))));
+        });
+
+        // ── Precio COP/kWh: reporte de la comunidad (editable por usuario) ──
+        app.post("/stations/{id}/price", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            PriceInput in = ctx.body(PriceInput.class);
+            if (in == null || in.priceCop() == null || in.priceCop() < 0) { ctx.status(400).json(Map.of("error", "precio inválido")); return; }
+            stations.reportPrice(user, Long.parseLong(ctx.pathParam("id")), in.priceCop());
+            ctx.status(201).json(Map.of("ok", true));
+        });
+        app.get("/stations/{id}/price/me", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            ctx.json(Map.of("priceCop", stations.myPrice(user, Long.parseLong(ctx.pathParam("id")))));
+        });
+        // Tarifa oficial (admin): fija o borra (priceCop null).
+        app.post("/stations/{id}/price/admin", ctx -> {
+            if (!Env.isAdmin(email(ctx.header("Cookie")))) { ctx.status(403).json(Map.of("error", "solo admin")); return; }
+            PriceInput in = ctx.body(PriceInput.class);
+            stations.setAdminPrice(Long.parseLong(ctx.pathParam("id")), in == null ? null : in.priceCop());
+            ctx.json(Map.of("ok", true));
         });
 
         // ── Vehículo del usuario (persistido en BD, no en el navegador) ──

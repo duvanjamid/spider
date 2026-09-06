@@ -133,6 +133,22 @@ interface CarProfile {
     .speedband .bt { font-weight: 800; font-size: 1.02rem; line-height: 1.1; display: flex; align-items: center; gap: 8px; }
     .speedband .bs { font-size: .76rem; opacity: .9; margin-top: 3px; }
     .speedband .kwtag { font-size: .68rem; font-weight: 800; padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,.22); }
+    /* Precio por kWh */
+    .priceband { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; margin: 0 0 12px;
+                 background: color-mix(in srgb, var(--accent) 9%, var(--panel)); border: 1px solid var(--accent-line); }
+    .priceband .pb-val { font-size: 1.5rem; font-weight: 800; color: var(--accent-strong); line-height: 1; }
+    .priceband .pb-val span { font-size: .8rem; font-weight: 700; color: var(--muted); margin-left: 2px; }
+    .priceband .pb-src { font-size: .78rem; color: var(--muted); font-weight: 600; }
+    .priceband .pb-src i { color: var(--accent-strong); margin-right: 4px; }
+    .priceband.empty { display: block; background: var(--panel-2); border-color: var(--border); color: var(--muted); font-size: .84rem; font-weight: 600; }
+    .priceband.empty i { color: var(--accent-strong); margin-right: 6px; }
+    .priceform { display: flex; align-items: center; gap: 8px; }
+    .priceform .cur { color: var(--muted); font-weight: 800; width: 18px; text-align: center; }
+    .priceform input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 11px; border: 1px solid var(--border); background: var(--panel-2); color: var(--fg); font-size: 1rem; }
+    .priceform input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+    .priceform .unit { font-size: .74rem; color: var(--muted); white-space: nowrap; }
+    .pricechip { font-size: .72rem; font-weight: 800; padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+                 background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-strong); }
     /* Resumen de cargadores "de un vistazo" */
     .cgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 2px 0 10px; }
     .cg { position: relative; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 13px;
@@ -469,6 +485,7 @@ interface CarProfile {
                 </div>
                 <div class="right">
                   <span class="km" *ngIf="dist(s)">{{ dist(s) }}</span>
+                  <span class="pricechip" *ngIf="s.priceKwh">{{ fmtCop(s.priceKwh) }}/kWh</span>
                   <p-tag [value]="statusLabel(s.communityStatus)" [severity]="statusSeverity(s.communityStatus)" />
                 </div>
               </div>
@@ -823,6 +840,15 @@ interface CarProfile {
                     <div class="bs">{{ speedDesc(d.speed) }}</div></div>
                 </div>
 
+                <!-- Precio por kWh (admin → comunidad → externa) -->
+                <div class="priceband" *ngIf="d.priceKwh; else noPrice">
+                  <div class="pb-val">{{ fmtCop(d.priceKwh) }}<span>/kWh</span></div>
+                  <div class="pb-src"><i class="fa-solid" [class.fa-shield-halved]="d.priceSource==='admin'" [class.fa-users]="d.priceSource==='community'" [class.fa-globe]="d.priceSource==='external'"></i> {{ priceSourceLabel(d) }}</div>
+                </div>
+                <ng-template #noPrice>
+                  <div class="priceband empty"><i class="fa-solid fa-tag"></i> Sin precio aún · ayúdanos reportándolo en <b>Feedback</b></div>
+                </ng-template>
+
                 <!-- Resumen de cargadores: qué tipos y cuántos -->
                 <h3 class="sec">Cargadores <span class="muted" style="font-weight:600">· {{ d.chargers?.length || 0 }} en total</span></h3>
                 <div class="cgrid" *ngIf="chargerGroups(d).length; else noCh">
@@ -898,8 +924,27 @@ interface CarProfile {
                   Promedio de la comunidad: <b>{{ d.rating }}</b> / 5 · {{ d.ratings }} voto(s).
                 </p>
 
+                <!-- Precio COP/kWh: reporte de la comunidad -->
+                <h3 class="sec" style="margin-top:16px">Precio por kWh</h3>
+                <p class="muted" *ngIf="d.priceKwh" style="font-size:.82rem;margin:0 2px 6px">
+                  Actual: <b>{{ fmtCop(d.priceKwh) }}/kWh</b> · {{ priceSourceLabel(d) }}.
+                </p>
+                <div class="priceform">
+                  <span class="cur">$</span>
+                  <input type="number" [(ngModel)]="newPrice" placeholder="¿Cuánto pagaste por kWh?" min="0" />
+                  <span class="unit">COP/kWh</span>
+                  <p-button [label]="myPriceCop() ? 'Actualizar' : 'Reportar'" size="small" (onClick)="reportMyPrice()" [disabled]="newPrice == null || newPrice < 0" />
+                </div>
+                <div class="priceform" *ngIf="isAdmin()" style="margin-top:8px">
+                  <span class="cur"><i class="fa-solid fa-shield-halved"></i></span>
+                  <input type="number" [(ngModel)]="adminPrice" placeholder="Tarifa oficial (admin)" min="0" />
+                  <span class="unit">COP/kWh</span>
+                  <p-button label="Fijar" size="small" severity="secondary" (onClick)="saveAdminPrice()" />
+                </div>
+                <p class="muted" *ngIf="priceMsg()" style="font-size:.82rem;margin:6px 2px 0;color:var(--accent-strong)">{{ priceMsg() }}</p>
+
                 <!-- Estado operativo de la estación (movido aquí) -->
-                <h3 class="sec">¿Está operativa?</h3>
+                <h3 class="sec" style="margin-top:16px">¿Está operativa?</h3>
                 <p class="muted" *ngIf="d.communityStatus" style="font-size:.82rem;margin:0 2px 6px">
                   Último reporte: <b [style.color]="statusColor(d.communityStatus)">{{ statusLabel(d.communityStatus) }}</b>
                   <span *ngIf="d.communityStatusAt"> · {{ fmtWhen(d.communityStatusAt) }}</span>
@@ -1490,10 +1535,12 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     this.detailStation = s;
     this.detailVisible = true;
     this.pushGuard();
-    this.api.station(s.id).subscribe({ next: (d) => this.detail.set(d), error: () => this.detailError.set(true) });
+    this.newPrice = null; this.adminPrice = null; this.myPriceCop.set(0); this.priceMsg.set('');
+    this.api.station(s.id).subscribe({ next: (d) => { this.detail.set(d); this.adminPrice = d.priceSource === 'admin' ? (d.priceKwh ?? null) : null; }, error: () => this.detailError.set(true) });
     this.api.comments(s.id).subscribe({ next: (c) => this.comments.set(c), error: () => {} });
     this.api.reports(s.id).subscribe({ next: (r) => this.reports.set(r), error: () => {} });
     this.api.myRating(s.id).subscribe({ next: (r) => this.myStars.set(r.stars || 0), error: () => {} });
+    this.api.myPrice(s.id).subscribe({ next: (r) => { this.myPriceCop.set(r.priceCop || 0); if (r.priceCop) this.newPrice = r.priceCop; }, error: () => {} });
   }
   retryDetail(): void { if (this.detailStation) this.openDetail(this.detailStation); }
   private refreshDetail(): void {
@@ -1518,6 +1565,38 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     const d = this.detail(); if (!d) return;
     this.myStars.set(n);
     this.api.rate(d.id, n).subscribe({ next: () => this.refreshDetail(), error: () => {} });
+  }
+
+  // ── Precio COP/kWh (comunidad + admin) ──
+  readonly myPriceCop = signal(0);
+  newPrice: number | null = null;
+  adminPrice: number | null = null;
+  readonly priceMsg = signal('');
+  /** Formatea COP sin decimales: 950 → "$950". */
+  fmtCop(v: number | null | undefined): string {
+    if (v == null) return '—';
+    return '$' + Math.round(v).toLocaleString('es-CO');
+  }
+  priceSourceLabel(d: StationFull): string {
+    if (d.priceSource === 'admin') return 'Tarifa oficial';
+    if (d.priceSource === 'community') return 'Promedio de la comunidad · ' + (d.priceCount || 0) + ' reporte(s)';
+    if (d.priceSource === 'external') return 'Estimado de fuente externa';
+    return '';
+  }
+  reportMyPrice(): void {
+    const d = this.detail(); if (!d || this.newPrice == null || this.newPrice < 0) return;
+    const v = this.newPrice;
+    this.api.reportPrice(d.id, v).subscribe({
+      next: () => { this.myPriceCop.set(v); this.priceMsg.set('✓ ¡Gracias! Precio reportado.'); this.refreshDetail(); setTimeout(() => this.priceMsg.set(''), 2600); },
+      error: () => this.priceMsg.set('No se pudo reportar el precio.'),
+    });
+  }
+  saveAdminPrice(): void {
+    const d = this.detail(); if (!d) return;
+    this.api.setAdminPrice(d.id, this.adminPrice ?? null).subscribe({
+      next: () => { this.priceMsg.set('✓ Tarifa oficial actualizada.'); this.refreshDetail(); setTimeout(() => this.priceMsg.set(''), 2600); },
+      error: () => this.priceMsg.set('No se pudo fijar la tarifa.'),
+    });
   }
 
   freeCount(d: StationFull): number { return (d.chargers || []).filter((c) => c.status === 'free').length; }
