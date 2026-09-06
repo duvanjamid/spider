@@ -8,8 +8,11 @@ export interface Expense {
   id: number; amount: number; currency: string; merchant: string; description: string; nit: string;
   spentOn: string; spentAt: string; registeredAt: string; source: string;
   categorySlug: string; categoryName: string; categoryColor: string;
-  scope?: string; mine?: boolean; by?: string; canEdit?: boolean;
+  scope?: string; mine?: boolean; by?: string; canEdit?: boolean; taxTotal?: number;
 }
+export interface Tax { kind: string; amount: number; }
+export interface TaxKindTotal { kind: string; total: number; }
+export interface TaxSummary { month: string; scope?: string; taxTotal: number; spentTotal: number; byKind: TaxKindTotal[]; }
 export interface ConnRow { id: number; email: string; }
 export interface Connections { accepted: ConnRow[]; incoming: ConnRow[]; outgoing: ConnRow[]; }
 export interface CatTotal { slug: string; name: string; color: string; total: number; budget: number; }
@@ -49,6 +52,7 @@ export interface Scan {
   categoriaNombre: string | null;
   categoriaSugerida: string | null;
   productos: ScanItem[];
+  impuestos: { tipo: string; valor: number }[];
   regiones: Region[];
 }
 export interface ExpenseItem { name: string; quantity: number | null; unitPrice: number | null; lineTotal: number | null; }
@@ -68,7 +72,7 @@ export interface CategoryTemplate { slug: string; name: string; color: string; i
 export interface NewExpense {
   amount: number; currency?: string; categoryId?: number | null;
   merchant?: string; description?: string; spentOn?: string; spentAt?: string; nit?: string; source?: string;
-  items?: ScanItem[]; scope?: string;
+  items?: ScanItem[]; scope?: string; taxes?: Tax[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -112,6 +116,8 @@ export class GastosService {
   update(id: number, e: NewExpense): Observable<unknown> { return this.http.put(`${this.base}/expenses/${id}`, e, this.opts); }
   remove(id: number): Observable<unknown> { return this.http.delete(`${this.base}/expenses/${id}`, this.opts); }
   itemsOf(id: number): Observable<ExpenseItem[]> { return this.http.get<ExpenseItem[]>(`${this.base}/expenses/${id}/items`, this.opts); }
+  taxesOf(id: number): Observable<Tax[]> { return this.http.get<Tax[]>(`${this.base}/expenses/${id}/taxes`, this.opts); }
+  taxes(month: string, scope = 'mine'): Observable<TaxSummary> { return this.http.get<TaxSummary>(`${this.base}/taxes?month=${month}&scope=${scope}`, this.opts); }
   prices(): Observable<PriceProduct[]> { return this.http.get<PriceProduct[]>(`${this.base}/prices`, this.opts); }
   summary(month: string, scope = 'mine'): Observable<Summary> { return this.http.get<Summary>(`${this.base}/summary?month=${month}&scope=${scope}`, this.opts); }
   trend(months = 6, scope = 'mine'): Observable<Trend> { return this.http.get<Trend>(`${this.base}/trend?months=${months}&scope=${scope}`, this.opts); }

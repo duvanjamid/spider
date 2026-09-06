@@ -9,6 +9,7 @@ import { TagModule } from 'primeng/tag';
 import {
   Budget, Category, CategoryTemplate, Connections, Expense, ExpenseItem, GastosService, Me, Monto, PriceProduct,
   Notif, Recurring, Region, Scan, ScanItem, Summary, Trend, Income, AntReport, BurnPoint, PushStatus, PricePoint,
+  Tax, TaxSummary,
 } from './gastos.service';
 
 type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
@@ -188,6 +189,28 @@ function localYMD(d: Date = new Date()): string {
     .member-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
     .member-row:last-child { border-bottom: none; }
     .mem-av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: #fff; font-weight: 800; font-size: .82rem; }
+    /* Editor de impuestos/cargos en el formulario */
+    .tax-editor { display: flex; flex-direction: column; gap: 8px; }
+    .tax-row { display: flex; gap: 8px; align-items: center; }
+    .tax-row .tax-kind { flex: 1; min-width: 0; }
+    .tax-row .tax-amt { width: 116px; }
+    .tax-del { border: none; background: var(--panel-2); color: var(--muted); width: 34px; height: 34px; border-radius: 9px; cursor: pointer; flex-shrink: 0; }
+    .tax-del:active { transform: scale(.92); }
+    .tax-add { align-self: flex-start; border: 1px dashed var(--border); background: transparent; color: var(--accent-strong); padding: 8px 12px; border-radius: 9px; cursor: pointer; font-weight: 700; font-size: .86rem; }
+    .tax-sum { font-size: .86rem; font-weight: 700; color: var(--fg); }
+    .tax-sum i { color: var(--accent-strong); margin-right: 4px; }
+    /* Impuestos en el detalle */
+    .tax-detail .tax-detail-sum { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: .9rem; }
+    .tax-tag { color: var(--accent-strong); }
+    /* Tarjeta de impuestos del mes */
+    .tax-hero { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-bottom: 14px; }
+    .tax-hero-fig b { font-size: 1.6rem; font-weight: 800; color: var(--fg); }
+    .tax-hero-fig small { display: block; font-size: .74rem; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+    .tax-hero-note { font-size: .88rem; }
+    .tax-bars { display: flex; flex-direction: column; gap: 12px; }
+    .tax-bar-top { display: flex; align-items: center; gap: 8px; font-size: .9rem; margin-bottom: 4px; }
+    .tax-bar-top .spacer { flex: 1; }
+    .tax-bar-foot { font-size: .78rem; margin-top: 3px; }
 
     /* Cabecera de tarjeta con acción */
     .card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
@@ -661,6 +684,34 @@ function localYMD(d: Date = new Date()): string {
             </p>
           </p-card>
         </div>
+
+        <!-- Impuestos y cargos del mes -->
+        <div style="margin-top:16px" *ngIf="taxSummary() as tx">
+          <p-card header="Impuestos y cargos del mes">
+            <div *ngIf="tx.taxTotal > 0; else noTax">
+              <div class="tax-hero">
+                <div class="tax-hero-fig"><b>{{ fmt(tx.taxTotal) }}</b><small>en impuestos</small></div>
+                <div class="tax-hero-note muted">
+                  de {{ fmt(tx.spentTotal) }} gastados · <b>{{ taxPct(tx.taxTotal, tx.spentTotal) }}%</b> fueron impuestos
+                </div>
+              </div>
+              <div class="tax-bars">
+                <div class="tax-bar" *ngFor="let k of tx.byKind">
+                  <div class="tax-bar-top"><span class="dot" [style.background]="taxColor(k.kind)"></span><b>{{ k.kind }}</b>
+                    <span class="spacer"></span><span>{{ fmt(k.total) }}</span></div>
+                  <div class="pbar"><div class="fill" [style.width.%]="taxPct(k.total, tx.taxTotal)" [style.background]="taxColor(k.kind)"></div></div>
+                  <div class="tax-bar-foot muted">{{ taxPct(k.total, tx.taxTotal) }}% de los impuestos</div>
+                </div>
+              </div>
+            </div>
+            <ng-template #noTax>
+              <p class="muted" style="margin:0;font-size:.9rem">
+                Aún no has registrado impuestos este mes. Al cargar o escanear una compra, indica cuánto del
+                total fue IVA, impuesto al consumo, propina, etc.
+              </p>
+            </ng-template>
+          </p-card>
+        </div>
       </section>
 
       <!-- ═══ Pestaña: Movimientos ═══ -->
@@ -682,7 +733,7 @@ function localYMD(d: Date = new Date()): string {
             <span class="dot" [style.background]="e.categoryColor || '#9aa3b2'"></span>
             <div class="grow">
               <div>{{ e.merchant || e.description || e.categoryName || 'Gasto' }}</div>
-              <small>{{ e.categoryName || 'Otros' }} · {{ e.spentOn }}<span *ngIf="e.source === 'scan'"> · 🤖</span><span *ngIf="e.source === 'recurring'"> · 🔁</span><span *ngIf="e.scope === 'home' && e.mine === false" class="shared-tag"> · <i class="fa-solid fa-house-user"></i> de {{ shortName(e.by || '') }}</span></small>
+              <small>{{ e.categoryName || 'Otros' }} · {{ e.spentOn }}<span *ngIf="e.source === 'scan'"> · 🤖</span><span *ngIf="e.source === 'recurring'"> · 🔁</span><span *ngIf="(e.taxTotal || 0) > 0" class="tax-tag"> · <i class="fa-solid fa-receipt"></i> {{ fmt(e.taxTotal || 0) }}</span><span *ngIf="e.scope === 'home' && e.mine === false" class="shared-tag"> · <i class="fa-solid fa-house-user"></i> de {{ shortName(e.by || '') }}</span></small>
             </div>
             <span class="amt">{{ fmt(e.amount, e.currency) }}</span>
             <i class="fa-solid fa-chevron-right" style="color:var(--muted);font-size:.8rem"></i>
@@ -928,6 +979,26 @@ function localYMD(d: Date = new Date()): string {
                     </div>
                   </div>
                 </div>
+
+                <!-- Impuestos / cargos (incluidos en el total) -->
+                <div class="field full">
+                  <label>Impuestos y cargos <span class="muted" style="font-weight:500">(incluidos en el total)</span></label>
+                  <div class="tax-editor">
+                    <div class="tax-row" *ngFor="let t of form.taxes; let i = index">
+                      <select class="sel tax-kind" [(ngModel)]="t.kind" [name]="'txk'+i">
+                        <option *ngFor="let k of taxKinds" [value]="k">{{ k }}</option>
+                      </select>
+                      <input class="inp tax-amt" type="number" [(ngModel)]="t.amount" [name]="'txa'+i" placeholder="Valor" />
+                      <button type="button" class="tax-del" (click)="removeTaxRow(form, i)" title="Quitar"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <button type="button" class="tax-add" (click)="addTaxRow(form)"><i class="fa-solid fa-plus"></i> Agregar impuesto</button>
+                    <div class="tax-sum" *ngIf="taxesTotal(form.taxes) > 0">
+                      <i class="fa-solid fa-receipt"></i> {{ fmt(taxesTotal(form.taxes)) }} en impuestos
+                      <span class="muted" *ngIf="form.amount && form.amount > 0"> · {{ taxPct(taxesTotal(form.taxes), form.amount) }}% del total</span>
+                    </div>
+                  </div>
+                </div>
+
                 <div class="field full">
                   <label>¿De quién es este gasto?</label>
                   <div class="seg scopeseg">
@@ -974,6 +1045,19 @@ function localYMD(d: Date = new Date()): string {
             <div class="det-row"><span>Origen</span><b>{{ sourceLabel(d.source) }}</b></div>
             <div class="det-row"><span>Tipo</span><b *ngIf="d.scope === 'home'; else mineTag"><i class="fa-solid fa-house-user" style="color:var(--accent-strong)"></i> Hogar</b><ng-template #mineTag><b><i class="fa-solid fa-user" style="color:var(--muted)"></i> Mío</b></ng-template></div>
             <div class="det-row" *ngIf="d.scope === 'home' && d.mine === false"><span>Pagado por</span><b><i class="fa-solid fa-house-user" style="color:var(--accent-strong)"></i> {{ shortName(d.by || '') }}</b></div>
+            <div *ngIf="detailTaxes().length" class="tax-detail" style="margin-top:12px">
+              <span class="muted" style="font-size:.8rem"><i class="fa-solid fa-receipt"></i> Impuestos y cargos (incluidos)</span>
+              <div class="items">
+                <div class="it" *ngFor="let t of detailTaxes()">
+                  <span class="n">{{ t.kind }}</span>
+                  <span class="p">{{ fmt(t.amount) }}</span>
+                </div>
+              </div>
+              <div class="tax-detail-sum">
+                <b>{{ fmt(taxesTotal(detailTaxes())) }}</b>
+                <span class="muted"> de {{ fmt(d.amount, d.currency) }} · {{ taxPct(taxesTotal(detailTaxes()), d.amount) }}% en impuestos</span>
+              </div>
+            </div>
             <div *ngIf="detailItems().length" style="margin-top:10px">
               <span class="muted" style="font-size:.8rem">Productos</span>
               <div class="items">
@@ -998,6 +1082,23 @@ function localYMD(d: Date = new Date()): string {
               <div class="field"><label>Fecha de compra</label><input class="inp" type="date" [(ngModel)]="editForm.spentOn" /></div>
               <div class="field"><label>Establecimiento</label><input class="inp" type="text" [(ngModel)]="editForm.merchant" /></div>
               <div class="field full"><label>Descripción</label><input class="inp" type="text" [(ngModel)]="editForm.description" /></div>
+              <div class="field full">
+                <label>Impuestos y cargos <span class="muted" style="font-weight:500">(incluidos en el total)</span></label>
+                <div class="tax-editor">
+                  <div class="tax-row" *ngFor="let t of editForm.taxes; let i = index">
+                    <select class="sel tax-kind" [(ngModel)]="t.kind" [name]="'etxk'+i">
+                      <option *ngFor="let k of taxKinds" [value]="k">{{ k }}</option>
+                    </select>
+                    <input class="inp tax-amt" type="number" [(ngModel)]="t.amount" [name]="'etxa'+i" placeholder="Valor" />
+                    <button type="button" class="tax-del" (click)="removeTaxRow(editForm, i)" title="Quitar"><i class="fa-solid fa-xmark"></i></button>
+                  </div>
+                  <button type="button" class="tax-add" (click)="addTaxRow(editForm)"><i class="fa-solid fa-plus"></i> Agregar impuesto</button>
+                  <div class="tax-sum" *ngIf="taxesTotal(editForm.taxes) > 0">
+                    <i class="fa-solid fa-receipt"></i> {{ fmt(taxesTotal(editForm.taxes)) }} en impuestos
+                    <span class="muted" *ngIf="editForm.amount && editForm.amount > 0"> · {{ taxPct(taxesTotal(editForm.taxes), editForm.amount) }}% del total</span>
+                  </div>
+                </div>
+              </div>
               <div class="field full">
                 <label>¿De quién es este gasto?</label>
                 <div class="seg scopeseg">
@@ -1306,8 +1407,14 @@ export class AppComponent implements OnInit, OnDestroy {
 
   readonly detail = signal<Expense | null>(null);
   readonly detailItems = signal<ExpenseItem[]>([]);
+  readonly detailTaxes = signal<Tax[]>([]);
   readonly editing = signal(false);
   editForm = this.emptyForm();
+
+  // Impuestos / cargos del mes (por ámbito)
+  readonly taxSummary = signal<TaxSummary | null>(null);
+  // Catálogo de tipos predefinidos (el usuario puede escribir otro).
+  readonly taxKinds = ['IVA', 'Impuesto al consumo', 'Propina', 'Servicio', 'Retención', 'Impuesto a la bolsa', 'Otro'];
 
   // Precios
   readonly prices = signal<PriceProduct[]>([]);
@@ -1708,6 +1815,34 @@ export class AppComponent implements OnInit, OnDestroy {
     this.api.trend(6, sc).subscribe({ next: (t) => this.trend.set(t), error: () => {} });
     this.api.ant(m, undefined, sc).subscribe({ next: (a) => this.ant.set(a), error: () => {} });
     this.api.burndown(m, sc).subscribe({ next: (b) => this.burn.set(b), error: () => {} });
+    this.api.taxes(m, sc).subscribe({ next: (t) => this.taxSummary.set(t), error: () => {} });
+  }
+
+  // ── Impuestos / cargos ──
+  /** Filtra impuestos válidos (tipo + monto > 0) para enviar al backend. */
+  private cleanTaxes(taxes: Tax[] | undefined): Tax[] {
+    return (taxes || []).filter((t) => t && t.kind && t.kind.trim() && t.amount > 0)
+      .map((t) => ({ kind: t.kind.trim(), amount: t.amount }));
+  }
+  /** Añade una fila de impuesto en blanco al formulario indicado. */
+  addTaxRow(form: { taxes: Tax[] }): void { form.taxes = [...form.taxes, { kind: 'IVA', amount: 0 }]; }
+  removeTaxRow(form: { taxes: Tax[] }, i: number): void { form.taxes = form.taxes.filter((_, idx) => idx !== i); }
+  /** Suma de impuestos de una lista. */
+  taxesTotal(taxes: Tax[] | undefined): number { return (taxes || []).reduce((a, t) => a + (t.amount > 0 ? t.amount : 0), 0); }
+  /** % que representan los impuestos sobre un total dado. */
+  taxPct(part: number, total: number): number { return total > 0 ? Math.round((part / total) * 100) : 0; }
+  /** Color estable por tipo de impuesto (para las barras del resumen). */
+  taxColor(kind: string): string {
+    const k = (kind || '').toLowerCase();
+    if (k.includes('iva')) return '#3b82f6';
+    if (k.includes('consumo')) return '#8b5cf6';
+    if (k.includes('propina')) return '#f59e0b';
+    if (k.includes('servicio')) return '#d98a1f';
+    if (k.includes('retenc')) return '#ef4444';
+    if (k.includes('bolsa')) return '#14b8a6';
+    // Otros: color derivado del texto para que sea estable pero distinto.
+    let h = 0; for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) % 360;
+    return `hsl(${h}, 55%, 52%)`;
   }
 
   // ── Ingresos (tope del mes: mío u hogar) ──
@@ -1943,8 +2078,12 @@ export class AppComponent implements OnInit, OnDestroy {
     this.suggested.set(s.categoriaId ? null : s.categoriaSugerida);
     const fecha = this.validDate(s.fecha) ? s.fecha! : localYMD();
     const hora = this.validTime(s.hora) ? s.hora! : '';
+    const taxes: Tax[] = (s.impuestos ?? [])
+      .filter((t) => t && t.tipo && t.valor > 0)
+      .map((t) => ({ kind: t.tipo, amount: t.valor }));
     this.form = { amount: s.montos[0]?.valor ?? null, currency: 'COP', categoryId: s.categoriaId ?? null,
-      merchant: s.establecimiento ?? '', nit: s.nit ?? '', description: s.descripcion ?? '', spentOn: fecha, spentTime: hora, scope: this.form.scope };
+      merchant: s.establecimiento ?? '', nit: s.nit ?? '', description: s.descripcion ?? '', spentOn: fecha, spentTime: hora,
+      scope: this.form.scope, taxes };
     this.sheetTab.set('datos');
     this.sheetState.set('form');
   }
@@ -1966,11 +2105,12 @@ export class AppComponent implements OnInit, OnDestroy {
   private persistExpense(categoryId: number | null): void {
     const spentAt = this.form.spentTime ? `${this.form.spentOn}T${this.form.spentTime}` : undefined;
     const items = this.scanItems();
+    const taxes = this.cleanTaxes(this.form.taxes);
     this.api.create({ amount: this.form.amount!, currency: this.form.currency, categoryId,
       merchant: this.form.merchant, description: this.form.description, nit: this.form.nit,
       spentOn: this.form.spentOn, spentAt, source: this.scanned ? 'scan' : 'manual',
       items: items.length ? items : undefined,
-      scope: this.form.scope }).subscribe({
+      scope: this.form.scope, taxes }).subscribe({
       next: () => { this.saving.set(false); this.view.set(''); this.loadCategories(); this.reload(); this.pricesLoaded.set(false); },
       error: () => { this.saving.set(false); alert('No se pudo guardar.'); },
     });
@@ -1987,7 +2127,8 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private emptyForm() {
     return { amount: null as number | null, currency: 'COP', categoryId: null as number | null,
-      merchant: '', nit: '', description: '', spentOn: localYMD(), spentTime: '', scope: 'mine' as 'mine' | 'home' };
+      merchant: '', nit: '', description: '', spentOn: localYMD(), spentTime: '', scope: 'mine' as 'mine' | 'home',
+      taxes: [] as Tax[] };
   }
 
   // ── Hogar ──
@@ -2022,15 +2163,17 @@ export class AppComponent implements OnInit, OnDestroy {
 
   // ── Detalle de movimiento ──
   openDetail(e: Expense): void {
-    this.detail.set(e); this.detailItems.set([]); this.editing.set(false); this.nav('detail');
+    this.detail.set(e); this.detailItems.set([]); this.detailTaxes.set([]); this.editing.set(false); this.nav('detail');
     this.api.itemsOf(e.id).subscribe({ next: (it) => this.detailItems.set(it), error: () => {} });
+    this.api.taxesOf(e.id).subscribe({ next: (t) => this.detailTaxes.set(t), error: () => {} });
   }
   startEdit(): void {
     const d = this.detail();
     if (!d) return;
     const catId = this.categories().find((c) => c.slug === d.categorySlug)?.id ?? null;
     this.editForm = { amount: d.amount, currency: d.currency || 'COP', categoryId: catId,
-      merchant: d.merchant, nit: d.nit, description: d.description, spentOn: d.spentOn, spentTime: '', scope: (d.scope as 'mine' | 'home') || 'mine' };
+      merchant: d.merchant, nit: d.nit, description: d.description, spentOn: d.spentOn, spentTime: '',
+      scope: (d.scope as 'mine' | 'home') || 'mine', taxes: this.detailTaxes().map((t) => ({ ...t })) };
     this.editing.set(true);
   }
   cancelEdit(): void { this.editing.set(false); }
@@ -2040,7 +2183,8 @@ export class AppComponent implements OnInit, OnDestroy {
     this.saving.set(true);
     const f = this.editForm;
     this.api.update(d.id, { amount: f.amount ?? d.amount, currency: f.currency, categoryId: f.categoryId,
-      merchant: f.merchant, description: f.description, nit: f.nit, spentOn: f.spentOn, scope: f.scope }).subscribe({
+      merchant: f.merchant, description: f.description, nit: f.nit, spentOn: f.spentOn, scope: f.scope,
+      taxes: this.cleanTaxes(f.taxes) }).subscribe({
       next: () => { this.saving.set(false); this.editing.set(false); this.view.set(''); this.reload(); this.pricesLoaded.set(false); },
       error: () => { this.saving.set(false); alert('No se pudo guardar.'); },
     });

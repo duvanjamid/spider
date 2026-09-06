@@ -143,7 +143,8 @@ public class GeminiScanner {
                   "categoriaNombre": string|null,
                   "categoriaSugerida": string|null,
                   "productos": [ { "nombre": string, "cantidad": number|null,
-                                   "precioUnitario": number|null, "total": number|null } ]%s
+                                   "precioUnitario": number|null, "total": number|null } ],
+                  "impuestos": [ { "tipo": string, "valor": number } ]%s
                 }
                 Reglas:
                 - "montos": lista TODOS los totales candidatos que veas (p. ej. "Subtotal/Neto",
@@ -161,6 +162,12 @@ public class GeminiScanner {
                 - "productos": si la factura lista ítems, extrae CADA línea con "nombre" (corto, el
                   producto en sí, sin códigos), "cantidad", "precioUnitario" (precio por unidad) y
                   "total" de la línea. Números sin separador de miles. Si no hay detalle de productos, deja [].
+                - "impuestos": lista TODOS los impuestos y cargos que aparezcan en el comprobante, ya
+                  incluidos dentro del total (NO los sumes al total, solo indícalos). Por cada uno da
+                  "tipo" y "valor" (número sin separador de miles). Usa nombres estándar cuando apliquen:
+                  "IVA", "Impuesto al consumo", "Propina", "Servicio", "Retención", "Impuesto a la bolsa".
+                  Si ves un impuesto/cargo con otro nombre, clasifícalo con un nombre corto propio (p. ej.
+                  "Recargo nocturno") en vez de omitirlo. Si el comprobante no muestra impuestos, deja [].
                 - "categoriaId"/"categoriaNombre": elige de la lista del usuario SOLO si hay una que
                   encaje ESPECÍFICAMENTE con la compra (id: nombre): %s
                   NUNCA uses una categoría genérica de cajón ("Otros", "Varios", "General",
@@ -214,6 +221,18 @@ public class GeminiScanner {
             productos.add(item);
         }
 
+        List<Map<String, Object>> impuestos = new ArrayList<>();
+        for (JsonNode t : ex.path("impuestos")) {
+            String tipo = t.path("tipo").asText("").trim();
+            if (tipo.isEmpty() || !t.path("valor").isNumber()) continue;
+            double valor = t.path("valor").asDouble();
+            if (valor <= 0) continue;
+            Map<String, Object> tax = new LinkedHashMap<>();
+            tax.put("tipo", tipo);
+            tax.put("valor", valor);
+            impuestos.add(tax);
+        }
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("identificado", identificado);
         out.put("nit", asText(ex, "nit"));
@@ -226,6 +245,7 @@ public class GeminiScanner {
         out.put("categoriaNombre", asText(ex, "categoriaNombre"));
         out.put("categoriaSugerida", asText(ex, "categoriaSugerida"));
         out.put("productos", productos);
+        out.put("impuestos", impuestos);
         out.put("regiones", regiones);
         return out;
     }

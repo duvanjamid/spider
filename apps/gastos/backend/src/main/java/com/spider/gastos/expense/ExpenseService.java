@@ -59,7 +59,8 @@ public class ExpenseService {
         String ym = month == null || month.isBlank() ? YearMonth.now().toString() : month;
         String sql = "SELECT e.id, e.amount, e.currency, e.merchant, e.description, e.nit, e.owner_email AS owner, e.scope, "
                 + "e.spent_on, COALESCE(e.spent_at, e.spent_on::timestamptz) AS spent_at, e.created_at, e.source, "
-                + "c.slug AS cat_slug, c.name AS cat_name, c.color AS cat_color "
+                + "c.slug AS cat_slug, c.name AS cat_name, c.color AS cat_color, "
+                + "(SELECT COALESCE(SUM(amount),0) FROM expense_tax WHERE expense_id = e.id) AS tax_total "
                 + "FROM expense e LEFT JOIN category c ON c.id = e.category_id "
                 + "WHERE " + visible(sc) + " AND to_char(e.spent_on, 'YYYY-MM') = ? "
                 + "ORDER BY COALESCE(e.spent_at, e.spent_on::timestamptz) DESC, e.id DESC";
@@ -89,6 +90,7 @@ public class ExpenseService {
                     m.put("mine", mine);
                     m.put("by", mine ? "" : nz(owner));   // quién lo registró (vista hogar)
                     m.put("canEdit", mine);               // solo el creador edita/borra
+                    m.put("taxTotal", rs.getBigDecimal("tax_total") == null ? 0.0 : rs.getBigDecimal("tax_total").doubleValue());
                     out.add(m);
                 }
             }
@@ -424,6 +426,102 @@ public class ExpenseService {
             }
         } catch (Exception e) { throw new RuntimeException("Error listando productos", e); }
         return out;
+    }
+
+    // ── Impuestos / cargos de un gasto ──
+
+    /** Inserta los impuestos/cargos de un gasto (kind + amount). Ignora vacíos y montos ≤ 0. */
+    public void addTaxes(long expenseId, List<Map<String, Object>> taxes) {
+        if (taxes == null || taxes.isEmpty()) return;
+        String sql = "INSERT INTO expense_tax (expense_id, kind, amount) VALUES (?, ?, ?)";
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            for (Map<String, Object> t : taxes) {
+                String kind = str(t.get("kind")).trim();
+                double amount = toDouble(t.get("amount"));
+                if (kind.isBlank() || amount <= 0) continue;
+                ps.setLong(1, expenseId);
+                ps.setString(2, kind);
+                ps.setDouble(3, amount);
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        } catch (Exception e) { throw new RuntimeException("Error guardando impuestos", e); }
+    }
+
+    /** Reemplaza los impuestos/cargos de un gasto del usuario (solo si es suyo). */
+    public void replaceTaxes(String email, long expenseId, List<Map<String, Object>> taxes) {
+        try (Connection c = ds.getConnection()) {
+            try (PreparedStatement del = c.prepareStatement(
+                    "DELETE FROM expense_tax WHERE expense_id = ? AND expense_id IN "
+                    + "(SELECT id FROM expense WHERE id = ? AND owner_email = ?)")) {
+                del.setLong(1, expenseId); del.setLong(2, expenseId); del.setString(3, email);
+                del.executeUpdate();
+            }
+        } catch (Exception e) { throw new RuntimeException("Error limpiando impuestos", e); }
+        addTaxes(expenseId, taxes);
+    }
+
+    /** Impuestos/cargos de un gasto visible para el usuario (propio o del hogar). */
+    public List<Map<String, Object>> taxesOf(String email, long expenseId) {
+        String sql = "SELECT t.kind, t.amount FROM expense_tax t JOIN expense e ON e.id = t.expense_id "
+                + "WHERE t.expense_id = ? AND " + VISIBLE_ANY + " ORDER BY t.amount DESC, t.id";
+        List<Map<String, Object>> out = new ArrayList<>();
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setLong(1, expenseId);
+            bindAny(ps, 2, email);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("kind", rs.getString("kind"));
+                    m.put("amount", rs.getBigDecimal("amount").doubleValue());
+                    out.add(m);
+                }
+            }
+        } catch (Exception e) { throw new RuntimeException("Error listando impuestos", e); }
+        return out;
+    }
+
+    /**
+     * Resumen de impuestos/cargos del mes por ámbito: total pagado en impuestos,
+     * total de gasto (para el %), y desglose por tipo de impuesto (agrupado por
+     * kind, sin distinguir mayúsculas). Base para la tarjeta/gráfico de impuestos.
+     */
+    public Map<String, Object> taxSummary(String email, String month, String scope) {
+        String sc = norm(scope);
+        String ym = month == null || month.isBlank() ? YearMonth.now().toString() : month;
+        String sql = "SELECT initcap(lower(t.kind)) AS kind, SUM(t.amount) AS total "
+                + "FROM expense_tax t JOIN expense e ON e.id = t.expense_id "
+                + "WHERE " + visible(sc) + " AND to_char(e.spent_on,'YYYY-MM') = ? "
+                + "GROUP BY initcap(lower(t.kind)) ORDER BY total DESC";
+        List<Map<String, Object>> byKind = new ArrayList<>();
+        double taxTotal = 0;
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            int i = bindVisible(ps, 1, email, sc);
+            ps.setString(i, ym);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    double t = rs.getBigDecimal("total").doubleValue();
+                    taxTotal += t;
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("kind", rs.getString("kind"));
+                    row.put("total", t);
+                    byKind.add(row);
+                }
+            }
+        } catch (Exception e) { throw new RuntimeException("Error en resumen de impuestos", e); }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("month", ym);
+        out.put("scope", sc);
+        out.put("taxTotal", taxTotal);
+        out.put("spentTotal", monthTotal(email, ym, sc));   // total del mes, para el %
+        out.put("byKind", byKind);
+        return out;
+    }
+
+    private static double toDouble(Object o) {
+        if (o == null) return 0;
+        if (o instanceof Number n) return n.doubleValue();
+        try { return Double.parseDouble(String.valueOf(o)); } catch (Exception e) { return 0; }
     }
 
     /**

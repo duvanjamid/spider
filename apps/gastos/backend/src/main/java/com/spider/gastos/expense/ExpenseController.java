@@ -31,7 +31,10 @@ public final class ExpenseController {
     public record ExpenseInput(Double amount, String currency, Long categoryId,
                                String merchant, String description, String spentOn,
                                String spentAt, String nit, String source, List<ItemInput> items,
-                               List<String> shareWith, String scope) {}
+                               List<String> shareWith, String scope, List<TaxInput> taxes) {}
+
+    /** Un impuesto/cargo del gasto: tipo (IVA, INC, propina…) y valor incluido en el total. */
+    public record TaxInput(String kind, Double amount) {}
 
     /** Cuerpos de conexiones y compartición. */
     public record ConnInput(String email) {}
@@ -200,6 +203,7 @@ public final class ExpenseController {
                 }
                 svc.addItems(id, items);
             }
+            svc.addTaxes(id, taxMaps(in.taxes()));   // impuestos/cargos incluidos en el total
             if ("home".equals(in.scope())) notifyExpense(user, catId, id, connections.connected(user), nz(in.merchant()));
             alerts.check(user, monthOf(in.spentOn()));   // avisa si superó algún tope
             ctx.status(201).json(Map.of("id", id));
@@ -208,6 +212,14 @@ public final class ExpenseController {
         // Productos (líneas) de un gasto del usuario.
         app.get("/expenses/{id}/items", ctx ->
                 ctx.json(svc.itemsOf(email(ctx.header("Cookie")), Long.parseLong(ctx.pathParam("id")))));
+
+        // Impuestos/cargos de un gasto (desglose del total).
+        app.get("/expenses/{id}/taxes", ctx ->
+                ctx.json(svc.taxesOf(email(ctx.header("Cookie")), Long.parseLong(ctx.pathParam("id")))));
+
+        // Resumen de impuestos del mes por ámbito (total + desglose por tipo).
+        app.get("/taxes", ctx ->
+                ctx.json(svc.taxSummary(email(ctx.header("Cookie")), ctx.queryParam("month"), ctx.queryParam("scope"))));
 
         // Comparativa de precios por producto y tienda.
         app.get("/prices", ctx -> ctx.json(svc.prices(email(ctx.header("Cookie")))));
@@ -220,6 +232,7 @@ public final class ExpenseController {
             Long catId = in.categoryId() == null ? null : categories.resolveCategoryId(user, in.categoryId(), null);
             svc.update(user, id, in.amount(), in.currency(), catId,
                     nz(in.merchant()), nz(in.description()), in.spentOn(), in.spentAt(), nz(in.nit()), in.scope());
+            if (in.taxes() != null) svc.replaceTaxes(user, id, taxMaps(in.taxes()));
             alerts.check(user, monthOf(in.spentOn()));   // avisa si superó algún tope
             ctx.json(Map.of("status", "updated"));
         });
@@ -436,6 +449,20 @@ public final class ExpenseController {
 
     private static String or(String v, String def) { return v == null || v.isBlank() ? def : v; }
     private static String nz(String v) { return v == null ? "" : v; }
+
+    /** Convierte los impuestos del cuerpo a mapas kind/amount, descartando vacíos. */
+    private static List<Map<String, Object>> taxMaps(List<TaxInput> taxes) {
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        if (taxes == null) return out;
+        for (TaxInput t : taxes) {
+            if (t == null || t.kind() == null || t.kind().isBlank() || t.amount() == null || t.amount() <= 0) continue;
+            Map<String, Object> m = new java.util.HashMap<>();
+            m.put("kind", t.kind().trim());
+            m.put("amount", t.amount());
+            out.add(m);
+        }
+        return out;
+    }
 
     /** Mes ("YYYY-MM") de una fecha de gasto; mes actual si viene vacía. */
     private static String monthOf(String spentOn) {
