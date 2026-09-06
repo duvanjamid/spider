@@ -28,6 +28,8 @@ public final class StationController {
     public record VehicleInput(String brand, Integer autonomyKm, String cycle,
                                java.util.List<String> connectors, Boolean fastCharge, String bodyType, String color) {}
     public record PriceInput(Double priceCop) {}
+    public record FavoriteInput(Boolean on) {}
+    public record IdleInput(Boolean charges) {}
     public record VerifyInput(Boolean verified) {}
     public record SuggestInput(String kind, String value, String detail) {}
     public record ResolveInput(Long stationId, String kind, String value, Boolean approve) {}
@@ -121,6 +123,37 @@ public final class StationController {
             if (!Env.isAdmin(email(ctx.header("Cookie")))) { ctx.status(403).json(Map.of("error", "solo admin")); return; }
             PriceInput in = ctx.body(PriceInput.class);
             stations.setAdminPrice(Long.parseLong(ctx.pathParam("id")), in == null ? null : in.priceCop());
+            ctx.json(Map.of("ok", true));
+        });
+
+        // ── Favoritas ──
+        app.get("/favorites", ctx -> {
+            if (identity.emailFromCookie(ctx.header("Cookie")) == null) { ctx.json(java.util.List.of()); return; }
+            ctx.json(stations.favoriteIds(email(ctx.header("Cookie"))));
+        });
+        app.post("/stations/{id}/favorite", ctx -> {
+            if (identity.emailFromCookie(ctx.header("Cookie")) == null) { ctx.status(401).json(Map.of("error", "inicia sesión")); return; }
+            FavoriteInput in = ctx.body(FavoriteInput.class);
+            stations.setFavorite(email(ctx.header("Cookie")), Long.parseLong(ctx.pathParam("id")), in != null && Boolean.TRUE.equals(in.on()));
+            ctx.status(201).json(Map.of("ok", true));
+        });
+
+        // ── Cobro por tiempo/inactividad ──
+        app.post("/stations/{id}/idle", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            IdleInput in = ctx.body(IdleInput.class);
+            if (in == null || in.charges() == null) { ctx.status(400).json(Map.of("error", "charges requerido")); return; }
+            stations.reportIdle(user, Long.parseLong(ctx.pathParam("id")), in.charges());
+            ctx.status(201).json(Map.of("ok", true));
+        });
+        app.get("/stations/{id}/idle/me", ctx -> {
+            String user = email(ctx.header("Cookie"));
+            ctx.json(Map.of("value", stations.myIdle(user, Long.parseLong(ctx.pathParam("id")))));
+        });
+        app.post("/stations/{id}/idle/admin", ctx -> {
+            if (!Env.isAdmin(email(ctx.header("Cookie")))) { ctx.status(403).json(Map.of("error", "solo admin")); return; }
+            IdleInput in = ctx.body(IdleInput.class);
+            stations.setIdleAdmin(Long.parseLong(ctx.pathParam("id")), in == null ? null : in.charges());
             ctx.json(Map.of("ok", true));
         });
 

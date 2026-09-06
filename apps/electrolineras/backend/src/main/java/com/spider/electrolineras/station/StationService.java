@@ -283,6 +283,59 @@ public class StationService {
         out.put("priceCount", count == null ? 0 : count);
     }
 
+    // ── Favoritas ───────────────────────────────────────────────────
+    public void setFavorite(String email, long stationId, boolean on) {
+        try (Connection c = ds.getConnection()) {
+            if (on) {
+                try (PreparedStatement ps = c.prepareStatement(
+                        "INSERT INTO station_favorite (owner_email, station_id) VALUES (?, ?) ON CONFLICT DO NOTHING")) {
+                    ps.setString(1, email); ps.setLong(2, stationId); ps.executeUpdate();
+                }
+            } else {
+                try (PreparedStatement ps = c.prepareStatement(
+                        "DELETE FROM station_favorite WHERE owner_email = ? AND station_id = ?")) {
+                    ps.setString(1, email); ps.setLong(2, stationId); ps.executeUpdate();
+                }
+            }
+        } catch (Exception e) { throw new RuntimeException("No se pudo actualizar favorita", e); }
+    }
+    /** Ids de estaciones favoritas del usuario. */
+    public List<Long> favoriteIds(String email) {
+        List<Long> out = new ArrayList<>();
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(
+                "SELECT station_id FROM station_favorite WHERE owner_email = ?")) {
+            ps.setString(1, email);
+            try (ResultSet rs = ps.executeQuery()) { while (rs.next()) out.add(rs.getLong(1)); }
+        } catch (Exception e) { return out; }
+        return out;
+    }
+
+    // ── Cobro por tiempo / inactividad ──────────────────────────────
+    public void reportIdle(String email, long stationId, boolean charges) {
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement("""
+                INSERT INTO station_idle (station_id, owner_email, charges) VALUES (?, ?, ?)
+                ON CONFLICT (station_id, owner_email) DO UPDATE SET charges = EXCLUDED.charges, created_at = now()""")) {
+            ps.setLong(1, stationId); ps.setString(2, email); ps.setBoolean(3, charges);
+            ps.executeUpdate();
+        } catch (Exception e) { throw new RuntimeException("No se pudo reportar", e); }
+    }
+    /** Reporte de ESTE usuario: "yes" | "no" | "" (sin reporte). */
+    public String myIdle(String email, long stationId) {
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement("""
+                SELECT si.charges FROM station_idle si JOIN station s ON s.id = si.station_id
+                WHERE (s.id = ? OR s.canonical_id = ?) AND si.owner_email = ? ORDER BY si.created_at DESC LIMIT 1""")) {
+            ps.setLong(1, stationId); ps.setLong(2, stationId); ps.setString(3, email);
+            try (ResultSet rs = ps.executeQuery()) { return rs.next() ? (rs.getBoolean(1) ? "yes" : "no") : ""; }
+        } catch (Exception e) { return ""; }
+    }
+    public void setIdleAdmin(long stationId, Boolean charges) {
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(
+                "UPDATE station SET idle_fee_admin = ? WHERE id = ? OR canonical_id = ?")) {
+            if (charges == null) ps.setNull(1, java.sql.Types.BOOLEAN); else ps.setBoolean(1, charges);
+            ps.setLong(2, stationId); ps.setLong(3, stationId); ps.executeUpdate();
+        } catch (Exception e) { throw new RuntimeException("No se pudo fijar", e); }
+    }
+
     /** Vacía la caché de APIs; el próximo sync vuelve a consultar las fuentes. */
     public int clearCache() {
         try (Connection c = ds.getConnection(); Statement st = c.createStatement()) {
@@ -1107,6 +1160,30 @@ public class StationService {
                 }
             }
             putPrice(out, admin, ext, commSum, commN);
+
+            // ¿Cobra por tiempo/inactividad? admin manda; si no, mayoría comunidad.
+            Boolean idleAdmin = null; int idleYes = 0, idleNo = 0;
+            try (PreparedStatement ps = c.prepareStatement("""
+                    SELECT bool_or(s.idle_fee_admin) AS admin,
+                      coalesce(sum((SELECT count(*) FROM station_idle si WHERE si.station_id = s.id AND si.charges)),0) AS yes,
+                      coalesce(sum((SELECT count(*) FROM station_idle si WHERE si.station_id = s.id AND NOT si.charges)),0) AS no
+                    FROM station s WHERE s.id = ? OR s.canonical_id = ?""")) {
+                ps.setLong(1, id); ps.setLong(2, id);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        boolean a = rs.getBoolean("admin"); if (!rs.wasNull()) idleAdmin = a;
+                        idleYes = rs.getInt("yes"); idleNo = rs.getInt("no");
+                    }
+                }
+            }
+            String idleVal; String idleSrc;
+            if (idleAdmin != null) { idleVal = idleAdmin ? "yes" : "no"; idleSrc = "admin"; }
+            else if (idleYes + idleNo > 0) { idleVal = idleYes >= idleNo ? "yes" : "no"; idleSrc = "community"; }
+            else { idleVal = null; idleSrc = null; }
+            out.put("idleFee", idleVal);          // "yes" | "no" | null
+            out.put("idleFeeSource", idleSrc);    // admin | community | null
+            out.put("idleYes", idleYes);
+            out.put("idleNo", idleNo);
         } catch (Exception e) { throw new RuntimeException("Error consultando estación", e); }
         return out;
     }

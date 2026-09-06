@@ -149,6 +149,25 @@ interface CarProfile {
     .priceform .unit { font-size: .74rem; color: var(--muted); white-space: nowrap; }
     .pricechip { font-size: .72rem; font-weight: 800; padding: 3px 9px; border-radius: 999px; white-space: nowrap;
                  background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-strong); }
+    .idlechip { display: inline-flex; align-items: center; gap: 7px; font-size: .82rem; font-weight: 700; padding: 8px 12px;
+                border-radius: 12px; margin: 0 0 12px; background: color-mix(in srgb, #22c55e 12%, var(--panel-2)); color: #16813f; }
+    .idlechip.yes { background: color-mix(in srgb, #f59e0b 15%, var(--panel-2)); color: #b3730a; }
+    .idlechip small { color: var(--muted); font-weight: 600; }
+    /* Orden (lista Inicio) */
+    .sortbar { display: flex; align-items: center; gap: 8px; margin: 2px 2px 12px; flex-wrap: wrap; }
+    .sortbar button { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: .8rem; font-weight: 700;
+                      padding: 7px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel); color: var(--muted); cursor: pointer; }
+    .sortbar button i { font-size: .74rem; }
+    .sortbar button.on { border-color: var(--accent); background: var(--accent-weak); color: var(--accent-strong); }
+    /* Botón favorita */
+    .favbtn { border: none; background: none; cursor: pointer; color: color-mix(in srgb, var(--muted) 55%, transparent);
+              font-size: 1.05rem; padding: 4px; line-height: 1; transition: transform .1s; }
+    .favbtn:active { transform: scale(.85); }
+    .favbtn.on { color: #ec4899; }
+    .favbtn.big { font-size: 1.3rem; align-self: flex-start; }
+    /* Pin favorita (corazón) en el mapa */
+    .pin.fav { border-color: #fff; }
+    .pin.fav i { transform: rotate(45deg); }
     /* Resumen de cargadores "de un vistazo" */
     .cgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 2px 0 10px; }
     .cg { position: relative; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 13px;
@@ -465,9 +484,16 @@ interface CarProfile {
               <p class="muted">Comparte tu ubicación para ver las electrolineras más cercanas primero.</p>
               <p-button label="Usar mi ubicación" icon="fa-solid fa-location-crosshairs" (onClick)="locate()" [loading]="locating()" styleClass="mt" />
             </div>
+            <!-- Orden -->
+            <div class="sortbar" *ngIf="filtered().length">
+              <span class="muted" style="font-size:.78rem">Ordenar:</span>
+              <button [class.on]="sortMode()==='near'" (click)="setSort('near')"><i class="fa-solid fa-location-arrow"></i> Distancia</button>
+              <button [class.on]="sortMode()==='price'" (click)="setSort('price')"><i class="fa-solid fa-tag"></i> Precio</button>
+              <button [class.on]="sortMode()==='rating'" (click)="setSort('rating')"><i class="fa-solid fa-star"></i> Calificación</button>
+            </div>
             <div class="cards">
-              <div class="scard" *ngFor="let s of filtered()" (click)="openDetail(s)" [style.--c]="speedColor(s.speed)">
-                <span class="ic"><i class="fa-solid fa-bolt"></i><span class="livedot" *ngIf="s.communityStatus === 'active'"></span></span>
+              <div class="scard" *ngFor="let s of filtered()" (click)="openDetail(s)" [style.--c]="isFav(s.id) ? '#ec4899' : speedColor(s.speed)">
+                <span class="ic"><i class="fa-solid" [class.fa-bolt]="!isFav(s.id)" [class.fa-heart]="isFav(s.id)"></i><span class="livedot" *ngIf="s.communityStatus === 'active'"></span></span>
                 <div class="grow">
                   <div class="nm">{{ s.name }}</div>
                   <div class="meta">{{ s.operator || 'Operador' }} · {{ s.city }}</div>
@@ -484,6 +510,9 @@ interface CarProfile {
                   </div>
                 </div>
                 <div class="right">
+                  <button class="favbtn" [class.on]="isFav(s.id)" (click)="toggleFav(s, $event)" [attr.aria-label]="isFav(s.id) ? 'Quitar de favoritas' : 'Marcar favorita'">
+                    <i class="fa-solid fa-heart"></i>
+                  </button>
                   <span class="km" *ngIf="dist(s)">{{ dist(s) }}</span>
                   <span class="pricechip" *ngIf="s.priceKwh">{{ fmtCop(s.priceKwh) }}/kWh</span>
                   <p-tag [value]="statusLabel(s.communityStatus)" [severity]="statusSeverity(s.communityStatus)" />
@@ -812,6 +841,7 @@ interface CarProfile {
 
       <!-- Detalle (bottom sheet con tabs) -->
       <p-dialog [(visible)]="detailVisible" [modal]="true" [position]="'bottom'" [dismissableMask]="true"
+                (onHide)="onDetailHide()"
                 [style]="{ width: '100%', maxWidth: '640px' }" [header]="' '">
         <div class="dstate" *ngIf="!detail() && !detailError()">
           <i class="fa-solid fa-spinner fa-spin"></i> Cargando estación…
@@ -827,6 +857,7 @@ interface CarProfile {
             <div class="grow"><h2>{{ d.name }} <span class="vbadge" *ngIf="d.verified" title="Datos verificados"><i class="fa-solid fa-circle-check"></i></span></h2>
               <div class="d-meta">{{ d.operator }}<span *ngIf="d.city"> · {{ d.city }}</span><span *ngIf="dist(d) as km"> · a {{ km }}</span></div>
               <div class="crate" *ngIf="d.ratings"><span class="stars"><i class="fa-solid fa-star" *ngFor="let i of starArray" [class.dim]="!starOn(d.rating, i)"></i></span><small>{{ d.rating }} · {{ d.ratings }} voto(s)</small></div></div>
+            <button class="favbtn big" [class.on]="isFav(d.id)" (click)="toggleFav(d)" [attr.aria-label]="isFav(d.id) ? 'Quitar de favoritas' : 'Marcar favorita'"><i class="fa-solid fa-heart"></i></button>
             <p-tag [value]="statusLabel(d.communityStatus)" [severity]="statusSeverity(d.communityStatus)" />
           </div>
 
@@ -848,6 +879,12 @@ interface CarProfile {
                 <ng-template #noPrice>
                   <div class="priceband empty"><i class="fa-solid fa-tag"></i> Sin precio aún · ayúdanos reportándolo en <b>Feedback</b></div>
                 </ng-template>
+
+                <div class="idlechip" *ngIf="d.idleFee" [class.yes]="d.idleFee==='yes'">
+                  <i class="fa-solid" [class.fa-hourglass-half]="d.idleFee==='yes'" [class.fa-circle-check]="d.idleFee==='no'"></i>
+                  {{ idleLabel(d.idleFee) }}
+                  <small>· {{ d.idleFeeSource==='admin' ? 'confirmado' : 'según la comunidad' }}</small>
+                </div>
 
                 <!-- Resumen de cargadores: qué tipos y cuántos -->
                 <h3 class="sec">Cargadores <span class="muted" style="font-weight:600">· {{ d.chargers?.length || 0 }} en total</span></h3>
@@ -942,6 +979,21 @@ interface CarProfile {
                   <p-button label="Fijar" size="small" severity="secondary" (onClick)="saveAdminPrice()" />
                 </div>
                 <p class="muted" *ngIf="priceMsg()" style="font-size:.82rem;margin:6px 2px 0;color:var(--accent-strong)">{{ priceMsg() }}</p>
+
+                <!-- ¿Cobra por tiempo/inactividad? -->
+                <h3 class="sec" style="margin-top:16px">¿Cobra por tiempo?</h3>
+                <p class="muted" style="font-size:.78rem;margin:0 2px 8px">Algunas estaciones cobran un extra si dejas el carro conectado sin cargar o ya cargado.</p>
+                <div class="report-btns">
+                  <p-button label="Sí cobra" icon="fa-solid fa-hourglass-half" severity="warn" [outlined]="myIdle() !== 'yes'" (onClick)="reportIdle(true)" />
+                  <p-button label="No cobra" icon="fa-solid fa-circle-check" severity="success" [outlined]="myIdle() !== 'no'" (onClick)="reportIdle(false)" />
+                </div>
+                <div class="report-btns" *ngIf="isAdmin()" style="margin-top:8px">
+                  <span class="muted" style="font-size:.78rem;align-self:center"><i class="fa-solid fa-shield-halved"></i> Admin:</span>
+                  <p-button label="Confirmar sí" size="small" severity="secondary" (onClick)="saveAdminIdle(true)" />
+                  <p-button label="Confirmar no" size="small" severity="secondary" (onClick)="saveAdminIdle(false)" />
+                  <p-button label="Sin dato" size="small" [text]="true" (onClick)="saveAdminIdle(null)" />
+                </div>
+                <p class="muted" *ngIf="idleMsg()" style="font-size:.82rem;margin:6px 2px 0;color:var(--accent-strong)">{{ idleMsg() }}</p>
 
                 <!-- Estado operativo de la estación (movido aquí) -->
                 <h3 class="sec" style="margin-top:16px">¿Está operativa?</h3>
@@ -1251,7 +1303,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     this.api.meta().subscribe({ next: (m) => this.meta.set(m), error: () => {} });
     this.api.me().subscribe({ next: (u) => {
       this.me.set(u); this.isAdmin.set(!!u.admin); this.pendingCount.set(u.suggestionsPending || 0);
-      if (!u.guest) this.loadVehicleFromServer();   // el vehículo vive en BD por usuario
+      if (!u.guest) { this.loadVehicleFromServer(); this.loadFavorites(); }   // vehículo y favoritas viven en BD
     }, error: () => {} });
     // Ya NO se cargan todas las estaciones al inicio: el mapa pide por área
     // visible y la lista "Inicio" pide alrededor del usuario al ubicarse.
@@ -1273,7 +1325,21 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     try { this.heroMap?.remove(); } catch { }
   }
   private pushGuard(): void { try { history.pushState({ spider: true }, ''); } catch { /* noop */ } }
-  private onPopState = (): void => { this.zone.run(() => this.goBack()); this.pushGuard(); };
+  private closingViaPop = false;   // true mientras cerramos por gesto atrás
+  private suppressBack = false;    // true al consumir el guard tras cerrar por UI
+  private onPopState = (): void => {
+    if (this.suppressBack) { this.suppressBack = false; return; }  // consumió un cierre por UI
+    this.closingViaPop = true;
+    this.zone.run(() => this.goBack());
+    this.closingViaPop = false;
+    this.pushGuard();
+  };
+  /** El p-dialog se ocultó (X, tocar fuera o programático). Si lo cerró el
+   *  usuario por UI, consumimos el estado de historial que empujamos al abrir,
+   *  para que el gesto atrás no quede desincronizado (evita "cerrar dos veces"). */
+  onDetailHide(): void {
+    if (!this.closingViaPop) { this.suppressBack = true; try { history.back(); } catch { this.suppressBack = false; } }
+  }
   /** Gesto/botón atrás: cierra la capa abierta; nunca sale de la app. */
   goBack(): void {
     if (this.tab() === 'account' && this.editingCar()) { this.editingCar.set(false); return; }
@@ -1505,12 +1571,44 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     if (!q) return true;
     return (s.name + ' ' + s.operator + ' ' + s.city + ' ' + s.address + ' ' + s.connectors).toLowerCase().includes(q);
   }
+  // ── Favoritas + orden ──
+  private static readonly FAV_RANGE_KM = 25;   // rango en que una favorita flota arriba
+  readonly favorites = signal<Set<number>>(new Set());
+  readonly sortMode = signal<'near' | 'price' | 'rating'>('near');
+  isFav(id: number): boolean { return this.favorites().has(id); }
+  toggleFav(s: { id: number }, ev?: Event): void {
+    ev?.stopPropagation();
+    if (this.isGuest()) { this.savedMsg.set('Inicia sesión para guardar favoritas.'); return; }
+    const set = new Set(this.favorites());
+    const on = !set.has(s.id);
+    if (on) set.add(s.id); else set.delete(s.id);
+    this.favorites.set(set);
+    this.applyFilters(); this.renderMarkers();
+    this.api.setFavorite(s.id, on).subscribe({ error: () => {
+      const revert = new Set(this.favorites()); if (on) revert.delete(s.id); else revert.add(s.id);
+      this.favorites.set(revert); this.applyFilters(); this.renderMarkers();
+    } });
+  }
+  private loadFavorites(): void {
+    this.api.favorites().subscribe({ next: (ids) => { this.favorites.set(new Set(ids)); this.applyFilters(); this.renderMarkers(); }, error: () => {} });
+  }
+  setSort(m: 'near' | 'price' | 'rating'): void { this.sortMode.set(m); this.applyFilters(); }
+
   // Filtros que afectan a AMBAS vistas (lista "Inicio" + marcadores del mapa).
   onFiltersChange(): void { this.applyFilters(); this.renderMarkers(); }
   applyFilters(): void {
     const u = this.userPos();
+    const mode = this.sortMode();
+    const dist = (s: Station) => u ? this.distanceKm(u, [s.lat, s.lon]) : 0;
+    // Favorita "cercana" (dentro del rango, o sin ubicación) flota primero.
+    const favFloat = (s: Station) => this.isFav(s.id) && (!u || dist(s) <= AppComponent.FAV_RANGE_KM) ? 0 : 1;
     const list = this.stations().filter((s) => this.matchFilters(s));
-    if (u) list.sort((a, b) => this.distanceKm(u, [a.lat, a.lon]) - this.distanceKm(u, [b.lat, b.lon]));
+    list.sort((a, b) => {
+      const f = favFloat(a) - favFloat(b); if (f) return f;
+      if (mode === 'price') { const pa = a.priceKwh ?? Infinity, pb = b.priceKwh ?? Infinity; if (pa !== pb) return pa - pb; }
+      else if (mode === 'rating') { const ra = a.rating || 0, rb = b.rating || 0; if (ra !== rb) return rb - ra; }
+      return dist(a) - dist(b);
+    });
     this.filtered.set(list);
   }
   private renderMarkers(): void {
@@ -1520,9 +1618,12 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
       if (s.lat == null || s.lon == null || !this.matchFilters(s)) continue;
       // El pin se colorea por VELOCIDAD de carga (mapa informativo de un vistazo);
       // el ESTADO reportado se codifica como anillo: verde vivo=activa, rojo=inactiva.
-      const color = this.speedColor(s.speed);
       const st = s.communityStatus === 'active' ? ' live' : s.communityStatus === 'inactive' ? ' off' : '';
-      const icon = L.divIcon({ className: '', html: `<div class="pin${st}" style="background:${color};color:${color}"><i class="fa-solid fa-bolt"></i></div>`, iconSize: [30, 30], iconAnchor: [15, 30] });
+      // Favorita → pin en forma de corazón (rosa); si no, pin por velocidad.
+      const fav = this.isFav(s.id);
+      const color = fav ? '#ec4899' : this.speedColor(s.speed);
+      const inner = fav ? '<i class="fa-solid fa-heart"></i>' : '<i class="fa-solid fa-bolt"></i>';
+      const icon = L.divIcon({ className: '', html: `<div class="pin${fav ? ' fav' : ''}${st}" style="background:${color};color:${color}">${inner}</div>`, iconSize: [30, 30], iconAnchor: [15, 30] });
       // El click de Leaflet corre FUERA de la zona de Angular; sin zone.run el
       // diálogo no reacciona (no dispara detección de cambios).
       L.marker([s.lat, s.lon], { icon }).addTo(this.markers).on('click', () => this.zone.run(() => this.openDetail(s)));
@@ -1531,16 +1632,20 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // ── Detalle ──
   openDetail(s: Station): void {
+    if (this.detailVisible && this.detailStation?.id === s.id) return;  // evita doble apertura (toque+click)
     this.detail.set(null); this.detailError.set(false); this.comments.set([]); this.reports.set([]); this.newComment = ''; this.myStars.set(0);
     this.detailStation = s;
+    const wasOpen = this.detailVisible;
     this.detailVisible = true;
-    this.pushGuard();
+    if (!wasOpen) this.pushGuard();   // solo un guard por apertura
     this.newPrice = null; this.adminPrice = null; this.myPriceCop.set(0); this.priceMsg.set('');
     this.api.station(s.id).subscribe({ next: (d) => { this.detail.set(d); this.adminPrice = d.priceSource === 'admin' ? (d.priceKwh ?? null) : null; }, error: () => this.detailError.set(true) });
     this.api.comments(s.id).subscribe({ next: (c) => this.comments.set(c), error: () => {} });
     this.api.reports(s.id).subscribe({ next: (r) => this.reports.set(r), error: () => {} });
     this.api.myRating(s.id).subscribe({ next: (r) => this.myStars.set(r.stars || 0), error: () => {} });
     this.api.myPrice(s.id).subscribe({ next: (r) => { this.myPriceCop.set(r.priceCop || 0); if (r.priceCop) this.newPrice = r.priceCop; }, error: () => {} });
+    this.myIdle.set(''); this.idleMsg.set('');
+    this.api.myIdle(s.id).subscribe({ next: (r) => this.myIdle.set(r.value || ''), error: () => {} });
   }
   retryDetail(): void { if (this.detailStation) this.openDetail(this.detailStation); }
   private refreshDetail(): void {
@@ -1596,6 +1701,26 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     this.api.setAdminPrice(d.id, this.adminPrice ?? null).subscribe({
       next: () => { this.priceMsg.set('✓ Tarifa oficial actualizada.'); this.refreshDetail(); setTimeout(() => this.priceMsg.set(''), 2600); },
       error: () => this.priceMsg.set('No se pudo fijar la tarifa.'),
+    });
+  }
+
+  // ── Cobro por tiempo/inactividad ──
+  readonly myIdle = signal('');       // "yes" | "no" | ""
+  readonly idleMsg = signal('');
+  idleLabel(v: string | null | undefined): string { return v === 'yes' ? 'Sí cobra por tiempo/inactividad' : v === 'no' ? 'No cobra por tiempo' : ''; }
+  reportIdle(charges: boolean): void {
+    const d = this.detail(); if (!d) return;
+    this.myIdle.set(charges ? 'yes' : 'no');
+    this.api.reportIdle(d.id, charges).subscribe({
+      next: () => { this.idleMsg.set('✓ ¡Gracias por el aporte!'); this.refreshDetail(); setTimeout(() => this.idleMsg.set(''), 2600); },
+      error: () => this.idleMsg.set('No se pudo reportar.'),
+    });
+  }
+  saveAdminIdle(charges: boolean | null): void {
+    const d = this.detail(); if (!d) return;
+    this.api.setIdleAdmin(d.id, charges).subscribe({
+      next: () => { this.idleMsg.set('✓ Actualizado.'); this.refreshDetail(); setTimeout(() => this.idleMsg.set(''), 2600); },
+      error: () => this.idleMsg.set('No se pudo fijar.'),
     });
   }
 

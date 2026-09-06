@@ -21,6 +21,7 @@ export interface StationFull {
   communityStatus: string | null; communityStatusAt?: string; chargers: Charger[];
   sources?: string[]; verified?: boolean; rating?: number; ratings?: number;
   priceKwh?: number | null; priceSource?: string | null; priceCount?: number;
+  idleFee?: string | null; idleFeeSource?: string | null; idleYes?: number; idleNo?: number;
 }
 export interface Suggestion { stationId: number; stationName: string; stationCity: string; kind: string; value: string; votes: number; needed: number; detail: string | null; lastAt: string; }
 export interface Me { email: string; guest: boolean; admin: boolean; name?: string; picture?: string; suggestionsPending?: number; }
@@ -58,6 +59,11 @@ export class ElectrolinerasService {
   reportPrice(id: number, priceCop: number): Observable<unknown> { return this.http.post(`${this.base}/stations/${id}/price`, { priceCop }, this.opts); }
   myPrice(id: number): Observable<{ priceCop: number }> { return this.http.get<{ priceCop: number }>(`${this.base}/stations/${id}/price/me`, this.opts); }
   setAdminPrice(id: number, priceCop: number | null): Observable<unknown> { return this.http.post(`${this.base}/stations/${id}/price/admin`, { priceCop }, this.opts); }
+  favorites(): Observable<number[]> { return this.http.get<number[]>(`${this.base}/favorites`, this.opts); }
+  setFavorite(id: number, on: boolean): Observable<unknown> { return this.http.post(`${this.base}/stations/${id}/favorite`, { on }, this.opts); }
+  reportIdle(id: number, charges: boolean): Observable<unknown> { return this.http.post(`${this.base}/stations/${id}/idle`, { charges }, this.opts); }
+  myIdle(id: number): Observable<{ value: string }> { return this.http.get<{ value: string }>(`${this.base}/stations/${id}/idle/me`, this.opts); }
+  setIdleAdmin(id: number, charges: boolean | null): Observable<unknown> { return this.http.post(`${this.base}/stations/${id}/idle/admin`, { charges }, this.opts); }
   getVehicle(): Observable<Vehicle> { return this.http.get<Vehicle>(`${this.base}/vehicle`, this.opts); }
   saveVehicle(v: Vehicle): Observable<unknown> { return this.http.post(`${this.base}/vehicle`, v, this.opts); }
   health(): Observable<{ env: string }> { return this.http.get<{ env: string }>(`${this.base}/health`, this.opts); }
