@@ -31,7 +31,7 @@ public final class ExpenseController {
     public record ExpenseInput(Double amount, String currency, Long categoryId,
                                String merchant, String description, String spentOn,
                                String spentAt, String nit, String source, List<ItemInput> items,
-                               List<String> shareWith) {}
+                               List<String> shareWith, String scope) {}
 
     /** Cuerpos de conexiones y compartición. */
     public record ConnInput(String email) {}
@@ -61,10 +61,10 @@ public final class ExpenseController {
 
     /** Cuerpo para crear un gasto recurrente. */
     public record RecurringInput(Double amount, String currency, Long categoryId, String merchant,
-                                 String description, Integer dayOfMonth) {}
+                                 String description, Integer dayOfMonth, String kind, String scope, String source) {}
 
-    /** Cuerpo para registrar un ingreso (define el «tope global» del mes). */
-    public record IncomeInput(Double amount, String source, String receivedOn) {}
+    /** Cuerpo para registrar un ingreso (mío o del hogar). */
+    public record IncomeInput(Double amount, String source, String receivedOn, String scope) {}
 
     /** Cuerpo de suscripción Web Push (endpoint + claves del navegador). */
     public record PushInput(String endpoint, String p256dh, String auth) {}
@@ -176,7 +176,7 @@ public final class ExpenseController {
         });
 
         app.get("/expenses", ctx ->
-                ctx.json(svc.listByMonth(email(ctx.header("Cookie")), ctx.queryParam("month"))));
+                ctx.json(svc.listByMonth(email(ctx.header("Cookie")), ctx.queryParam("month"), ctx.queryParam("scope"))));
 
         app.post("/expenses", ctx -> {
             String user = email(ctx.header("Cookie"));
@@ -186,7 +186,7 @@ public final class ExpenseController {
             Long catId = categories.resolveCategoryId(user, in.categoryId(), null);
             long id = svc.create(user, amount, or(in.currency(), "COP"), catId,
                     nz(in.merchant()), nz(in.description()), in.spentOn(), in.spentAt(), nz(in.nit()),
-                    or(in.source(), "manual"));
+                    or(in.source(), "manual"), in.scope());
             if (in.items() != null && !in.items().isEmpty()) {
                 List<Map<String, Object>> items = new java.util.ArrayList<>();
                 for (ItemInput it : in.items()) {
@@ -200,8 +200,7 @@ public final class ExpenseController {
                 }
                 svc.addItems(id, items);
             }
-            if (in.shareWith() != null) svc.shareExpense(user, id, onlyConnected(user, in.shareWith()));
-            notifyExpense(user, catId, id, onlyConnected(user, in.shareWith()), nz(in.merchant()));
+            if ("home".equals(in.scope())) notifyExpense(user, catId, id, connections.connected(user), nz(in.merchant()));
             alerts.check(user, monthOf(in.spentOn()));   // avisa si superó algún tope
             ctx.status(201).json(Map.of("id", id));
         });
@@ -220,42 +219,14 @@ public final class ExpenseController {
             if (in == null) { ctx.status(400).json(Map.of("error", "cuerpo vacío")); return; }
             Long catId = in.categoryId() == null ? null : categories.resolveCategoryId(user, in.categoryId(), null);
             svc.update(user, id, in.amount(), in.currency(), catId,
-                    nz(in.merchant()), nz(in.description()), in.spentOn(), in.spentAt(), nz(in.nit()));
-            if (in.shareWith() != null) svc.shareExpense(user, id, onlyConnected(user, in.shareWith()));
-            notifyExpense(user, catId, id, onlyConnected(user, in.shareWith()), nz(in.merchant()));
+                    nz(in.merchant()), nz(in.description()), in.spentOn(), in.spentAt(), nz(in.nit()), in.scope());
             alerts.check(user, monthOf(in.spentOn()));   // avisa si superó algún tope
             ctx.json(Map.of("status", "updated"));
-        });
-
-        // Con quién está compartido un gasto / (re)compartir un gasto.
-        app.get("/expenses/{id}/shares", ctx ->
-                ctx.json(svc.sharesOfExpense(email(ctx.header("Cookie")), Long.parseLong(ctx.pathParam("id")))));
-        app.put("/expenses/{id}/share", ctx -> {
-            String user = email(ctx.header("Cookie"));
-            long id = Long.parseLong(ctx.pathParam("id"));
-            ShareInput in = ctx.body(ShareInput.class);
-            svc.shareExpense(user, id, onlyConnected(user, in == null ? null : in.emails()));
-            ctx.json(Map.of("status", "ok"));
         });
 
         app.delete("/expenses/{id}", ctx -> {
             svc.delete(email(ctx.header("Cookie")), Long.parseLong(ctx.pathParam("id")));
             ctx.json(Map.of("status", "deleted"));
-        });
-
-        // ── Compartir categorías ──
-        app.get("/categories/shares", ctx -> ctx.json(svc.sharedCategories(email(ctx.header("Cookie")))));
-        app.put("/categories/share", ctx -> {
-            String user = email(ctx.header("Cookie"));
-            CatShareInput in = ctx.body(CatShareInput.class);
-            if (in == null || in.slug() == null || in.slug().isBlank()) {
-                ctx.status(400).json(Map.of("error", "slug requerido")); return;
-            }
-            List<String> targets = onlyConnected(user, in.emails());
-            svc.shareCategory(user, in.slug(), targets);
-            String[] cat = categories.slugAndName(user, null, in.slug());
-            notifications.categoryShared(user, targets, cat != null ? cat[1] : in.slug(), in.slug());
-            ctx.json(Map.of("status", "ok"));
         });
 
         // ── Notificaciones in-app ──
@@ -308,39 +279,41 @@ public final class ExpenseController {
         app.get("/summary", ctx -> {
             String user = email(ctx.header("Cookie"));
             String month = ctx.queryParam("month");
-            Map<String, Object> s = new java.util.LinkedHashMap<>(svc.summary(user, month));
-            s.put("income", income.totalForMonth(user, month));   // tope global del mes
+            String scope = ctx.queryParam("scope");
+            Map<String, Object> s = new java.util.LinkedHashMap<>(svc.summary(user, month, scope));
+            s.put("income", income.totalForMonth(user, month, scope));   // tope del mes (mío u hogar)
             ctx.json(s);
         });
 
         app.get("/trend", ctx -> {
             String m = ctx.queryParam("months");
-            ctx.json(svc.trend(email(ctx.header("Cookie")), m == null ? 6 : Integer.parseInt(m)));
+            ctx.json(svc.trend(email(ctx.header("Cookie")), m == null ? 6 : Integer.parseInt(m), ctx.queryParam("scope")));
         });
 
         // Acumulado diario del mes (curva de «quema» del presupuesto).
         app.get("/burndown", ctx ->
-                ctx.json(svc.dailyCumulative(email(ctx.header("Cookie")), ctx.queryParam("month"))));
+                ctx.json(svc.dailyCumulative(email(ctx.header("Cookie")), ctx.queryParam("month"), ctx.queryParam("scope"))));
 
         // Detector de gastos hormiga (compras pequeñas y frecuentes).
         app.get("/ant", ctx -> {
             String max = ctx.queryParam("max");
             ctx.json(svc.antExpenses(email(ctx.header("Cookie")), ctx.queryParam("month"),
-                    max == null || max.isBlank() ? 0 : Double.parseDouble(max)));
+                    max == null || max.isBlank() ? 0 : Double.parseDouble(max), ctx.queryParam("scope")));
         });
 
-        // ── Ingresos (tope global del mes) ──
+        // ── Ingresos (tope del mes: mío u hogar) ──
         app.get("/income", ctx -> {
             String user = email(ctx.header("Cookie"));
             String month = ctx.queryParam("month");
-            ctx.json(Map.of("items", income.listByMonth(user, month), "total", income.totalForMonth(user, month)));
+            String scope = ctx.queryParam("scope");
+            ctx.json(Map.of("items", income.listByMonth(user, month, scope), "total", income.totalForMonth(user, month, scope)));
         });
         app.post("/income", ctx -> {
             String user = email(ctx.header("Cookie"));
             IncomeInput in = ctx.body(IncomeInput.class);
             double amount = in == null || in.amount() == null ? 0 : in.amount();
             if (amount <= 0) { ctx.status(400).json(Map.of("error", "amount inválido")); return; }
-            long id = income.add(user, amount, in.source(), in.receivedOn());
+            long id = income.add(user, amount, in.source(), in.receivedOn(), in == null ? null : in.scope());
             ctx.status(201).json(Map.of("id", id));
         });
         app.delete("/income/{id}", ctx -> {
@@ -387,7 +360,8 @@ public final class ExpenseController {
             if (amount <= 0) { ctx.status(400).json(Map.of("error", "amount inválido")); return; }
             long id = recurring.create(user, amount, in.currency(),
                     categories.resolveCategoryId(user, in.categoryId(), null),
-                    nz(in.merchant()), nz(in.description()), in.dayOfMonth() == null ? 1 : in.dayOfMonth());
+                    nz(in.merchant()), nz(in.description()), in.dayOfMonth() == null ? 1 : in.dayOfMonth(),
+                    in.kind(), in.scope(), in.source());
             ctx.status(201).json(Map.of("id", id));
         });
         app.delete("/recurring/{id}", ctx -> {

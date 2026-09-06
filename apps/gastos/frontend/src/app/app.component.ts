@@ -7,7 +7,7 @@ import { CardModule } from 'primeng/card';
 import { ChartModule } from 'primeng/chart';
 import { TagModule } from 'primeng/tag';
 import {
-  Budget, CategoryShare, Category, CategoryTemplate, Connections, Expense, ExpenseItem, GastosService, Me, Monto, PriceProduct, SharedInCategory,
+  Budget, Category, CategoryTemplate, Connections, Expense, ExpenseItem, GastosService, Me, Monto, PriceProduct,
   Notif, Recurring, Region, Scan, ScanItem, Summary, Trend, Income, AntReport, BurnPoint, PushStatus, PricePoint,
 } from './gastos.service';
 
@@ -176,6 +176,18 @@ function localYMD(d: Date = new Date()): string {
     .seg button { border: none; background: transparent; color: var(--muted); padding: 7px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; }
     .seg button.on { background: var(--panel); color: var(--fg); box-shadow: var(--shadow); }
     .seg.mini { padding: 2px; } .seg.mini button { padding: 6px 10px; } .seg.mini button i { font-size: .9rem; }
+    /* Selector Mío / Hogar — distintivo por color */
+    .seg.scopeseg { display: flex; width: 100%; }
+    .seg.scopeseg button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+    .seg.scopeseg button.on { background: var(--panel); color: var(--muted); }
+    .seg.scopeseg button.on:first-child, .seg.scopeseg button:first-child.on { color: #3f7bd6; box-shadow: inset 0 0 0 1.5px #3f7bd6, var(--shadow); }
+    .seg.scopeseg button.home.on { color: var(--accent-strong); box-shadow: inset 0 0 0 1.5px var(--accent-strong), var(--shadow); }
+    .seg.scopeseg button.inc.on { color: var(--accent-strong); box-shadow: inset 0 0 0 1.5px var(--accent-strong), var(--shadow); }
+    .seg.scopeseg button:disabled { opacity: .45; cursor: not-allowed; }
+    /* Aporte por miembro del hogar */
+    .member-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .member-row:last-child { border-bottom: none; }
+    .mem-av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: #fff; font-weight: 800; font-size: .82rem; }
 
     /* Cabecera de tarjeta con acción */
     .card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
@@ -493,6 +505,14 @@ function localYMD(d: Date = new Date()): string {
 
       <!-- ═══ Pestaña: Estatus ═══ -->
       <section class="page" *ngIf="!view() && tab() === 0">
+        <div class="seg scopeseg" style="margin-bottom:14px">
+          <button [class.on]="scope() === 'mine'" (click)="setScope('mine')"><i class="fa-solid fa-user"></i> Mío</button>
+          <button class="home" [class.on]="scope() === 'home'" (click)="setScope('home')"><i class="fa-solid fa-house-user"></i> Hogar</button>
+        </div>
+        <div class="card" *ngIf="scope() === 'home' && !household().length" style="margin-bottom:14px;text-align:center">
+          <p class="muted" style="margin:0 0 10px"><i class="fa-solid fa-house-user" style="color:var(--accent-strong)"></i> Aún no tienes hogar. Invita a alguien para compartir gastos e ingresos del hogar.</p>
+          <p-button label="Crear/gestionar hogar" icon="fa-solid fa-user-plus" [outlined]="true" (onClick)="openHome()" />
+        </div>
         <div class="kpis" *ngIf="summary() as s" style="margin-bottom:16px">
           <div class="kpi">
             <div class="lbl"><i class="fa-solid fa-wallet"></i> Total del mes</div>
@@ -538,6 +558,18 @@ function localYMD(d: Date = new Date()): string {
             <ng-template #noIncome>
               <p class="muted" style="margin:0;font-size:.9rem">Registra tus <b>ingresos</b> del mes para fijar tu tope global de gasto.</p>
             </ng-template>
+          </p-card>
+        </div>
+
+        <!-- Aporte por miembro (solo hogar) -->
+        <div style="margin-bottom:16px" *ngIf="scope() === 'home' && (summary()?.byMember?.length || 0) > 0">
+          <p-card header="Gasto del hogar por miembro">
+            <div class="member-row" *ngFor="let m of (summary()?.byMember || [])">
+              <span class="mem-av">{{ initial(m.email) }}</span>
+              <span style="flex:1">{{ shortName(m.email) }}<span *ngIf="m.email === me()?.email" class="muted"> · tú</span></span>
+              <b>{{ fmt(m.total) }}</b>
+              <span class="muted" style="width:44px;text-align:right">{{ memberPct(m.total) }}%</span>
+            </div>
           </p-card>
         </div>
 
@@ -641,17 +673,16 @@ function localYMD(d: Date = new Date()): string {
           </select>
           <span class="muted">{{ filtered().length }} de {{ expenses().length }}</span>
         </div>
-        <div class="seg" *ngIf="household().length" style="margin-bottom:12px">
-          <button [class.on]="movFilter() === 'all'" (click)="movFilter.set('all')">Todos</button>
-          <button [class.on]="movFilter() === 'mine'" (click)="movFilter.set('mine')">Míos</button>
-          <button [class.on]="movFilter() === 'shared'" (click)="movFilter.set('shared')">Compartidos</button>
+        <div class="seg scopeseg" style="margin-bottom:12px">
+          <button [class.on]="scope() === 'mine'" (click)="setScope('mine')"><i class="fa-solid fa-user"></i> Míos</button>
+          <button class="home" [class.on]="scope() === 'home'" (click)="setScope('home')"><i class="fa-solid fa-house-user"></i> Hogar</button>
         </div>
         <div class="list">
           <div class="row clickable" *ngFor="let e of filtered()" (click)="openDetail(e)">
             <span class="dot" [style.background]="e.categoryColor || '#9aa3b2'"></span>
             <div class="grow">
               <div>{{ e.merchant || e.description || e.categoryName || 'Gasto' }}</div>
-              <small>{{ e.categoryName || 'Otros' }} · {{ e.spentOn }}<span *ngIf="e.source === 'scan'"> · 🤖</span><span *ngIf="e.source === 'recurring'"> · 🔁</span><span *ngIf="e.mine === false" class="shared-tag"> · <i class="fa-solid fa-users"></i> de {{ e.sharedBy }}</span><span *ngIf="e.mine !== false && e.shared" class="shared-tag"> · <i class="fa-solid fa-users"></i> compartido</span></small>
+              <small>{{ e.categoryName || 'Otros' }} · {{ e.spentOn }}<span *ngIf="e.source === 'scan'"> · 🤖</span><span *ngIf="e.source === 'recurring'"> · 🔁</span><span *ngIf="e.scope === 'home' && e.mine === false" class="shared-tag"> · <i class="fa-solid fa-house-user"></i> de {{ shortName(e.by || '') }}</span></small>
             </div>
             <span class="amt">{{ fmt(e.amount, e.currency) }}</span>
             <i class="fa-solid fa-chevron-right" style="color:var(--muted);font-size:.8rem"></i>
@@ -897,13 +928,14 @@ function localYMD(d: Date = new Date()): string {
                     </div>
                   </div>
                 </div>
-                <div class="field full" *ngIf="household().length">
-                  <label>Compartir con el hogar</label>
-                  <div class="chips-sel">
-                    <button type="button" class="chip" *ngFor="let em of household()" [class.sel]="form.shareWith.includes(em)" (click)="toggleShare(em)">
-                      <i class="fa-solid" [class.fa-user]="!form.shareWith.includes(em)" [class.fa-user-check]="form.shareWith.includes(em)"></i> {{ em }}
-                    </button>
+                <div class="field full">
+                  <label>¿De quién es este gasto?</label>
+                  <div class="seg scopeseg">
+                    <button type="button" [class.on]="form.scope === 'mine'" (click)="form.scope = 'mine'"><i class="fa-solid fa-user"></i> Mío</button>
+                    <button type="button" class="home" [class.on]="form.scope === 'home'" (click)="form.scope = 'home'" [disabled]="!household().length"><i class="fa-solid fa-house-user"></i> Hogar</button>
                   </div>
+                  <span class="hint" *ngIf="form.scope === 'home'">Se comparte con tu hogar, pero conserva tu categoría.</span>
+                  <span class="hint" *ngIf="!household().length">Crea un hogar en «Cuenta» para compartir gastos.</span>
                 </div>
               </div>
             </div>
@@ -940,9 +972,8 @@ function localYMD(d: Date = new Date()): string {
             <div class="det-row"><span>Comprado</span><b>{{ fmtDateTime(d.spentAt) }}</b></div>
             <div class="det-row"><span>Registrado</span><b>{{ fmtDateTime(d.registeredAt) }}</b></div>
             <div class="det-row"><span>Origen</span><b>{{ sourceLabel(d.source) }}</b></div>
-            <div class="det-row" *ngIf="d.mine === false"><span>Pagado por</span><b><i class="fa-solid fa-users" style="color:var(--accent-strong)"></i> {{ d.sharedBy }}</b></div>
-            <div class="det-row" *ngIf="d.sharedWith?.length"><span>Compartido con</span><b>{{ d.sharedWith?.join(', ') }}</b></div>
-            <div class="det-row" *ngIf="d.sharedCategory"><span>Categoría</span><b><i class="fa-solid fa-users" style="color:var(--accent-strong)"></i> compartida con el hogar</b></div>
+            <div class="det-row"><span>Tipo</span><b *ngIf="d.scope === 'home'; else mineTag"><i class="fa-solid fa-house-user" style="color:var(--accent-strong)"></i> Hogar</b><ng-template #mineTag><b><i class="fa-solid fa-user" style="color:var(--muted)"></i> Mío</b></ng-template></div>
+            <div class="det-row" *ngIf="d.scope === 'home' && d.mine === false"><span>Pagado por</span><b><i class="fa-solid fa-house-user" style="color:var(--accent-strong)"></i> {{ shortName(d.by || '') }}</b></div>
             <div *ngIf="detailItems().length" style="margin-top:10px">
               <span class="muted" style="font-size:.8rem">Productos</span>
               <div class="items">
@@ -967,12 +998,11 @@ function localYMD(d: Date = new Date()): string {
               <div class="field"><label>Fecha de compra</label><input class="inp" type="date" [(ngModel)]="editForm.spentOn" /></div>
               <div class="field"><label>Establecimiento</label><input class="inp" type="text" [(ngModel)]="editForm.merchant" /></div>
               <div class="field full"><label>Descripción</label><input class="inp" type="text" [(ngModel)]="editForm.description" /></div>
-              <div class="field full" *ngIf="household().length">
-                <label>Compartir con el hogar</label>
-                <div class="chips-sel">
-                  <button type="button" class="chip" *ngFor="let em of household()" [class.sel]="editForm.shareWith.includes(em)" (click)="toggleEditShare(em)">
-                    <i class="fa-solid" [class.fa-user]="!editForm.shareWith.includes(em)" [class.fa-user-check]="editForm.shareWith.includes(em)"></i> {{ em }}
-                  </button>
+              <div class="field full">
+                <label>¿De quién es este gasto?</label>
+                <div class="seg scopeseg">
+                  <button type="button" [class.on]="editForm.scope === 'mine'" (click)="editForm.scope = 'mine'"><i class="fa-solid fa-user"></i> Mío</button>
+                  <button type="button" class="home" [class.on]="editForm.scope === 'home'" (click)="editForm.scope = 'home'" [disabled]="!household().length"><i class="fa-solid fa-house-user"></i> Hogar</button>
                 </div>
               </div>
             </div>
@@ -1004,11 +1034,6 @@ function localYMD(d: Date = new Date()): string {
         <div class="cat-grid" *ngIf="catView() === 'grid'">
           <div class="cat-card" *ngFor="let c of categories()" (click)="editCat(c)">
             <div class="cc-actions">
-              <button class="cc-btn" [class.shared]="isCategoryShared(c.slug)" [disabled]="!household().length"
-                      (click)="$event.stopPropagation(); toggleCategoryShare(c.slug)"
-                      [title]="household().length ? (isCategoryShared(c.slug) ? 'Compartida — clic para dejar de compartir' : 'Compartir con el hogar') : 'Conecta a alguien en Hogar para compartir'">
-                <i class="fa-solid" [class.fa-users]="isCategoryShared(c.slug)" [class.fa-user]="!isCategoryShared(c.slug)"></i>
-              </button>
               <button class="cc-btn del" (click)="$event.stopPropagation(); delCat(c)" title="Borrar"><i class="fa-solid fa-trash"></i></button>
             </div>
             <span class="cc-ic" [style.background]="c.color"><i [class]="c.icon || 'fa-solid fa-wallet'"></i></span>
@@ -1028,11 +1053,6 @@ function localYMD(d: Date = new Date()): string {
               <ng-template #noBudLi><small>Sin tope</small></ng-template>
             </div>
             <div class="cl-act">
-              <button class="cc-btn" [class.shared]="isCategoryShared(c.slug)" [disabled]="!household().length"
-                      (click)="$event.stopPropagation(); toggleCategoryShare(c.slug)"
-                      [title]="household().length ? (isCategoryShared(c.slug) ? 'Compartida' : 'Compartir con el hogar') : 'Conecta a alguien en Hogar'">
-                <i class="fa-solid" [class.fa-users]="isCategoryShared(c.slug)" [class.fa-user]="!isCategoryShared(c.slug)"></i>
-              </button>
               <button class="cc-btn del" (click)="$event.stopPropagation(); delCat(c)" title="Borrar"><i class="fa-solid fa-trash"></i></button>
               <i class="fa-solid fa-chevron-right" style="color:var(--muted);font-size:.75rem;margin-left:2px"></i>
             </div>
@@ -1040,16 +1060,6 @@ function localYMD(d: Date = new Date()): string {
         </div>
 
         <p class="muted" *ngIf="!categories().length" style="text-align:center;padding:24px">Aún no tienes categorías. Toca «Agregar».</p>
-
-        <ng-container *ngIf="sharedInCats().length">
-          <h3>Compartidas conmigo</h3>
-          <div class="cat-list">
-            <div class="cat-li" *ngFor="let c of sharedInCats()" style="cursor:default">
-              <span class="cc-ic" [style.background]="c.color"><i [class]="c.icon || 'fa-solid fa-wallet'"></i></span>
-              <div class="cl-body"><div class="nm">{{ c.name }}</div><small>de {{ c.owner }}</small></div>
-            </div>
-          </div>
-        </ng-container>
       </section>
 
       <!-- ═══ Vista: Crear / editar categoría ═══ -->
@@ -1085,6 +1095,11 @@ function localYMD(d: Date = new Date()): string {
       <!-- ═══ Vista: Ingresos (tope global) ═══ -->
       <section class="page" *ngIf="view() === 'income'">
         <p class="muted" style="margin:0 0 12px;font-size:.9rem">La suma de tus ingresos del mes es tu <b>tope global</b> de gasto. Te avisamos si lo superas.</p>
+        <div class="seg scopeseg" style="margin-bottom:12px">
+          <button [class.on]="incForm.scope === 'mine'" (click)="setIncomeScope('mine')"><i class="fa-solid fa-user"></i> Míos</button>
+          <button class="home" [class.on]="incForm.scope === 'home'" (click)="setIncomeScope('home')" [disabled]="!household().length"><i class="fa-solid fa-house-user"></i> Hogar</button>
+        </div>
+        <p class="muted" *ngIf="incForm.scope === 'home'" style="margin:-4px 0 12px;font-size:.82rem">Ingreso compartido del hogar. Cualquier miembro puede añadir o quitar.</p>
         <div class="card">
           <div class="cat-add">
             <input class="inp" style="width:130px" type="number" [(ngModel)]="incForm.amount" placeholder="Monto" />
@@ -1098,7 +1113,7 @@ function localYMD(d: Date = new Date()): string {
         <div style="margin-top:14px">
           <div class="inc-row" *ngFor="let i of incomeList()">
             <i class="fa-solid fa-arrow-down-long" style="color:var(--accent-strong)"></i>
-            <span style="flex:1">{{ i.source || 'Ingreso' }} <small class="muted">· {{ i.receivedOn }}</small></span>
+            <span style="flex:1">{{ i.source || 'Ingreso' }} <small class="muted">· {{ i.receivedOn }}<span *ngIf="incForm.scope === 'home' && i.mine === false"> · de {{ shortName(i.by || '') }}</span></small></span>
             <b>{{ fmt(i.amount) }}</b>
             <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="delIncome(i.id)" />
           </div>
@@ -1110,25 +1125,43 @@ function localYMD(d: Date = new Date()): string {
       <!-- ═══ Vista: Recurrentes ═══ -->
       <section class="page" *ngIf="view() === 'recurring'">
         <div class="card">
+          <div class="seg scopeseg" style="margin-bottom:12px">
+            <button [class.on]="recForm.kind === 'expense'" (click)="recForm.kind = 'expense'"><i class="fa-solid fa-arrow-up-long"></i> Gasto</button>
+            <button class="inc" [class.on]="recForm.kind === 'income'" (click)="recForm.kind = 'income'; recForm.categoryId = null"><i class="fa-solid fa-arrow-down-long"></i> Ingreso</button>
+          </div>
           <div class="cat-add">
-            <input class="inp" style="flex:1" type="text" [(ngModel)]="recForm.merchant" placeholder="Nombre (p.ej. Netflix)" />
+            <input class="inp" style="flex:1" type="text" [(ngModel)]="recForm.merchant" [placeholder]="recForm.kind === 'income' ? 'Nombre (p.ej. Salario)' : 'Nombre (p.ej. Netflix)'" />
             <input class="inp" style="width:120px" type="number" [(ngModel)]="recForm.amount" placeholder="Monto" />
           </div>
-          <div class="cat-add" style="margin-bottom:0">
+          <div class="cat-add" *ngIf="recForm.kind === 'expense'">
             <select class="sel" style="flex:1" [(ngModel)]="recForm.categoryId">
               <option [ngValue]="null">Sin categoría</option>
               <option *ngFor="let c of categories()" [ngValue]="c.id">{{ c.name }}</option>
             </select>
-            <span class="muted">día</span>
+          </div>
+          <div class="cat-add" *ngIf="recForm.kind === 'income'">
+            <input class="inp" style="flex:1" type="text" [(ngModel)]="recForm.source" placeholder="Fuente (opcional)" />
+          </div>
+          <div class="seg scopeseg" style="margin-bottom:12px">
+            <button [class.on]="recForm.scope === 'mine'" (click)="recForm.scope = 'mine'"><i class="fa-solid fa-user"></i> Mío</button>
+            <button class="home" [class.on]="recForm.scope === 'home'" (click)="recForm.scope = 'home'" [disabled]="!household().length"><i class="fa-solid fa-house-user"></i> Hogar</button>
+          </div>
+          <div class="cat-add" style="margin-bottom:0">
+            <span class="muted">Se aplica el día</span>
             <input class="inp" style="width:70px" type="number" [(ngModel)]="recForm.dayOfMonth" min="1" max="28" />
             <p-button label="Añadir" icon="pi pi-plus" (onClick)="addRecurring()" [disabled]="!recForm.merchant || !recForm.amount" />
           </div>
         </div>
         <div style="margin-top:14px">
           <div class="cat-row" *ngFor="let r of recurring()">
-            <span class="dot" [style.background]="r.categoryColor || '#9aa3b2'" style="width:12px;height:12px;border-radius:50%"></span>
-            <span style="flex:1">{{ r.merchant || r.description }} <small class="muted">· día {{ r.dayOfMonth }}</small></span>
-            <span>{{ fmt(r.amount, r.currency) }}</span>
+            <span class="dot" [style.background]="r.kind === 'income' ? 'var(--accent-strong)' : (r.categoryColor || '#9aa3b2')" style="width:12px;height:12px;border-radius:50%"></span>
+            <span style="flex:1">{{ r.merchant || r.description }}
+              <small class="muted">· día {{ r.dayOfMonth }}
+                <span *ngIf="r.kind === 'income'"> · ingreso</span>
+                <span *ngIf="r.scope === 'home'"> · <i class="fa-solid fa-house-user"></i> hogar</span>
+              </small>
+            </span>
+            <span [style.color]="r.kind === 'income' ? 'var(--accent-strong)' : 'inherit'">{{ r.kind === 'income' ? '+' : '' }}{{ fmt(r.amount, r.currency) }}</span>
             <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small" (onClick)="delRecurring(r.id)" />
           </div>
         </div>
@@ -1240,13 +1273,20 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly view = signal<View>('');
   readonly regStep = signal<'choose' | 'text' | 'sheet'>('choose');
 
-  // Hogar / compartir
+  // Hogar
   readonly household = signal<string[]>([]);
   readonly conns = signal<Connections | null>(null);
-  readonly catShares = signal<CategoryShare[]>([]);
-  readonly sharedInCats = signal<SharedInCategory[]>([]);
-  readonly movFilter = signal<'all' | 'mine' | 'shared'>('all');
   inviteEmail = '';
+
+  // Ámbito de la vista: míos vs hogar (afecta KPIs, gráficos, movimientos, ingresos).
+  readonly scope = signal<'mine' | 'home'>('mine');
+  setScope(s: 'mine' | 'home'): void {
+    if (this.scope() === s) return;
+    this.scope.set(s);
+    this.incForm.scope = s;
+    this.reload();
+    this.loadIncome();
+  }
 
   readonly sheetState = signal<SheetState>('form');
   readonly sheetTab = signal<'datos' | 'imagen'>('datos');
@@ -1309,8 +1349,9 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly budgets = signal<Budget[]>([]);
   readonly recurring = signal<Recurring[]>([]);
   readonly applying = signal<boolean>(false);
-  recForm: { merchant: string; amount: number | null; categoryId: number | null; dayOfMonth: number } =
-    { merchant: '', amount: null, categoryId: null, dayOfMonth: 1 };
+  recForm: { merchant: string; amount: number | null; categoryId: number | null; dayOfMonth: number;
+             kind: 'expense' | 'income'; scope: 'mine' | 'home'; source: string } =
+    { merchant: '', amount: null, categoryId: null, dayOfMonth: 1, kind: 'expense', scope: 'mine', source: '' };
 
   query = '';
   filterCat = '';
@@ -1322,7 +1363,7 @@ export class AppComponent implements OnInit, OnDestroy {
   // Ingresos (tope global)
   readonly incomeList = signal<Income[]>([]);
   readonly incomeTotal = signal<number>(0);
-  incForm: { amount: number | null; source: string; receivedOn: string } = { amount: null, source: '', receivedOn: localYMD() };
+  incForm: { amount: number | null; source: string; receivedOn: string; scope: 'mine' | 'home' } = { amount: null, source: '', receivedOn: localYMD(), scope: 'mine' };
 
   // Gastos hormiga / quema
   readonly ant = signal<AntReport | null>(null);
@@ -1466,10 +1507,7 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly filtered = computed(() => {
     const q = this.query.trim().toLowerCase();
     const cat = this.filterCat;
-    const mf = this.movFilter();
     return this.expenses().filter((e) => {
-      if (mf === 'mine' && e.mine === false) return false;
-      if (mf === 'shared' && !(e.mine === false || e.shared)) return false;
       if (cat && e.categorySlug !== cat) return false;
       if (!q) return true;
       return (e.merchant + ' ' + e.description + ' ' + e.nit + ' ' + e.categoryName).toLowerCase().includes(q);
@@ -1611,8 +1649,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
   onNotif(n: Notif): void {
     if (n.kind === 'connection_invite' || n.kind === 'connection_accepted') this.openHome();
-    else if (n.kind === 'category_shared') this.openCats();
-    else if (n.kind === 'shared_expense') { this.goTab(3); this.movFilter.set('shared'); }
+    else if (n.kind === 'home_expense' || n.kind === 'shared_expense') { this.goTab(3); this.setScope('home'); }
     else if (n.kind === 'budget_exceeded') this.goTab(0);
   }
   notifIcon(kind: string): string {
@@ -1665,28 +1702,30 @@ export class AppComponent implements OnInit, OnDestroy {
 
   reload(): void {
     const m = this.month();
-    this.api.expenses(m).subscribe({ next: (e) => { this.expenses.set(e); this.loaded.set(true); }, error: () => this.loaded.set(true) });
-    this.api.summary(m).subscribe({ next: (s) => this.summary.set(s), error: () => {} });
-    this.api.trend(6).subscribe({ next: (t) => this.trend.set(t), error: () => {} });
-    this.api.ant(m).subscribe({ next: (a) => this.ant.set(a), error: () => {} });
-    this.api.burndown(m).subscribe({ next: (b) => this.burn.set(b), error: () => {} });
+    const sc = this.scope();
+    this.api.expenses(m, sc).subscribe({ next: (e) => { this.expenses.set(e); this.loaded.set(true); }, error: () => this.loaded.set(true) });
+    this.api.summary(m, sc).subscribe({ next: (s) => this.summary.set(s), error: () => {} });
+    this.api.trend(6, sc).subscribe({ next: (t) => this.trend.set(t), error: () => {} });
+    this.api.ant(m, undefined, sc).subscribe({ next: (a) => this.ant.set(a), error: () => {} });
+    this.api.burndown(m, sc).subscribe({ next: (b) => this.burn.set(b), error: () => {} });
   }
 
-  // ── Ingresos (tope global) ──
-  openIncome(): void { this.incForm = { amount: null, source: '', receivedOn: localYMD() }; this.loadIncome(); this.nav('income'); }
+  // ── Ingresos (tope del mes: mío u hogar) ──
+  openIncome(): void { this.incForm = { amount: null, source: '', receivedOn: localYMD(), scope: this.scope() }; this.loadIncome(); this.nav('income'); }
   private loadIncome(): void {
-    this.api.income(this.month()).subscribe({
+    this.api.income(this.month(), this.incForm.scope).subscribe({
       next: (r) => { this.incomeList.set(r.items || []); this.incomeTotal.set(r.total || 0); }, error: () => {},
     });
   }
   addIncome(): void {
     if (!this.incForm.amount || this.incForm.amount <= 0) return;
-    this.api.addIncome(this.incForm.amount, this.incForm.source, this.incForm.receivedOn).subscribe({
-      next: () => { this.incForm = { amount: null, source: '', receivedOn: localYMD() }; this.loadIncome(); this.reload(); },
+    this.api.addIncome(this.incForm.amount, this.incForm.source, this.incForm.receivedOn, this.incForm.scope).subscribe({
+      next: () => { this.incForm = { amount: null, source: '', receivedOn: localYMD(), scope: this.scope() }; this.loadIncome(); this.reload(); },
       error: () => alert('No se pudo registrar el ingreso.'),
     });
   }
   delIncome(id: number): void { this.api.deleteIncome(id).subscribe(() => { this.loadIncome(); this.reload(); }); }
+  setIncomeScope(s: 'mine' | 'home'): void { this.incForm.scope = s; this.loadIncome(); }
 
   shiftMonth(delta: number): void {
     const [y, m] = this.month().split('-').map(Number);
@@ -1741,10 +1780,12 @@ export class AppComponent implements OnInit, OnDestroy {
   openRecurring(): void { this.loadRecurring(); this.nav('recurring'); }
   private loadRecurring(): void { this.api.recurring().subscribe((r) => this.recurring.set(r)); }
   addRecurring(): void {
-    if (!this.recForm.merchant || !this.recForm.amount) return;
+    const inc = this.recForm.kind === 'income';
+    if (!this.recForm.amount || (!inc && !this.recForm.merchant)) return;
     this.api.createRecurring({ merchant: this.recForm.merchant, amount: this.recForm.amount,
-      categoryId: this.recForm.categoryId, dayOfMonth: this.recForm.dayOfMonth }).subscribe(() => {
-      this.recForm = { merchant: '', amount: null, categoryId: null, dayOfMonth: 1 };
+      categoryId: inc ? null : this.recForm.categoryId, dayOfMonth: this.recForm.dayOfMonth,
+      kind: this.recForm.kind, scope: this.recForm.scope, source: this.recForm.source }).subscribe(() => {
+      this.recForm = { merchant: '', amount: null, categoryId: null, dayOfMonth: 1, kind: 'expense', scope: 'mine', source: '' };
       this.loadRecurring();
     });
   }
@@ -1752,7 +1793,7 @@ export class AppComponent implements OnInit, OnDestroy {
   applyRecurring(): void {
     this.applying.set(true);
     this.api.applyRecurring(this.month()).subscribe({
-      next: (r) => { this.applying.set(false); this.reload(); alert(`${r.created} gasto(s) recurrente(s) aplicado(s).`); },
+      next: (r) => { this.applying.set(false); this.reload(); this.loadIncome(); alert(`${r.created} movimiento(s) recurrente(s) aplicado(s).`); },
       error: () => this.applying.set(false),
     });
   }
@@ -1766,8 +1807,8 @@ export class AppComponent implements OnInit, OnDestroy {
     this.nav('compare');
   }
   loadCompare(): void {
-    this.api.summary(this.cmpA).subscribe((s) => this.cmpSummA.set(s));
-    this.api.summary(this.cmpB).subscribe((s) => this.cmpSummB.set(s));
+    this.api.summary(this.cmpA, this.scope()).subscribe((s) => this.cmpSummA.set(s));
+    this.api.summary(this.cmpB, this.scope()).subscribe((s) => this.cmpSummB.set(s));
   }
 
   // ── Exportar CSV ──
@@ -1903,7 +1944,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const fecha = this.validDate(s.fecha) ? s.fecha! : localYMD();
     const hora = this.validTime(s.hora) ? s.hora! : '';
     this.form = { amount: s.montos[0]?.valor ?? null, currency: 'COP', categoryId: s.categoriaId ?? null,
-      merchant: s.establecimiento ?? '', nit: s.nit ?? '', description: s.descripcion ?? '', spentOn: fecha, spentTime: hora, shareWith: [] as string[] };
+      merchant: s.establecimiento ?? '', nit: s.nit ?? '', description: s.descripcion ?? '', spentOn: fecha, spentTime: hora, scope: this.form.scope };
     this.sheetTab.set('datos');
     this.sheetState.set('form');
   }
@@ -1929,7 +1970,7 @@ export class AppComponent implements OnInit, OnDestroy {
       merchant: this.form.merchant, description: this.form.description, nit: this.form.nit,
       spentOn: this.form.spentOn, spentAt, source: this.scanned ? 'scan' : 'manual',
       items: items.length ? items : undefined,
-      shareWith: this.form.shareWith?.length ? this.form.shareWith : undefined }).subscribe({
+      scope: this.form.scope }).subscribe({
       next: () => { this.saving.set(false); this.view.set(''); this.loadCategories(); this.reload(); this.pricesLoaded.set(false); },
       error: () => { this.saving.set(false); alert('No se pudo guardar.'); },
     });
@@ -1946,14 +1987,12 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private emptyForm() {
     return { amount: null as number | null, currency: 'COP', categoryId: null as number | null,
-      merchant: '', nit: '', description: '', spentOn: localYMD(), spentTime: '', shareWith: [] as string[] };
+      merchant: '', nit: '', description: '', spentOn: localYMD(), spentTime: '', scope: 'mine' as 'mine' | 'home' };
   }
 
-  // ── Hogar / compartir ──
+  // ── Hogar ──
   private loadHome(): void {
     this.api.household().subscribe({ next: (h) => this.household.set(h), error: () => {} });
-    this.api.categoryShares().subscribe({ next: (s) => this.catShares.set(s), error: () => {} });
-    this.api.sharedInCategories().subscribe({ next: (s) => this.sharedInCats.set(s), error: () => {} });
   }
   openHome(): void {
     this.inviteEmail = '';
@@ -1971,17 +2010,15 @@ export class AppComponent implements OnInit, OnDestroy {
   }
   acceptConn(id: number): void { this.api.acceptConn(id).subscribe(() => this.reloadConns()); }
   removeConn(id: number): void { this.api.removeConn(id).subscribe(() => this.reloadConns()); }
-  toggleShare(email: string): void {
-    const set = new Set(this.form.shareWith);
-    if (set.has(email)) set.delete(email); else set.add(email);
-    this.form.shareWith = Array.from(set);
+  /** Nombre corto (antes de la @) de un miembro del hogar, para etiquetas. */
+  shortName(email: string): string { return email ? email.split('@')[0] : ''; }
+  /** Inicial (avatar) de un miembro del hogar. */
+  initial(email: string): string { return email ? email.charAt(0).toUpperCase() : '?'; }
+  /** % que aporta un miembro sobre el total del hogar del mes. */
+  memberPct(total: number): number {
+    const grand = this.summary()?.total || 0;
+    return grand > 0 ? Math.round((total / grand) * 100) : 0;
   }
-  toggleCategoryShare(slug: string): void {
-    const shared = this.isCategoryShared(slug);
-    const emails = shared ? [] : this.household();
-    this.api.shareCategory(slug, emails).subscribe(() => { this.loadHome(); this.reload(); this.pricesLoaded.set(false); });
-  }
-  isCategoryShared(slug: string): boolean { return this.catShares().some((s) => s.slug === slug && s.emails.length > 0); }
 
   // ── Detalle de movimiento ──
   openDetail(e: Expense): void {
@@ -1993,22 +2030,17 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!d) return;
     const catId = this.categories().find((c) => c.slug === d.categorySlug)?.id ?? null;
     this.editForm = { amount: d.amount, currency: d.currency || 'COP', categoryId: catId,
-      merchant: d.merchant, nit: d.nit, description: d.description, spentOn: d.spentOn, spentTime: '', shareWith: [...(d.sharedWith ?? [])] };
+      merchant: d.merchant, nit: d.nit, description: d.description, spentOn: d.spentOn, spentTime: '', scope: (d.scope as 'mine' | 'home') || 'mine' };
     this.editing.set(true);
   }
   cancelEdit(): void { this.editing.set(false); }
-  toggleEditShare(email: string): void {
-    const set = new Set(this.editForm.shareWith);
-    if (set.has(email)) set.delete(email); else set.add(email);
-    this.editForm.shareWith = Array.from(set);
-  }
   saveEdit(): void {
     const d = this.detail();
     if (!d) return;
     this.saving.set(true);
     const f = this.editForm;
     this.api.update(d.id, { amount: f.amount ?? d.amount, currency: f.currency, categoryId: f.categoryId,
-      merchant: f.merchant, description: f.description, nit: f.nit, spentOn: f.spentOn, shareWith: f.shareWith ?? [] }).subscribe({
+      merchant: f.merchant, description: f.description, nit: f.nit, spentOn: f.spentOn, scope: f.scope }).subscribe({
       next: () => { this.saving.set(false); this.editing.set(false); this.view.set(''); this.reload(); this.pricesLoaded.set(false); },
       error: () => { this.saving.set(false); alert('No se pudo guardar.'); },
     });

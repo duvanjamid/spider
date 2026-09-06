@@ -8,27 +8,27 @@ export interface Expense {
   id: number; amount: number; currency: string; merchant: string; description: string; nit: string;
   spentOn: string; spentAt: string; registeredAt: string; source: string;
   categorySlug: string; categoryName: string; categoryColor: string;
-  shared?: boolean; sharedWith?: string[]; sharedCategory?: boolean; mine?: boolean; sharedBy?: string;
+  scope?: string; mine?: boolean; by?: string; canEdit?: boolean;
 }
-export interface SharedInCategory { id: number; slug: string; name: string; color: string; icon: string; owner: string; }
 export interface ConnRow { id: number; email: string; }
 export interface Connections { accepted: ConnRow[]; incoming: ConnRow[]; outgoing: ConnRow[]; }
-export interface CategoryShare { slug: string; emails: string[]; }
 export interface CatTotal { slug: string; name: string; color: string; total: number; budget: number; }
 export interface Budget { categoryId: number; slug: string; name: string; color: string; amount: number; }
 export interface Recurring {
   id: number; amount: number; currency: string; merchant: string; description: string;
   dayOfMonth: number; active: boolean; categoryId: number | null; categoryName: string; categoryColor: string;
+  kind?: string; scope?: string; source?: string;
 }
+export interface MemberTotal { email: string; total: number; }
 export interface Summary {
-  month: string; total: number; byCategory: CatTotal[];
+  month: string; scope?: string; total: number; byCategory: CatTotal[]; byMember?: MemberTotal[];
   count: number; daysInMonth: number; daysElapsed: number;
   dailyAverage: number; projectedEndOfMonth: number; previousMonthTotal: number;
-  income: number;   // ingresos del mes = tope global de gasto
+  income: number;   // ingresos del mes = tope (mío u hogar)
 }
 export interface TrendPoint { month: string; total: number; }
 export interface Trend { series: TrendPoint[]; forecastNext: number; average: number; }
-export interface Income { id: number; amount: number; source: string; receivedOn: string; }
+export interface Income { id: number; amount: number; source: string; receivedOn: string; scope?: string; mine?: boolean; by?: string; canEdit?: boolean; }
 export interface AntGroup { label: string; color: string; count: number; total: number; avg: number; }
 export interface AntReport { month: string; threshold: number; total: number; count: number; groups: AntGroup[]; }
 export interface BurnPoint { day: number; cumulative: number; }
@@ -68,7 +68,7 @@ export interface CategoryTemplate { slug: string; name: string; color: string; i
 export interface NewExpense {
   amount: number; currency?: string; categoryId?: number | null;
   merchant?: string; description?: string; spentOn?: string; spentAt?: string; nit?: string; source?: string;
-  items?: ScanItem[]; shareWith?: string[];
+  items?: ScanItem[]; scope?: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -107,31 +107,31 @@ export class GastosService {
   applyRecurring(month: string): Observable<{ created: number }> {
     return this.http.post<{ created: number }>(`${this.base}/recurring/apply?month=${month}`, {}, this.opts);
   }
-  expenses(month: string): Observable<Expense[]> { return this.http.get<Expense[]>(`${this.base}/expenses?month=${month}`, this.opts); }
+  expenses(month: string, scope = 'mine'): Observable<Expense[]> { return this.http.get<Expense[]>(`${this.base}/expenses?month=${month}&scope=${scope}`, this.opts); }
   create(e: NewExpense): Observable<{ id: number }> { return this.http.post<{ id: number }>(`${this.base}/expenses`, e, this.opts); }
   update(id: number, e: NewExpense): Observable<unknown> { return this.http.put(`${this.base}/expenses/${id}`, e, this.opts); }
   remove(id: number): Observable<unknown> { return this.http.delete(`${this.base}/expenses/${id}`, this.opts); }
   itemsOf(id: number): Observable<ExpenseItem[]> { return this.http.get<ExpenseItem[]>(`${this.base}/expenses/${id}/items`, this.opts); }
   prices(): Observable<PriceProduct[]> { return this.http.get<PriceProduct[]>(`${this.base}/prices`, this.opts); }
-  summary(month: string): Observable<Summary> { return this.http.get<Summary>(`${this.base}/summary?month=${month}`, this.opts); }
-  trend(months = 6): Observable<Trend> { return this.http.get<Trend>(`${this.base}/trend?months=${months}`, this.opts); }
+  summary(month: string, scope = 'mine'): Observable<Summary> { return this.http.get<Summary>(`${this.base}/summary?month=${month}&scope=${scope}`, this.opts); }
+  trend(months = 6, scope = 'mine'): Observable<Trend> { return this.http.get<Trend>(`${this.base}/trend?months=${months}&scope=${scope}`, this.opts); }
 
-  // ── Ingresos (tope global) ──
-  income(month: string): Observable<{ items: Income[]; total: number }> {
-    return this.http.get<{ items: Income[]; total: number }>(`${this.base}/income?month=${month}`, this.opts);
+  // ── Ingresos (tope del mes: mío u hogar) ──
+  income(month: string, scope = 'mine'): Observable<{ items: Income[]; total: number }> {
+    return this.http.get<{ items: Income[]; total: number }>(`${this.base}/income?month=${month}&scope=${scope}`, this.opts);
   }
-  addIncome(amount: number, source: string, receivedOn: string): Observable<{ id: number }> {
-    return this.http.post<{ id: number }>(`${this.base}/income`, { amount, source, receivedOn }, this.opts);
+  addIncome(amount: number, source: string, receivedOn: string, scope = 'mine'): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(`${this.base}/income`, { amount, source, receivedOn, scope }, this.opts);
   }
   deleteIncome(id: number): Observable<unknown> { return this.http.delete(`${this.base}/income/${id}`, this.opts); }
 
   // ── Gastos hormiga / quema de presupuesto ──
-  ant(month: string, max?: number): Observable<AntReport> {
+  ant(month: string, max?: number, scope = 'mine'): Observable<AntReport> {
     const q = max ? `&max=${max}` : '';
-    return this.http.get<AntReport>(`${this.base}/ant?month=${month}${q}`, this.opts);
+    return this.http.get<AntReport>(`${this.base}/ant?month=${month}&scope=${scope}${q}`, this.opts);
   }
-  burndown(month: string): Observable<BurnPoint[]> {
-    return this.http.get<BurnPoint[]>(`${this.base}/burndown?month=${month}`, this.opts);
+  burndown(month: string, scope = 'mine'): Observable<BurnPoint[]> {
+    return this.http.get<BurnPoint[]>(`${this.base}/burndown?month=${month}&scope=${scope}`, this.opts);
   }
 
   // ── Web Push ──
@@ -160,10 +160,6 @@ export class GastosService {
   invite(email: string): Observable<unknown> { return this.http.post(`${this.base}/connections`, { email }, this.opts); }
   acceptConn(id: number): Observable<unknown> { return this.http.post(`${this.base}/connections/${id}/accept`, {}, this.opts); }
   removeConn(id: number): Observable<unknown> { return this.http.delete(`${this.base}/connections/${id}`, this.opts); }
-  shareExpense(id: number, emails: string[]): Observable<unknown> { return this.http.put(`${this.base}/expenses/${id}/share`, { emails }, this.opts); }
-  categoryShares(): Observable<CategoryShare[]> { return this.http.get<CategoryShare[]>(`${this.base}/categories/shares`, this.opts); }
-  sharedInCategories(): Observable<SharedInCategory[]> { return this.http.get<SharedInCategory[]>(`${this.base}/categories/shared-in`, this.opts); }
-  shareCategory(slug: string, emails: string[]): Observable<unknown> { return this.http.put(`${this.base}/categories/share`, { slug, emails }, this.opts); }
 
   // ── Notificaciones ──
   notifications(): Observable<{ items: Notif[]; unread: number }> {

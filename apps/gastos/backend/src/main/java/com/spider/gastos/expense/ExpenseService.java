@@ -21,44 +21,51 @@ public class ExpenseService {
     }
 
     /**
-     * Condición SQL de "gasto visible para el usuario": propio, o de un miembro
-     * del hogar (conexión aceptada) que me compartió ese gasto o su categoría
-     * (compartición mutua por slug). Requiere el alias {@code e} para expense.
-     * Consume 7 parámetros (todos el correo del usuario) — ver {@link #bindVisible}.
+     * Condición SQL de visibilidad por ámbito (alias {@code e} para expense):
+     *  - "mine": mis movimientos marcados 'mine' (1 parámetro, el correo).
+     *  - "home": movimientos 'home' de cualquier miembro del hogar —yo + mis
+     *    conexiones aceptadas— (4 parámetros, todos el correo).
      */
-    private static final String VISIBLE = """
-            ( e.owner_email = ?
-              OR ( e.owner_email IN (
-                     SELECT CASE WHEN requester_email = ? THEN addressee_email ELSE requester_email END
-                     FROM connection WHERE status = 'accepted' AND (requester_email = ? OR addressee_email = ?))
-                   AND ( EXISTS (SELECT 1 FROM expense_share es WHERE es.expense_id = e.id AND es.shared_with = ?)
-                      OR EXISTS (SELECT 1 FROM category_share cs JOIN category cc ON cc.id = e.category_id
-                                 WHERE cs.slug = cc.slug
-                                   AND ( (cs.owner_email = e.owner_email AND cs.shared_with = ?)
-                                      OR (cs.owner_email = ? AND cs.shared_with = e.owner_email) )) ) ) )
-            """;
-
-    /** Fija los 7 parámetros de {@link #VISIBLE} (todos el correo). Devuelve el siguiente índice. */
-    private static int bindVisible(PreparedStatement ps, int from, String email) throws java.sql.SQLException {
-        for (int i = 0; i < 7; i++) ps.setString(from + i, email);
-        return from + 7;
+    static String visible(String scope) {
+        if ("home".equals(scope)) {
+            return "( e.scope = 'home' AND e.owner_email IN ("
+                    + " SELECT ? UNION SELECT CASE WHEN requester_email = ? THEN addressee_email ELSE requester_email END"
+                    + " FROM connection WHERE status = 'accepted' AND (requester_email = ? OR addressee_email = ?) ) )";
+        }
+        return "( e.owner_email = ? AND e.scope = 'mine' )";
+    }
+    private static int bindVisible(PreparedStatement ps, int from, String email, String scope) throws java.sql.SQLException {
+        int n = "home".equals(scope) ? 4 : 1;
+        for (int i = 0; i < n; i++) ps.setString(from + i, email);
+        return from + n;
     }
 
-    /** Gastos de un usuario en un mes ("YYYY-MM"; null = mes actual). */
-    public List<Map<String, Object>> listByMonth(String email, String month) {
+    /** Visibilidad "cualquiera": míos (todo scope) + del hogar marcados 'home'. 4 parámetros. */
+    static final String VISIBLE_ANY = """
+            ( e.owner_email = ?
+              OR ( e.scope = 'home' AND e.owner_email IN (
+                     SELECT CASE WHEN requester_email = ? THEN addressee_email ELSE requester_email END
+                     FROM connection WHERE status = 'accepted' AND (requester_email = ? OR addressee_email = ?) ) ) )
+            """;
+    private static int bindAny(PreparedStatement ps, int from, String email) throws java.sql.SQLException {
+        for (int i = 0; i < 4; i++) ps.setString(from + i, email);
+        return from + 4;
+    }
+    private static String norm(String scope) { return "home".equals(scope) ? "home" : "mine"; }
+
+    /** Gastos de un usuario en un mes ("YYYY-MM"; null = mes actual), por ámbito mine|home. */
+    public List<Map<String, Object>> listByMonth(String email, String month, String scope) {
+        String sc = norm(scope);
         String ym = month == null || month.isBlank() ? YearMonth.now().toString() : month;
-        String sql = "SELECT e.id, e.amount, e.currency, e.merchant, e.description, e.nit, e.owner_email AS owner, "
+        String sql = "SELECT e.id, e.amount, e.currency, e.merchant, e.description, e.nit, e.owner_email AS owner, e.scope, "
                 + "e.spent_on, COALESCE(e.spent_at, e.spent_on::timestamptz) AS spent_at, e.created_at, e.source, "
-                + "c.slug AS cat_slug, c.name AS cat_name, c.color AS cat_color, "
-                + "COALESCE((SELECT array_agg(es.shared_with ORDER BY es.shared_with) "
-                + "          FROM expense_share es WHERE es.expense_id = e.id), ARRAY[]::text[]) AS shared_with, "
-                + "EXISTS (SELECT 1 FROM category_share cs WHERE cs.owner_email = e.owner_email AND cs.slug = c.slug) AS shared_cat "
+                + "c.slug AS cat_slug, c.name AS cat_name, c.color AS cat_color "
                 + "FROM expense e LEFT JOIN category c ON c.id = e.category_id "
-                + "WHERE " + VISIBLE + " AND to_char(e.spent_on, 'YYYY-MM') = ? "
+                + "WHERE " + visible(sc) + " AND to_char(e.spent_on, 'YYYY-MM') = ? "
                 + "ORDER BY COALESCE(e.spent_at, e.spent_on::timestamptz) DESC, e.id DESC";
         List<Map<String, Object>> out = new ArrayList<>();
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-            int i = bindVisible(ps, 1, email);
+            int i = bindVisible(ps, 1, email, sc);
             ps.setString(i, ym);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -78,13 +85,10 @@ public class ExpenseService {
                     m.put("categoryColor", nz(rs.getString("cat_color")));
                     String owner = rs.getString("owner");
                     boolean mine = owner != null && owner.equalsIgnoreCase(email);
-                    List<String> sw = textArray(rs.getArray("shared_with"));
-                    boolean sharedCat = rs.getBoolean("shared_cat");
+                    m.put("scope", rs.getString("scope"));
                     m.put("mine", mine);
-                    m.put("sharedBy", mine ? "" : nz(owner));   // quién lo pagó, si no soy yo
-                    m.put("sharedWith", sw);
-                    m.put("sharedCategory", sharedCat);
-                    m.put("shared", !mine || !sw.isEmpty() || sharedCat);
+                    m.put("by", mine ? "" : nz(owner));   // quién lo registró (vista hogar)
+                    m.put("canEdit", mine);               // solo el creador edita/borra
                     out.add(m);
                 }
             }
@@ -93,13 +97,13 @@ public class ExpenseService {
     }
 
     public long create(String email, double amount, String currency, Long categoryId, String merchant,
-                       String description, String spentOn, String spentAt, String nit, String source) {
+                       String description, String spentOn, String spentAt, String nit, String source, String scope) {
         LocalDate day = spentOn == null || spentOn.isBlank() ? LocalDate.now() : LocalDate.parse(spentOn);
         java.time.LocalDateTime moment = parseMoment(spentAt, day);
         String sql = """
                 INSERT INTO expense (owner_email, amount, currency, category_id, merchant, description,
-                                     spent_on, spent_at, nit, source)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                     spent_on, spent_at, nit, source, scope)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id
                 """;
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
@@ -113,6 +117,7 @@ public class ExpenseService {
             ps.setObject(8, moment);
             ps.setString(9, nit);
             ps.setString(10, source == null || source.isBlank() ? "manual" : source);
+            ps.setString(11, norm(scope));
             try (ResultSet rs = ps.executeQuery()) { rs.next(); return rs.getLong(1); }
         } catch (Exception e) { throw new RuntimeException("Error creando gasto", e); }
     }
@@ -128,7 +133,7 @@ public class ExpenseService {
 
     /** Edita un gasto del usuario. categoryId se asigna tal cual (null = sin categoría). */
     public void update(String email, long id, Double amount, String currency, Long categoryId,
-                       String merchant, String description, String spentOn, String spentAt, String nit) {
+                       String merchant, String description, String spentOn, String spentAt, String nit, String scope) {
         LocalDate day = spentOn == null || spentOn.isBlank() ? null : LocalDate.parse(spentOn);
         java.time.LocalDateTime moment = spentAt == null || spentAt.isBlank() ? null : parseMoment(spentAt, day == null ? LocalDate.now() : day);
         String sql = """
@@ -140,7 +145,8 @@ public class ExpenseService {
                     description = ?,
                     nit         = ?,
                     spent_on    = COALESCE(?, spent_on),
-                    spent_at    = COALESCE(?, spent_at)
+                    spent_at    = COALESCE(?, spent_at),
+                    scope       = COALESCE(?, scope)
                 WHERE id = ? AND owner_email = ?
                 """;
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
@@ -152,8 +158,9 @@ public class ExpenseService {
             ps.setString(6, nit);
             ps.setObject(7, day);
             ps.setObject(8, moment);
-            ps.setLong(9, id);
-            ps.setString(10, email);
+            ps.setString(9, scope == null || scope.isBlank() ? null : norm(scope));
+            ps.setLong(10, id);
+            ps.setString(11, email);
             ps.executeUpdate();
         } catch (Exception e) { throw new RuntimeException("Error editando gasto", e); }
     }
@@ -167,28 +174,40 @@ public class ExpenseService {
         } catch (Exception e) { throw new RuntimeException("Error borrando gasto", e); }
     }
 
-    public Map<String, Object> summary(String email, String month) {
+    public Map<String, Object> summary(String email, String month, String scope) {
+        String sc = norm(scope);
+        boolean home = "home".equals(sc);
         String ym = month == null || month.isBlank() ? YearMonth.now().toString() : month;
-        String sql = "SELECT COALESCE(c.slug,'otros') AS slug, COALESCE(c.name,'Otros') AS name, "
-                + "COALESCE(c.color,'#9aa3b2') AS color, SUM(e.amount) AS total, MAX(b.amount) AS budget "
-                + "FROM expense e "
-                + "LEFT JOIN category c ON c.id = e.category_id "
-                + "LEFT JOIN budget b ON b.category_id = c.id AND b.owner_email = ? "
-                + "WHERE " + VISIBLE + " AND to_char(e.spent_on, 'YYYY-MM') = ? "
-                + "GROUP BY c.slug, c.name, c.color ORDER BY total DESC";
+        // Hogar: se agrupa por NOMBRE de categoría (cada miembro tiene sus propias
+        // categorías, se combinan por nombre). Mío: por categoría propia (slug).
+        String sql = home
+                ? "SELECT COALESCE(c.name,'Otros') AS name, MAX(COALESCE(c.color,'#9aa3b2')) AS color, "
+                  + "SUM(e.amount) AS total FROM expense e LEFT JOIN category c ON c.id = e.category_id "
+                  + "WHERE " + visible(sc) + " AND to_char(e.spent_on,'YYYY-MM') = ? "
+                  + "GROUP BY COALESCE(c.name,'Otros') ORDER BY total DESC"
+                : "SELECT COALESCE(c.slug,'otros') AS slug, COALESCE(c.name,'Otros') AS name, "
+                  + "COALESCE(c.color,'#9aa3b2') AS color, SUM(e.amount) AS total, MAX(b.amount) AS budget "
+                  + "FROM expense e LEFT JOIN category c ON c.id = e.category_id "
+                  + "LEFT JOIN budget b ON b.category_id = c.id AND b.owner_email = ? "
+                  + "WHERE " + visible(sc) + " AND to_char(e.spent_on, 'YYYY-MM') = ? "
+                  + "GROUP BY c.slug, c.name, c.color ORDER BY total DESC";
         List<Map<String, Object>> byCat = new ArrayList<>();
         double total = 0;
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setString(1, email);              // presupuesto propio
-            int i = bindVisible(ps, 2, email);   // visibilidad (7)
+            int i = home ? bindVisible(ps, 1, email, sc) : bindVisible(ps, 2, email, sc);
+            if (!home) ps.setString(1, email);   // presupuesto propio (solo vista mía)
             ps.setString(i, ym);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     double t = rs.getBigDecimal("total").doubleValue();
                     total += t;
-                    double budget = rs.getBigDecimal("budget") == null ? 0 : rs.getBigDecimal("budget").doubleValue();
-                    byCat.add(Map.of("slug", rs.getString("slug"), "name", rs.getString("name"),
-                            "color", rs.getString("color"), "total", t, "budget", budget));
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("slug", home ? rs.getString("name") : rs.getString("slug"));
+                    row.put("name", rs.getString("name"));
+                    row.put("color", rs.getString("color"));
+                    row.put("total", t);
+                    row.put("budget", home ? 0.0 : (rs.getBigDecimal("budget") == null ? 0.0 : rs.getBigDecimal("budget").doubleValue()));
+                    byCat.add(row);
                 }
             }
         } catch (Exception e) { throw new RuntimeException("Error en resumen", e); }
@@ -201,13 +220,15 @@ public class ExpenseService {
                 : month2.isAfter(current) ? 0 : LocalDate.now().getDayOfMonth();
         double dailyAvg = daysElapsed > 0 ? total / daysElapsed : 0;
         double projected = month2.equals(current) ? dailyAvg * daysInMonth : total;
-        int count = countExpenses(email, ym);
-        double prev = monthTotal(email, month2.minusMonths(1).toString());
+        int count = countExpenses(email, ym, sc);
+        double prev = monthTotal(email, month2.minusMonths(1).toString(), sc);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("month", ym);
+        out.put("scope", sc);
         out.put("total", total);
         out.put("byCategory", byCat);
+        if (home) out.put("byMember", byMember(email, ym));   // desglose por miembro (hogar)
         out.put("count", count);
         out.put("daysInMonth", daysInMonth);
         out.put("daysElapsed", daysElapsed);
@@ -217,31 +238,46 @@ public class ExpenseService {
         return out;
     }
 
-    private int countExpenses(String email, String ym) {
-        String sql = "SELECT COUNT(*) FROM expense e WHERE " + VISIBLE + " AND to_char(e.spent_on,'YYYY-MM') = ?";
+    /** Gasto del hogar por miembro (correo → total) en el mes. */
+    private List<Map<String, Object>> byMember(String email, String ym) {
+        String sql = "SELECT e.owner_email AS m, SUM(e.amount) AS total FROM expense e WHERE "
+                + visible("home") + " AND to_char(e.spent_on,'YYYY-MM') = ? GROUP BY e.owner_email ORDER BY total DESC";
+        List<Map<String, Object>> out = new ArrayList<>();
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-            int i = bindVisible(ps, 1, email); ps.setString(i, ym);
+            int i = bindVisible(ps, 1, email, "home"); ps.setString(i, ym);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) out.add(Map.of("email", nz(rs.getString("m")), "total", rs.getBigDecimal("total").doubleValue()));
+            }
+        } catch (Exception e) { return out; }
+        return out;
+    }
+
+    private int countExpenses(String email, String ym, String scope) {
+        String sql = "SELECT COUNT(*) FROM expense e WHERE " + visible(scope) + " AND to_char(e.spent_on,'YYYY-MM') = ?";
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            int i = bindVisible(ps, 1, email, scope); ps.setString(i, ym);
             try (ResultSet rs = ps.executeQuery()) { rs.next(); return rs.getInt(1); }
         } catch (Exception e) { return 0; }
     }
 
-    private double monthTotal(String email, String ym) {
-        String sql = "SELECT COALESCE(SUM(e.amount),0) FROM expense e WHERE " + VISIBLE + " AND to_char(e.spent_on,'YYYY-MM') = ?";
+    private double monthTotal(String email, String ym, String scope) {
+        String sql = "SELECT COALESCE(SUM(e.amount),0) FROM expense e WHERE " + visible(scope) + " AND to_char(e.spent_on,'YYYY-MM') = ?";
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-            int i = bindVisible(ps, 1, email); ps.setString(i, ym);
+            int i = bindVisible(ps, 1, email, scope); ps.setString(i, ym);
             try (ResultSet rs = ps.executeQuery()) { rs.next(); return rs.getBigDecimal(1).doubleValue(); }
         } catch (Exception e) { return 0; }
     }
 
-    public Map<String, Object> trend(String email, int months) {
+    public Map<String, Object> trend(String email, int months, String scope) {
+        String sc = norm(scope);
         int n = months <= 0 ? 6 : Math.min(months, 24);
         String sql = "SELECT to_char(date_trunc('month', e.spent_on), 'YYYY-MM') AS ym, SUM(e.amount) AS total "
-                + "FROM expense e WHERE " + VISIBLE
+                + "FROM expense e WHERE " + visible(sc)
                 + " AND e.spent_on >= (date_trunc('month', current_date) - make_interval(months => ?)) "
                 + "GROUP BY 1 ORDER BY 1";
         Map<String, Double> totals = new LinkedHashMap<>();
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-            int i = bindVisible(ps, 1, email);
+            int i = bindVisible(ps, 1, email, sc);
             ps.setInt(i, n - 1);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) totals.put(rs.getString("ym"), rs.getBigDecimal("total").doubleValue());
@@ -276,24 +312,21 @@ public class ExpenseService {
      * repiten (≥ 2 veces) en el mes y, sumadas, pesan. Agrupa por comercio (o
      * descripción/categoría) sobre los gastos propios del usuario.
      */
-    public Map<String, Object> antExpenses(String email, String month, double maxAmount) {
+    public Map<String, Object> antExpenses(String email, String month, double maxAmount, String scope) {
+        String sc = norm(scope);
         String ym = month == null || month.isBlank() ? YearMonth.now().toString() : month;
         double cap = maxAmount > 0 ? maxAmount : 40000;   // ~10 USD: umbral de «compra pequeña» por defecto
-        String sql = """
-                SELECT lower(coalesce(nullif(trim(e.merchant),''), nullif(trim(e.description),''), c.name, 'otros')) AS gkey,
-                       max(coalesce(nullif(trim(e.merchant),''), nullif(trim(e.description),''), c.name, 'Otros')) AS label,
-                       max(coalesce(c.color, '#9aa3b2')) AS color,
-                       count(*) AS n, sum(e.amount) AS total, avg(e.amount) AS avg
-                FROM expense e LEFT JOIN category c ON c.id = e.category_id
-                WHERE e.owner_email = ? AND to_char(e.spent_on,'YYYY-MM') = ? AND e.amount <= ?
-                GROUP BY gkey HAVING count(*) >= 2
-                ORDER BY sum(e.amount) DESC
-                """;
+        String sql = "SELECT lower(coalesce(nullif(trim(e.merchant),''), nullif(trim(e.description),''), c.name, 'otros')) AS gkey, "
+                + "max(coalesce(nullif(trim(e.merchant),''), nullif(trim(e.description),''), c.name, 'Otros')) AS label, "
+                + "max(coalesce(c.color, '#9aa3b2')) AS color, count(*) AS n, sum(e.amount) AS total, avg(e.amount) AS avg "
+                + "FROM expense e LEFT JOIN category c ON c.id = e.category_id "
+                + "WHERE " + visible(sc) + " AND to_char(e.spent_on,'YYYY-MM') = ? AND e.amount <= ? "
+                + "GROUP BY gkey HAVING count(*) >= 2 ORDER BY sum(e.amount) DESC";
         List<Map<String, Object>> groups = new ArrayList<>();
         double total = 0;
         int count = 0;
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setString(1, email); ps.setString(2, ym); ps.setDouble(3, cap);
+            int i = bindVisible(ps, 1, email, sc); ps.setString(i, ym); ps.setDouble(i + 1, cap);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     double t = rs.getBigDecimal("total").doubleValue();
@@ -321,15 +354,16 @@ public class ExpenseService {
         return out;
     }
 
-    /** Acumulado de gasto propio por día del mes (para la curva de «quema» del presupuesto). */
-    public List<Map<String, Object>> dailyCumulative(String email, String month) {
+    /** Acumulado de gasto por día del mes (para la curva de «quema» del presupuesto). */
+    public List<Map<String, Object>> dailyCumulative(String email, String month, String scope) {
+        String sc = norm(scope);
         String ym = month == null || month.isBlank() ? YearMonth.now().toString() : month;
-        String sql = "SELECT EXTRACT(DAY FROM spent_on)::int AS d, SUM(amount) AS total "
-                + "FROM expense WHERE owner_email = ? AND to_char(spent_on,'YYYY-MM') = ? GROUP BY d ORDER BY d";
+        String sql = "SELECT EXTRACT(DAY FROM e.spent_on)::int AS d, SUM(e.amount) AS total "
+                + "FROM expense e WHERE " + visible(sc) + " AND to_char(e.spent_on,'YYYY-MM') = ? GROUP BY d ORDER BY d";
         int days = YearMonth.parse(ym).lengthOfMonth();
         double[] perDay = new double[days + 1];
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setString(1, email); ps.setString(2, ym);
+            int i = bindVisible(ps, 1, email, sc); ps.setString(i, ym);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     int d = rs.getInt("d");
@@ -373,11 +407,11 @@ public class ExpenseService {
     public List<Map<String, Object>> itemsOf(String email, long expenseId) {
         String sql = "SELECT ei.name, ei.quantity, ei.unit_price, ei.line_total "
                 + "FROM expense_item ei JOIN expense e ON e.id = ei.expense_id "
-                + "WHERE ei.expense_id = ? AND " + VISIBLE + " ORDER BY ei.id";
+                + "WHERE ei.expense_id = ? AND " + VISIBLE_ANY + " ORDER BY ei.id";
         List<Map<String, Object>> out = new ArrayList<>();
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setLong(1, expenseId);
-            bindVisible(ps, 2, email);
+            bindAny(ps, 2, email);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     Map<String, Object> m = new LinkedHashMap<>();
@@ -400,12 +434,7 @@ public class ExpenseService {
     public List<Map<String, Object>> prices(String email) {
         // CTE común: puntos de precio visibles para el usuario (propios + del hogar compartidos).
         String cte = """
-                WITH fam AS (
-                  SELECT CASE WHEN requester_email = ? THEN addressee_email ELSE requester_email END AS email
-                  FROM connection
-                  WHERE status = 'accepted' AND (requester_email = ? OR addressee_email = ?)
-                ),
-                pts AS (
+                WITH pts AS (
                   SELECT ei.name_norm, ei.name,
                          COALESCE(NULLIF(e.merchant, ''), '(sin tienda)') AS store,
                          COALESCE(c.slug, 'otros') AS cat_slug,
@@ -417,13 +446,9 @@ public class ExpenseService {
                   JOIN expense e ON e.id = ei.expense_id
                   LEFT JOIN category c ON c.id = e.category_id
                   WHERE e.owner_email = ?
-                     OR ( e.owner_email IN (SELECT email FROM fam)
-                          AND ( EXISTS (SELECT 1 FROM expense_share es
-                                        WHERE es.expense_id = e.id AND es.shared_with = ?)
-                             OR EXISTS (SELECT 1 FROM category_share cs
-                                        WHERE cs.slug = c.slug
-                                          AND ( (cs.owner_email = e.owner_email AND cs.shared_with = ?)
-                                             OR (cs.owner_email = ? AND cs.shared_with = e.owner_email) )) ) )
+                     OR ( e.scope = 'home' AND e.owner_email IN (
+                            SELECT CASE WHEN requester_email = ? THEN addressee_email ELSE requester_email END
+                            FROM connection WHERE status = 'accepted' AND (requester_email = ? OR addressee_email = ?) ) )
                 )
                 """;
         String storesSql = cte + """
@@ -445,7 +470,7 @@ public class ExpenseService {
                 """;
         Map<String, Map<String, Object>> prod = new LinkedHashMap<>();
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(storesSql)) {
-            for (int i = 1; i <= 8; i++) ps.setString(i, email);
+            for (int i = 1; i <= 5; i++) ps.setString(i, email);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     String norm = rs.getString("name_norm");
@@ -488,7 +513,7 @@ public class ExpenseService {
                 FROM pts WHERE price IS NOT NULL ORDER BY name_norm, spent_on ASC, store
                 """;
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(pointsSql)) {
-            for (int i = 1; i <= 8; i++) ps.setString(i, email);
+            for (int i = 1; i <= 5; i++) ps.setString(i, email);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     Map<String, Object> p = prod.get(rs.getString("name_norm"));
@@ -530,90 +555,6 @@ public class ExpenseService {
             int byPts = Integer.compare((int) b.get("pointCount"), (int) a.get("pointCount"));
             return byPts != 0 ? byPts : Integer.compare((int) b.get("storeCount"), (int) a.get("storeCount"));
         });
-        return out;
-    }
-
-    // ══════════════ Compartir con el hogar ══════════════
-
-    /** Reemplaza con quién está compartido un gasto (solo si es del dueño). */
-    public void shareExpense(String owner, long expenseId, List<String> emails) {
-        try (Connection c = ds.getConnection()) {
-            boolean owned;
-            try (PreparedStatement ps = c.prepareStatement("SELECT 1 FROM expense WHERE id=? AND owner_email=?")) {
-                ps.setLong(1, expenseId); ps.setString(2, owner);
-                try (ResultSet rs = ps.executeQuery()) { owned = rs.next(); }
-            }
-            if (!owned) return;
-            try (PreparedStatement del = c.prepareStatement("DELETE FROM expense_share WHERE expense_id=?")) {
-                del.setLong(1, expenseId); del.executeUpdate();
-            }
-            insertShares(c, "INSERT INTO expense_share (expense_id, shared_with) VALUES (?, ?) ON CONFLICT DO NOTHING",
-                    emails, (ps, em) -> { ps.setLong(1, expenseId); ps.setString(2, em); });
-        } catch (Exception e) { throw new RuntimeException("Error compartiendo gasto", e); }
-    }
-
-    /** Reemplaza con quién está compartida una categoría del dueño (por slug). */
-    public void shareCategory(String owner, String slug, List<String> emails) {
-        try (Connection c = ds.getConnection()) {
-            try (PreparedStatement del = c.prepareStatement("DELETE FROM category_share WHERE owner_email=? AND slug=?")) {
-                del.setString(1, owner); del.setString(2, slug); del.executeUpdate();
-            }
-            insertShares(c, "INSERT INTO category_share (owner_email, slug, shared_with) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
-                    emails, (ps, em) -> { ps.setString(1, owner); ps.setString(2, slug); ps.setString(3, em); });
-        } catch (Exception e) { throw new RuntimeException("Error compartiendo categoría", e); }
-    }
-
-    @FunctionalInterface private interface Binder { void bind(PreparedStatement ps, String email) throws java.sql.SQLException; }
-
-    private static void insertShares(Connection c, String sql, List<String> emails, Binder b) throws java.sql.SQLException {
-        if (emails == null || emails.isEmpty()) return;
-        try (PreparedStatement ps = c.prepareStatement(sql)) {
-            for (String em : emails) {
-                if (em == null || em.isBlank()) continue;
-                b.bind(ps, em.trim().toLowerCase());
-                ps.addBatch();
-            }
-            ps.executeBatch();
-        }
-    }
-
-    /** Correos con los que está compartido un gasto del dueño. */
-    public List<String> sharesOfExpense(String owner, long expenseId) {
-        List<String> out = new ArrayList<>();
-        String sql = "SELECT es.shared_with FROM expense_share es JOIN expense e ON e.id=es.expense_id "
-                + "WHERE es.expense_id=? AND e.owner_email=? ORDER BY es.shared_with";
-        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setLong(1, expenseId); ps.setString(2, owner);
-            try (ResultSet rs = ps.executeQuery()) { while (rs.next()) out.add(rs.getString(1)); }
-        } catch (Exception e) { throw new RuntimeException("Error consultando compartición", e); }
-        return out;
-    }
-
-    /** Categorías del dueño que están compartidas: {slug, emails[]}. */
-    public List<Map<String, Object>> sharedCategories(String owner) {
-        List<Map<String, Object>> out = new ArrayList<>();
-        String sql = "SELECT slug, array_agg(shared_with ORDER BY shared_with) AS emails "
-                + "FROM category_share WHERE owner_email=? GROUP BY slug";
-        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setString(1, owner);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("slug", rs.getString("slug"));
-                    m.put("emails", textArray(rs.getArray("emails")));
-                    out.add(m);
-                }
-            }
-        } catch (Exception e) { throw new RuntimeException("Error consultando categorías compartidas", e); }
-        return out;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static List<String> textArray(java.sql.Array arr) throws java.sql.SQLException {
-        List<String> out = new ArrayList<>();
-        if (arr == null) return out;
-        Object o = arr.getArray();
-        if (o instanceof Object[] a) for (Object x : a) if (x != null) out.add(String.valueOf(x));
         return out;
     }
 

@@ -54,7 +54,7 @@ public class AlertService {
                 SELECT b.category_id, c.name, b.amount AS budget,
                        COALESCE((SELECT SUM(e.amount) FROM expense e
                                  WHERE e.owner_email = ? AND e.category_id = b.category_id
-                                   AND to_char(e.spent_on,'YYYY-MM') = ?), 0) AS spent
+                                   AND e.scope = 'mine' AND to_char(e.spent_on,'YYYY-MM') = ?), 0) AS spent
                 FROM budget b JOIN category c ON c.id = b.category_id
                 WHERE b.owner_email = ? AND b.amount > 0
                 """;
@@ -73,7 +73,7 @@ public class AlertService {
     }
 
     private void checkGlobal(String email, String ym) {
-        double tope = income.totalForMonth(email, ym);
+        double tope = income.totalForMonth(email, ym, "mine");
         if (tope <= 0) return;                       // sin ingresos declarados no hay tope global
         double spent = monthSpend(email, ym);
         if (spent < tope) return;
@@ -84,7 +84,7 @@ public class AlertService {
     }
 
     private double monthSpend(String email, String ym) {
-        String sql = "SELECT COALESCE(SUM(amount),0) FROM expense WHERE owner_email = ? AND to_char(spent_on,'YYYY-MM') = ?";
+        String sql = "SELECT COALESCE(SUM(amount),0) FROM expense WHERE owner_email = ? AND scope = 'mine' AND to_char(spent_on,'YYYY-MM') = ?";
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setString(1, email); ps.setString(2, ym);
             try (ResultSet rs = ps.executeQuery()) { return rs.next() ? rs.getBigDecimal(1).doubleValue() : 0; }

@@ -49,33 +49,8 @@ public class CategoryService {
      * Cada una trae su dueño; el usuario no puede editarlas (no son suyas).
      */
     public List<Map<String, Object>> sharedInList(String email) {
-        String sql = """
-                SELECT c.id, c.slug, c.name, c.color, c.icon, c.owner_email AS owner
-                FROM category c
-                WHERE c.owner_email IN (
-                        SELECT CASE WHEN requester_email = ? THEN addressee_email ELSE requester_email END
-                        FROM connection WHERE status = 'accepted' AND (requester_email = ? OR addressee_email = ?))
-                  AND EXISTS (SELECT 1 FROM category_share cs WHERE cs.slug = c.slug
-                              AND ( (cs.owner_email = c.owner_email AND cs.shared_with = ?)
-                                 OR (cs.owner_email = ? AND cs.shared_with = c.owner_email) ))
-                ORDER BY c.name
-                """;
+        // El compartir por categoría se retiró (modelo de hogar por scope): sin categorías ajenas.
         List<Map<String, Object>> out = new ArrayList<>();
-        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-            for (int i = 1; i <= 5; i++) ps.setString(i, email);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("id", rs.getLong("id"));
-                    m.put("slug", rs.getString("slug"));
-                    m.put("name", rs.getString("name"));
-                    m.put("color", rs.getString("color"));
-                    m.put("icon", rs.getString("icon"));
-                    m.put("owner", rs.getString("owner"));
-                    out.add(m);
-                }
-            }
-        } catch (Exception e) { throw new RuntimeException("Error listando categorías compartidas", e); }
         return out;
     }
 
