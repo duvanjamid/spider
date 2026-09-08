@@ -76,23 +76,18 @@ public class NotificationService {
     }
 
     /**
-     * Nueva compra en una categoría/gasto compartido. Destinatarios: con quienes
-     * el dueño comparte esa categoría (category_share) más los del gasto puntual.
+     * Nueva compra del hogar. Destinatarios: los miembros del hogar indicados
+     * (el compartir por categoría se retiró en V11; el ámbito «home» ya define
+     * a quién le llega). Nunca debe romper el alta del gasto: es un efecto
+     * secundario y va después del commit.
      */
     public void sharedExpense(String actor, String categorySlug, String categoryName,
                               long expenseId, List<String> explicitShareWith, String label) {
-        Set<String> recipients = new LinkedHashSet<>();
-        if (categorySlug != null && !categorySlug.isBlank()) {
-            String sql = "SELECT shared_with FROM category_share WHERE owner_email = ? AND slug = ?";
-            try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-                ps.setString(1, actor); ps.setString(2, categorySlug);
-                try (ResultSet rs = ps.executeQuery()) { while (rs.next()) recipients.add(rs.getString(1)); }
-            } catch (Exception e) { throw new RuntimeException("Error buscando destinatarios", e); }
-        }
-        if (explicitShareWith != null) recipients.addAll(explicitShareWith);
-        String cat = categoryName == null || categoryName.isBlank() ? "una categoría compartida" : "«" + categoryName + "»";
+        if (explicitShareWith == null || explicitShareWith.isEmpty()) return;
+        Set<String> recipients = new LinkedHashSet<>(explicitShareWith);
+        String cat = categoryName == null || categoryName.isBlank() ? "el hogar" : "«" + categoryName + "»";
         for (String r : recipients) {
-            push(r, "shared_expense", "Nueva compra compartida",
+            push(r, "home_expense", "Nueva compra del hogar",
                     nameOf(actor) + " agregó " + (label == null || label.isBlank() ? "una compra" : label)
                             + " en " + cat + ".", actor, "exp:" + expenseId);
         }

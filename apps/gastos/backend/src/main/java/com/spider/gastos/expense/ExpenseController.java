@@ -204,7 +204,13 @@ public final class ExpenseController {
                 svc.addItems(id, items);
             }
             svc.addTaxes(id, taxMaps(in.taxes()));   // impuestos/cargos incluidos en el total
-            if ("home".equals(in.scope())) notifyExpense(user, catId, id, connections.connected(user), nz(in.merchant()));
+            // Efectos secundarios (notificar al hogar, evaluar topes): nunca deben
+            // romper el alta del gasto ni devolver 500 tras haberlo guardado.
+            if ("home".equals(in.scope())) {
+                try { notifyExpense(user, catId, id, connections.connected(user), nz(in.merchant())); }
+                catch (Exception ex) { org.slf4j.LoggerFactory.getLogger(ExpenseController.class)
+                        .warn("No se pudo notificar la compra del hogar: {}", ex.getMessage()); }
+            }
             alerts.check(user, monthOf(in.spentOn()));   // avisa si superó algún tope
             ctx.status(201).json(Map.of("id", id));
         });
