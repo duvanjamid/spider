@@ -14,7 +14,7 @@ import {
 
 type SheetState = 'form' | 'loading' | 'error' | 'unreadable';
 // Vistas de página completa (nada de modales). '' = pestaña principal.
-type View = '' | 'income' | 'categories' | 'category-edit' | 'recurring' | 'compare' | 'home' | 'register' | 'detail' | 'price-detail';
+type View = '' | 'income' | 'categories' | 'category-edit' | 'recurring' | 'compare' | 'home' | 'register' | 'detail' | 'price-detail' | 'notifs';
 
 // Fechas en la ZONA LOCAL del navegador (no UTC).
 function localYM(d: Date = new Date()): string {
@@ -211,6 +211,14 @@ function localYMD(d: Date = new Date()): string {
     .tax-bar-top { display: flex; align-items: center; gap: 8px; font-size: .9rem; margin-bottom: 4px; }
     .tax-bar-top .spacer { flex: 1; }
     .tax-bar-foot { font-size: .78rem; margin-top: 3px; }
+    /* Agrupación manual de precios */
+    .group-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .pcard.sel { outline: 2px solid var(--accent); outline-offset: -1px; }
+    .pcard-check { width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--border); display: inline-grid; place-items: center; margin-right: 8px; color: transparent; font-size: .7rem; flex: none; }
+    .pcard-check.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .grouped-tag { color: var(--accent-strong); font-size: .8rem; margin-left: 6px; }
+    .pd-grouped { display: flex; align-items: center; gap: 10px; margin: 4px 0 14px; font-size: .85rem; }
+    .pd-grouped .muted { flex: 1; }
 
     /* Cabecera de tarjeta con acción */
     .card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
@@ -744,7 +752,7 @@ function localYMD(d: Date = new Date()): string {
 
       <!-- ═══ Pestaña: Precios ═══ -->
       <section class="page" *ngIf="!view() && tab() === 4">
-        <div class="filters" *ngIf="prices().length">
+        <div class="filters" *ngIf="prices().length && !priceSelectMode()">
           <input class="inp" style="flex:1;min-width:150px" type="text" [ngModel]="priceQuery()" (ngModelChange)="priceQuery.set($event)" placeholder="Buscar producto…" />
           <select class="sel" style="width:auto" [ngModel]="priceCat()" (ngModelChange)="priceCat.set($event)">
             <option value="">Todas las categorías</option>
@@ -755,15 +763,26 @@ function localYMD(d: Date = new Date()): string {
             <option *ngFor="let s of priceStores()" [value]="s">{{ s }}</option>
           </select>
         </div>
+        <div class="group-bar" *ngIf="prices().length">
+          <button *ngIf="!priceSelectMode()" class="link-btn" (click)="startPriceSelect()"><i class="fa-solid fa-object-group"></i> Agrupar productos</button>
+          <ng-container *ngIf="priceSelectMode()">
+            <span class="muted" style="flex:1;font-size:.85rem">{{ priceSel().size }} seleccionado(s) · toca los que son el mismo</span>
+            <button class="link-btn" (click)="cancelPriceSelect()">Cancelar</button>
+            <p-button label="Unir" icon="fa-solid fa-object-group" size="small" [disabled]="priceSel().size < 2" (onClick)="mergeSelected()" />
+          </ng-container>
+        </div>
         <p class="muted" *ngIf="pricesLoaded() && prices().length === 0" style="text-align:center;padding:40px 0">
           <i class="fa-solid fa-tags" style="font-size:1.6rem;display:block;margin-bottom:10px"></i>
           Escanea facturas con detalle de productos y aquí verás dónde está más barato cada cosa.
         </p>
         <p class="muted" *ngIf="prices().length && filteredPrices().length === 0" style="text-align:center;padding:24px">Sin productos que coincidan con el filtro.</p>
         <div class="plist">
-          <div class="pcard" *ngFor="let p of filteredPrices()" (click)="openPriceDetail(p)">
+          <div class="pcard" *ngFor="let p of filteredPrices()" [class.sel]="isPriceSel(p)"
+               (click)="priceSelectMode() ? togglePriceSel(p) : openPriceDetail(p)">
             <div class="pcard-h">
+              <span *ngIf="priceSelectMode()" class="pcard-check" [class.on]="isPriceSel(p)"><i class="fa-solid fa-check"></i></span>
               <b>{{ p.name }}</b>
+              <span class="grouped-tag" *ngIf="p.grouped" title="Grupo manual"><i class="fa-solid fa-object-group"></i></span>
               <span class="trend" [class.down]="p.trendPct < 0" [class.up]="p.trendPct > 0" [class.flat]="p.trendPct === 0" *ngIf="p.pointCount > 1">
                 <i class="fa-solid" [class.fa-arrow-trend-down]="p.trendPct < 0" [class.fa-arrow-trend-up]="p.trendPct > 0" [class.fa-minus]="p.trendPct === 0"></i>
                 {{ p.trendPct > 0 ? '+' : '' }}{{ p.trendPct }}%
@@ -797,6 +816,10 @@ function localYMD(d: Date = new Date()): string {
             </span>
           </div>
           <div class="pd-sub">Último precio · {{ p.lastOn }}<span *ngIf="p.categoryName"> · {{ p.categoryName }}</span></div>
+          <div *ngIf="p.grouped" class="pd-grouped">
+            <span class="muted"><i class="fa-solid fa-object-group"></i> Grupo manual de productos</span>
+            <button class="link-btn" (click)="ungroupPrice(p)">Separar</button>
+          </div>
 
           <p-card header="Evolución del precio" *ngIf="p.pointCount > 1; else noEvo">
             <div class="chart-box" style="height:240px"><p-chart type="line" [data]="priceChart()" [options]="priceChartOptions()" /></div>
@@ -848,17 +871,18 @@ function localYMD(d: Date = new Date()): string {
             <div class="acc-title" style="display:flex;align-items:center;gap:8px">
               Notificaciones
               <span class="pf-chip" *ngIf="unread() > 0" style="margin:0;padding:2px 8px;font-size:.66rem">{{ unread() }} nueva(s)</span>
-              <span class="spacer" style="flex:1"></span>
-              <button *ngIf="notifs().length" class="link-btn" (click)="markAllNotifs()">Marcar leídas</button>
             </div>
-            <div class="notif-list" *ngIf="notifs().length; else noNotifs">
-              <button class="notif" *ngFor="let n of notifs()" [class.unread]="!n.read" (click)="onNotif(n)">
+            <div class="notif-list" *ngIf="recentNotifs().length; else noNotifs">
+              <button class="notif" *ngFor="let n of recentNotifs()" [class.unread]="!n.read" (click)="onNotif(n)">
                 <span class="notif-ic" [style.background]="notifTint(n.kind)"><i [class]="notifIcon(n.kind)"></i></span>
                 <span class="notif-body"><b>{{ n.title }}</b><small>{{ n.body }}</small><small class="notif-time">{{ notifWhen(n.createdAt) }}</small></span>
                 <span class="notif-dot" *ngIf="!n.read"></span>
               </button>
             </div>
             <ng-template #noNotifs><p class="muted" style="text-align:center;padding:14px 0;font-size:.86rem">Sin notificaciones por ahora.</p></ng-template>
+            <button *ngIf="notifs().length" class="link-btn" style="margin-top:10px;width:100%;text-align:center" (click)="openNotifsView()">
+              Ver todas ({{ notifs().length }}) <i class="fa-solid fa-chevron-right" style="font-size:.7rem"></i>
+            </button>
           </div>
 
           <div class="acc-group">
@@ -888,6 +912,27 @@ function localYMD(d: Date = new Date()): string {
           </div>
           <div class="acc-foot">Gastos · Spider<span *ngIf="isTest()"> · entorno test</span></div>
         </div>
+      </section>
+
+      <!-- ═══ Vista: Todas las notificaciones ═══ -->
+      <section class="page" *ngIf="view() === 'notifs'">
+        <div class="list-head">
+          <span class="lh-title">Notificaciones</span>
+          <span class="spacer" style="flex:1"></span>
+          <button *ngIf="unread() > 0" class="link-btn" (click)="markAllNotifs()">Marcar todas leídas</button>
+        </div>
+        <div class="notif-list" *ngIf="notifs().length; else noNotifsAll">
+          <button class="notif" *ngFor="let n of notifs()" [class.unread]="!n.read" (click)="onNotif(n)">
+            <span class="notif-ic" [style.background]="notifTint(n.kind)"><i [class]="notifIcon(n.kind)"></i></span>
+            <span class="notif-body">
+              <b>{{ n.title }}</b>
+              <small>{{ n.body }}</small>
+              <small class="notif-time">{{ notifWhen(n.createdAt) }}<span *ngIf="n.ref && n.ref.startsWith('exp:')"> · toca para ver la compra</span></small>
+            </span>
+            <span class="notif-dot" *ngIf="!n.read"></span>
+          </button>
+        </div>
+        <ng-template #noNotifsAll><p class="muted" style="text-align:center;padding:24px 0">Sin notificaciones.</p></ng-template>
       </section>
 
       <!-- ═══ Vista: Registrar gasto (manual / texto / cámara / galería) ═══ -->
@@ -1414,7 +1459,7 @@ export class AppComponent implements OnInit, OnDestroy {
   // Impuestos / cargos del mes (por ámbito)
   readonly taxSummary = signal<TaxSummary | null>(null);
   // Catálogo de tipos predefinidos (el usuario puede escribir otro).
-  readonly taxKinds = ['IVA', 'Impuesto al consumo', 'Propina', 'Servicio', 'Retención', 'Impuesto a la bolsa', 'Otro'];
+  readonly taxKinds = ['IVA', 'Impuesto al consumo', 'Propina / Servicio', 'Retención', 'Impuesto a la bolsa', 'Otro'];
 
   // Precios
   readonly prices = signal<PriceProduct[]>([]);
@@ -1667,6 +1712,7 @@ export class AppComponent implements OnInit, OnDestroy {
       case 'recurring': return 'Gastos recurrentes';
       case 'compare': return 'Comparar meses';
       case 'home': return 'Hogar';
+      case 'notifs': return 'Notificaciones';
       case 'detail': return this.editing() ? 'Editar gasto' : 'Detalle del gasto';
       case 'price-detail': return this.priceDetail()?.name || 'Precio';
       case 'register':
@@ -1737,27 +1783,48 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.isGuest()) return;
     this.api.notifCount().subscribe({ next: (r) => this.unread.set(r.unread || 0), error: () => {} });
   }
+  /** Carga la lista de notificaciones SIN marcarlas leídas (eso pasa al tocarlas). */
   private openNotifs(): void {
     if (this.isGuest()) return;
     this.api.notifications().subscribe({
-      next: (r) => {
-        this.notifs.set(r.items || []);
-        if ((r.unread || 0) > 0) this.api.markAllNotifRead().subscribe({ next: () => this.unread.set(0), error: () => {} });
-        else this.unread.set(0);
-      },
+      next: (r) => { this.notifs.set(r.items || []); this.unread.set(r.unread || 0); },
       error: () => {},
     });
   }
+  /** Las 2 más recientes, para el vistazo rápido en «Cuenta». */
+  readonly recentNotifs = computed(() => this.notifs().slice(0, 2));
+  /** Vista completa de notificaciones (leídas y no leídas). */
+  openNotifsView(): void { this.openNotifs(); this.nav('notifs'); }
   markAllNotifs(): void {
     this.api.markAllNotifRead().subscribe({
       next: () => { this.unread.set(0); this.notifs.set(this.notifs().map((n) => ({ ...n, read: true }))); },
       error: () => {},
     });
   }
+  /** Marca UNA como leída (local + servidor) y actualiza el contador. */
+  private markOneRead(n: Notif): void {
+    if (n.read) return;
+    this.notifs.set(this.notifs().map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+    this.unread.set(Math.max(0, this.unread() - 1));
+    this.api.markNotifRead(n.id).subscribe({ next: () => {}, error: () => {} });
+  }
   onNotif(n: Notif): void {
+    this.markOneRead(n);
+    // Ir al detalle de la compra si la notificación referencia un gasto (ref = "exp:<id>").
+    if (n.ref && n.ref.startsWith('exp:')) {
+      const id = Number(n.ref.slice(4));
+      if (id > 0) { this.openExpenseById(id); return; }
+    }
     if (n.kind === 'connection_invite' || n.kind === 'connection_accepted') this.openHome();
     else if (n.kind === 'home_expense' || n.kind === 'shared_expense') { this.goTab(3); this.setScope('home'); }
     else if (n.kind === 'budget_exceeded') this.goTab(0);
+  }
+  /** Abre el detalle de un gasto por id (desde una notificación del hogar). */
+  private openExpenseById(id: number): void {
+    this.api.getExpense(id).subscribe({
+      next: (e) => this.openDetail(e),
+      error: () => { this.goTab(3); this.setScope('home'); alert('Esa compra ya no está disponible.'); },
+    });
   }
   notifIcon(kind: string): string {
     return kind === 'connection_invite' ? 'fa-solid fa-user-plus'
@@ -2204,6 +2271,40 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
   openPriceDetail(p: PriceProduct): void { this.priceDetail.set(p); this.nav('price-detail'); }
+
+  // ── Agrupación manual de precios ──
+  readonly priceSelectMode = signal<boolean>(false);
+  readonly priceSel = signal<Set<string>>(new Set());
+  startPriceSelect(): void { this.priceSelectMode.set(true); this.priceSel.set(new Set()); }
+  cancelPriceSelect(): void { this.priceSelectMode.set(false); this.priceSel.set(new Set()); }
+  isPriceSel(p: PriceProduct): boolean { return !!p.nameNorm && this.priceSel().has(p.nameNorm); }
+  togglePriceSel(p: PriceProduct): void {
+    if (!p.nameNorm) return;
+    const s = new Set(this.priceSel());
+    s.has(p.nameNorm) ? s.delete(p.nameNorm) : s.add(p.nameNorm);
+    this.priceSel.set(s);
+  }
+  mergeSelected(): void {
+    const names = Array.from(this.priceSel());
+    if (names.length < 2) return;
+    // Nombre por defecto: el del primer producto seleccionado (el más corto suele ser el genérico).
+    const chosen = this.filteredPrices().filter((p) => p.nameNorm && names.includes(p.nameNorm));
+    const suggested = chosen.map((p) => p.name).sort((a, b) => a.length - b.length)[0] || chosen[0]?.name || '';
+    const name = (prompt('Nombre del grupo (todos contarán como este producto):', suggested) || '').trim();
+    if (!name) return;
+    this.api.groupPrices(names, name).subscribe({
+      next: () => { this.cancelPriceSelect(); this.loadPrices(); },
+      error: () => alert('No se pudo agrupar.'),
+    });
+  }
+  ungroupPrice(p: PriceProduct): void {
+    if (!p.nameNorm) return;
+    if (!confirm('¿Separar este grupo? Los productos volverán a contarse por separado.')) return;
+    this.api.ungroupPrices(p.nameNorm).subscribe({
+      next: () => { this.loadPrices(); this.goBack(); },
+      error: () => alert('No se pudo separar.'),
+    });
+  }
 
   // Mini-evolución (sparkline) como coordenadas SVG en un viewBox 120×40.
   private sparkPts(p: PriceProduct): string {

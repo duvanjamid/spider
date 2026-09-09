@@ -98,6 +98,45 @@ public class ExpenseService {
         return out;
     }
 
+    /** Un gasto visible para el usuario (propio o del hogar) por id; null si no existe/no visible. */
+    public Map<String, Object> getOne(String email, long id) {
+        String sql = "SELECT e.id, e.amount, e.currency, e.merchant, e.description, e.nit, e.owner_email AS owner, e.scope, "
+                + "e.spent_on, COALESCE(e.spent_at, e.spent_on::timestamptz) AS spent_at, e.created_at, e.source, "
+                + "c.slug AS cat_slug, c.name AS cat_name, c.color AS cat_color, "
+                + "(SELECT COALESCE(SUM(amount),0) FROM expense_tax WHERE expense_id = e.id) AS tax_total "
+                + "FROM expense e LEFT JOIN category c ON c.id = e.category_id "
+                + "WHERE e.id = ? AND " + VISIBLE_ANY;
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setLong(1, id);
+            bindAny(ps, 2, email);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", rs.getLong("id"));
+                m.put("amount", rs.getBigDecimal("amount").doubleValue());
+                m.put("currency", rs.getString("currency"));
+                m.put("merchant", nz(rs.getString("merchant")));
+                m.put("description", nz(rs.getString("description")));
+                m.put("nit", nz(rs.getString("nit")));
+                m.put("spentOn", rs.getString("spent_on"));
+                m.put("spentAt", String.valueOf(rs.getObject("spent_at")));
+                m.put("registeredAt", String.valueOf(rs.getObject("created_at")));
+                m.put("source", rs.getString("source"));
+                m.put("categorySlug", nz(rs.getString("cat_slug")));
+                m.put("categoryName", nz(rs.getString("cat_name")));
+                m.put("categoryColor", nz(rs.getString("cat_color")));
+                String owner = rs.getString("owner");
+                boolean mine = owner != null && owner.equalsIgnoreCase(email);
+                m.put("scope", rs.getString("scope"));
+                m.put("mine", mine);
+                m.put("by", mine ? "" : nz(owner));
+                m.put("canEdit", mine);
+                m.put("taxTotal", rs.getBigDecimal("tax_total") == null ? 0.0 : rs.getBigDecimal("tax_total").doubleValue());
+                return m;
+            }
+        } catch (Exception e) { throw new RuntimeException("Error consultando gasto", e); }
+    }
+
     public long create(String email, double amount, String currency, Long categoryId, String merchant,
                        String description, String spentOn, String spentAt, String nit, String source, String scope) {
         LocalDate day = spentOn == null || spentOn.isBlank() ? LocalDate.now() : LocalDate.parse(spentOn);
@@ -430,18 +469,45 @@ public class ExpenseService {
 
     // ── Impuestos / cargos de un gasto ──
 
-    /** Inserta los impuestos/cargos de un gasto (kind + amount). Ignora vacíos y montos ≤ 0. */
+    /**
+     * Canonicaliza el nombre de un impuesto/cargo para no duplicar sinónimos:
+     * «servicio» y «propina» son lo mismo → «Propina / Servicio»; unifica también
+     * las variantes de IVA e impuesto al consumo. Cualquier otro se conserva tal cual.
+     */
+    static String canonTax(String kind) {
+        if (kind == null) return "";
+        String k = java.text.Normalizer.normalize(kind, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "").toLowerCase().trim().replaceAll("\\s+", " ");
+        if (k.isBlank()) return "";
+        if (k.contains("propina") || k.contains("servicio")) return "Propina / Servicio";
+        if (k.equals("iva") || k.contains("valor agregado") || k.contains("impuesto al valor")) return "IVA";
+        if (k.contains("consumo") || k.equals("inc") || k.contains("impoconsumo")) return "Impuesto al consumo";
+        if (k.contains("retenc") || k.equals("rte") || k.contains("rte fuente")) return "Retención";
+        if (k.contains("bolsa")) return "Impuesto a la bolsa";
+        return kind.trim();   // otro: se conserva el texto original
+    }
+
+    /**
+     * Inserta los impuestos/cargos de un gasto, ya canonicalizados y SUMANDO los
+     * repetidos (p.ej. dos «servicio» + «propina» quedan en una sola «Propina /
+     * Servicio»). Ignora vacíos y montos ≤ 0.
+     */
     public void addTaxes(long expenseId, List<Map<String, Object>> taxes) {
         if (taxes == null || taxes.isEmpty()) return;
+        java.util.LinkedHashMap<String, Double> merged = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> t : taxes) {
+            String kind = canonTax(str(t.get("kind")));
+            double amount = toDouble(t.get("amount"));
+            if (kind.isBlank() || amount <= 0) continue;
+            merged.merge(kind, amount, Double::sum);
+        }
+        if (merged.isEmpty()) return;
         String sql = "INSERT INTO expense_tax (expense_id, kind, amount) VALUES (?, ?, ?)";
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-            for (Map<String, Object> t : taxes) {
-                String kind = str(t.get("kind")).trim();
-                double amount = toDouble(t.get("amount"));
-                if (kind.isBlank() || amount <= 0) continue;
+            for (Map.Entry<String, Double> e : merged.entrySet()) {
                 ps.setLong(1, expenseId);
-                ps.setString(2, kind);
-                ps.setDouble(3, amount);
+                ps.setString(2, e.getKey());
+                ps.setDouble(3, e.getValue());
                 ps.addBatch();
             }
             ps.executeBatch();
@@ -531,9 +597,13 @@ public class ExpenseService {
      */
     public List<Map<String, Object>> prices(String email) {
         // CTE común: puntos de precio visibles para el usuario (propios + del hogar compartidos).
+        // Clave/nombre efectivos: si el usuario agrupó el producto (price_alias),
+        // se usa la clave y el nombre del grupo; si no, los del propio producto.
         String cte = """
                 WITH pts AS (
-                  SELECT ei.name_norm, ei.name,
+                  SELECT COALESCE(al.group_norm, ei.name_norm) AS name_norm,
+                         COALESCE(al.group_name, ei.name) AS name,
+                         (al.group_norm IS NOT NULL) AS aliased,
                          COALESCE(NULLIF(e.merchant, ''), '(sin tienda)') AS store,
                          COALESCE(c.slug, 'otros') AS cat_slug,
                          COALESCE(c.name, 'Sin categoría') AS cat_name,
@@ -543,6 +613,7 @@ public class ExpenseService {
                   FROM expense_item ei
                   JOIN expense e ON e.id = ei.expense_id
                   LEFT JOIN category c ON c.id = e.category_id
+                  LEFT JOIN price_alias al ON al.owner_email = ? AND al.name_norm = ei.name_norm
                   WHERE e.owner_email = ?
                      OR ( e.scope = 'home' AND e.owner_email IN (
                             SELECT CASE WHEN requester_email = ? THEN addressee_email ELSE requester_email END
@@ -554,6 +625,7 @@ public class ExpenseService {
                        (array_agg(name ORDER BY spent_on DESC))[1] AS name,
                        (array_agg(cat_slug ORDER BY spent_on DESC))[1] AS cat_slug,
                        (array_agg(cat_name ORDER BY spent_on DESC))[1] AS cat_name,
+                       bool_or(aliased) AS grouped,
                        store,
                        bool_or(shared_in) AS shared_store,
                        MIN(price) AS min_price,
@@ -568,16 +640,18 @@ public class ExpenseService {
                 """;
         Map<String, Map<String, Object>> prod = new LinkedHashMap<>();
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(storesSql)) {
-            for (int i = 1; i <= 5; i++) ps.setString(i, email);
+            for (int i = 1; i <= 6; i++) ps.setString(i, email);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     String norm = rs.getString("name_norm");
                     Map<String, Object> p = prod.get(norm);
                     if (p == null) {
                         p = new LinkedHashMap<>();
+                        p.put("nameNorm", norm);
                         p.put("name", rs.getString("name"));
                         p.put("categorySlug", rs.getString("cat_slug"));
                         p.put("categoryName", rs.getString("cat_name"));
+                        p.put("grouped", rs.getBoolean("grouped"));
                         p.put("stores", new ArrayList<Map<String, Object>>());
                         p.put("points", new ArrayList<Map<String, Object>>());
                         p.put("minPrice", Double.MAX_VALUE);
@@ -611,7 +685,7 @@ public class ExpenseService {
                 FROM pts WHERE price IS NOT NULL ORDER BY name_norm, spent_on ASC, store
                 """;
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(pointsSql)) {
-            for (int i = 1; i <= 5; i++) ps.setString(i, email);
+            for (int i = 1; i <= 6; i++) ps.setString(i, email);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     Map<String, Object> p = prod.get(rs.getString("name_norm"));
@@ -654,6 +728,45 @@ public class ExpenseService {
             return byPts != 0 ? byPts : Integer.compare((int) b.get("storeCount"), (int) a.get("storeCount"));
         });
         return out;
+    }
+
+    /**
+     * Agrupa manualmente varios productos (por name_norm) bajo un mismo nombre,
+     * para que en la comparación de precios cuenten como uno solo. Si el grupo ya
+     * existía, se añaden estos productos. El propio grupo también se apunta a sí
+     * mismo para poder ampliarlo luego.
+     */
+    public void groupPrices(String email, List<String> nameNorms, String groupName) {
+        if (nameNorms == null || nameNorms.isEmpty() || groupName == null || groupName.isBlank()) return;
+        String gname = groupName.trim();
+        String gnorm = normalize(gname);
+        if (gnorm.isBlank()) return;
+        String sql = """
+                INSERT INTO price_alias (owner_email, name_norm, group_norm, group_name)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT (owner_email, name_norm)
+                DO UPDATE SET group_norm = EXCLUDED.group_norm, group_name = EXCLUDED.group_name
+                """;
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            java.util.LinkedHashSet<String> all = new java.util.LinkedHashSet<>();
+            for (String n : nameNorms) if (n != null && !n.isBlank()) all.add(normalize(n));
+            for (String n : all) {
+                ps.setString(1, email); ps.setString(2, n);
+                ps.setString(3, gnorm); ps.setString(4, gname);
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        } catch (Exception e) { throw new RuntimeException("Error agrupando precios", e); }
+    }
+
+    /** Deshace un grupo de precios del usuario (elimina todos sus alias). */
+    public void ungroupPrices(String email, String groupNorm) {
+        if (groupNorm == null || groupNorm.isBlank()) return;
+        try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(
+                "DELETE FROM price_alias WHERE owner_email = ? AND group_norm = ?")) {
+            ps.setString(1, email); ps.setString(2, normalize(groupNorm));
+            ps.executeUpdate();
+        } catch (Exception e) { throw new RuntimeException("Error deshaciendo grupo de precios", e); }
     }
 
     private static String normalize(String s) {

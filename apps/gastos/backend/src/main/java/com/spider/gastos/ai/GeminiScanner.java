@@ -162,12 +162,15 @@ public class GeminiScanner {
                 - "productos": si la factura lista ítems, extrae CADA línea con "nombre" (corto, el
                   producto en sí, sin códigos), "cantidad", "precioUnitario" (precio por unidad) y
                   "total" de la línea. Números sin separador de miles. Si no hay detalle de productos, deja [].
-                - "impuestos": lista TODOS los impuestos y cargos que aparezcan en el comprobante, ya
+                - "impuestos": lista los impuestos y cargos que aparezcan en el comprobante, ya
                   incluidos dentro del total (NO los sumes al total, solo indícalos). Por cada uno da
-                  "tipo" y "valor" (número sin separador de miles). Usa nombres estándar cuando apliquen:
-                  "IVA", "Impuesto al consumo", "Propina", "Servicio", "Retención", "Impuesto a la bolsa".
-                  Si ves un impuesto/cargo con otro nombre, clasifícalo con un nombre corto propio (p. ej.
-                  "Recargo nocturno") en vez de omitirlo. Si el comprobante no muestra impuestos, deja [].
+                  "tipo" y "valor" (número sin separador de miles). Usa EXACTAMENTE estos nombres cuando
+                  apliquen: "IVA", "Impuesto al consumo", "Propina / Servicio", "Retención",
+                  "Impuesto a la bolsa". IMPORTANTE: propina y servicio son lo MISMO — únelos SIEMPRE en
+                  un solo renglón "Propina / Servicio" (si hay ambos, suma sus valores). No repitas un
+                  mismo tipo de impuesto en varios renglones: agrupa por tipo y suma. Si ves un cargo con
+                  otro nombre, clasifícalo con un nombre corto propio (p. ej. "Recargo nocturno") en vez de
+                  omitirlo. Si el comprobante no muestra impuestos, deja [].
                 - "categoriaId"/"categoriaNombre": elige de la lista del usuario SOLO si hay una que
                   encaje ESPECÍFICAMENTE con la compra (id: nombre): %s
                   NUNCA uses una categoría genérica de cajón ("Otros", "Varios", "General",

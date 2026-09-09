@@ -72,6 +72,9 @@ public final class ExpenseController {
     /** Cuerpo de suscripción Web Push (endpoint + claves del navegador). */
     public record PushInput(String endpoint, String p256dh, String auth) {}
 
+    /** Cuerpo para agrupar productos de precios: name_norms a unir + nombre del grupo. */
+    public record PriceGroupInput(List<String> names, String name) {}
+
     private final ExpenseService svc;
     private final CategoryService categories;
     private final BudgetService budgets;
@@ -215,6 +218,13 @@ public final class ExpenseController {
             ctx.status(201).json(Map.of("id", id));
         });
 
+        // Un gasto por id (para abrir desde una notificación del hogar).
+        app.get("/expenses/{id}", ctx -> {
+            Map<String, Object> e = svc.getOne(email(ctx.header("Cookie")), Long.parseLong(ctx.pathParam("id")));
+            if (e == null) { ctx.status(404).json(Map.of("error", "no encontrado")); return; }
+            ctx.json(e);
+        });
+
         // Productos (líneas) de un gasto del usuario.
         app.get("/expenses/{id}/items", ctx ->
                 ctx.json(svc.itemsOf(email(ctx.header("Cookie")), Long.parseLong(ctx.pathParam("id")))));
@@ -229,6 +239,21 @@ public final class ExpenseController {
 
         // Comparativa de precios por producto y tienda.
         app.get("/prices", ctx -> ctx.json(svc.prices(email(ctx.header("Cookie")))));
+
+        // Agrupar manualmente productos que son el mismo (p.ej. «manzanas» y «manzanas paquete»).
+        app.post("/prices/group", ctx -> {
+            PriceGroupInput in = ctx.body(PriceGroupInput.class);
+            if (in == null || in.names() == null || in.names().isEmpty() || in.name() == null || in.name().isBlank()) {
+                ctx.status(400).json(Map.of("error", "names y name requeridos")); return;
+            }
+            svc.groupPrices(email(ctx.header("Cookie")), in.names(), in.name());
+            ctx.json(Map.of("status", "ok"));
+        });
+        // Deshacer un grupo (por su clave group_norm, que es el nameNorm del producto agrupado).
+        app.delete("/prices/group/{groupNorm}", ctx -> {
+            svc.ungroupPrices(email(ctx.header("Cookie")), ctx.pathParam("groupNorm"));
+            ctx.json(Map.of("status", "ok"));
+        });
 
         app.put("/expenses/{id}", ctx -> {
             String user = email(ctx.header("Cookie"));

@@ -59,8 +59,8 @@ export interface ExpenseItem { name: string; quantity: number | null; unitPrice:
 export interface PriceStore { store: string; minPrice: number; avgPrice: number; lastPrice: number; lastOn: string; count: number; shared?: boolean; }
 export interface PricePoint { on: string; store: string; price: number; }
 export interface PriceProduct {
-  name: string; categorySlug: string; categoryName: string; stores: PriceStore[];
-  minPrice: number; maxPrice: number; storeCount: number; cheapestStore: string; shared?: boolean;
+  nameNorm?: string; name: string; categorySlug: string; categoryName: string; stores: PriceStore[];
+  minPrice: number; maxPrice: number; storeCount: number; cheapestStore: string; shared?: boolean; grouped?: boolean;
   points: PricePoint[]; lastPrice: number; lastOn: string; pointCount: number; trendPct: number;
 }
 export interface Me { email: string; guest: boolean; onboarded: boolean; name?: string; picture?: string; }
@@ -115,10 +115,17 @@ export class GastosService {
   create(e: NewExpense): Observable<{ id: number }> { return this.http.post<{ id: number }>(`${this.base}/expenses`, e, this.opts); }
   update(id: number, e: NewExpense): Observable<unknown> { return this.http.put(`${this.base}/expenses/${id}`, e, this.opts); }
   remove(id: number): Observable<unknown> { return this.http.delete(`${this.base}/expenses/${id}`, this.opts); }
+  getExpense(id: number): Observable<Expense> { return this.http.get<Expense>(`${this.base}/expenses/${id}`, this.opts); }
   itemsOf(id: number): Observable<ExpenseItem[]> { return this.http.get<ExpenseItem[]>(`${this.base}/expenses/${id}/items`, this.opts); }
   taxesOf(id: number): Observable<Tax[]> { return this.http.get<Tax[]>(`${this.base}/expenses/${id}/taxes`, this.opts); }
   taxes(month: string, scope = 'mine'): Observable<TaxSummary> { return this.http.get<TaxSummary>(`${this.base}/taxes?month=${month}&scope=${scope}`, this.opts); }
   prices(): Observable<PriceProduct[]> { return this.http.get<PriceProduct[]>(`${this.base}/prices`, this.opts); }
+  groupPrices(names: string[], name: string): Observable<unknown> {
+    return this.http.post(`${this.base}/prices/group`, { names, name }, this.opts);
+  }
+  ungroupPrices(groupNorm: string): Observable<unknown> {
+    return this.http.delete(`${this.base}/prices/group/${encodeURIComponent(groupNorm)}`, this.opts);
+  }
   summary(month: string, scope = 'mine'): Observable<Summary> { return this.http.get<Summary>(`${this.base}/summary?month=${month}&scope=${scope}`, this.opts); }
   trend(months = 6, scope = 'mine'): Observable<Trend> { return this.http.get<Trend>(`${this.base}/trend?months=${months}&scope=${scope}`, this.opts); }
 
