@@ -7,7 +7,7 @@ import { TabViewModule } from 'primeng/tabview';
 import { TagModule } from 'primeng/tag';
 import * as L from 'leaflet';
 import '@maplibre/maplibre-gl-leaflet'; // añade L.maplibreGL (capa base vectorial)
-import { Charger, Comment, ElectrolinerasService, Me, Report, Station, StationFull, Suggestion } from './electrolineras.service';
+import { Charger, Comment, ElectrolinerasService, Me, Place, Report, Station, StationFull, Suggestion } from './electrolineras.service';
 
 type Tab = 'map' | 'near' | 'trip' | 'info' | 'account';
 
@@ -359,6 +359,27 @@ interface CarProfile {
     .ns-add { align-self: flex-start; border: 1px dashed var(--border); background: transparent; color: var(--accent-strong);
               padding: 9px 14px; border-radius: 11px; cursor: pointer; font-weight: 700; font-size: .88rem; margin-top: 2px; }
     .ns-msg { text-align: center; font-size: .86rem; color: var(--accent-strong); margin: 4px 0; }
+    /* Buscador + mapa selector de ubicación */
+    .ns-search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 11px;
+                 background: var(--panel-2); padding: 0 10px; }
+    .ns-search > i { color: var(--muted); }
+    .ns-search .ns-inp { border: none; background: transparent; padding: 11px 4px; }
+    .ns-searchbtn { border: none; background: var(--accent); color: var(--on-accent); width: 34px; height: 34px;
+                    border-radius: 9px; flex: none; cursor: pointer; }
+    .ns-results { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 11px; overflow: hidden; }
+    .ns-result { display: flex; align-items: center; gap: 10px; text-align: left; padding: 11px 12px; border: none;
+                 border-bottom: 1px solid var(--border); background: var(--panel); color: var(--fg); font-size: .88rem; cursor: pointer; }
+    .ns-result:last-child { border-bottom: none; }
+    .ns-result:active { background: var(--panel-2); }
+    .ns-result > i { color: var(--accent-strong); }
+    .ns-map-wrap { position: relative; height: 240px; border-radius: 14px; overflow: hidden; border: 1px solid var(--border); }
+    .ns-map { position: absolute; inset: 0; }
+    .ns-pin { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -100%); pointer-events: none; z-index: 500;
+              color: var(--accent-strong); font-size: 2rem; text-shadow: 0 2px 5px rgba(0,0,0,.4); }
+    .ns-myloc { position: absolute; right: 10px; bottom: 10px; z-index: 500; width: 40px; height: 40px; border-radius: 11px;
+                border: 1px solid var(--border); background: var(--panel); color: var(--accent-strong); cursor: pointer;
+                box-shadow: var(--shadow); }
+    .ns-hint { font-size: .78rem; margin: 2px 0 0; }
     .logout { width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 14px;
            border: 1px solid color-mix(in srgb, #ef4444 40%, var(--border)); border-radius: 14px; background: none;
            color: #ef4444; font: inherit; font-weight: 700; font-size: .96rem; cursor: pointer; }
@@ -682,18 +703,26 @@ interface CarProfile {
                   <label class="ns-lbl">Nombre</label>
                   <input class="ns-inp" type="text" [(ngModel)]="newStation.name" placeholder="p. ej. Centro Comercial Cabecera" />
 
-                  <label class="ns-lbl">Ubicación (GPS)</label>
-                  <div class="ns-loc">
-                    <button type="button" class="ns-locbtn" (click)="useMyLocationForNew()"><i class="fa-solid fa-location-crosshairs"></i> Mi ubicación</button>
-                    <button type="button" class="ns-locbtn" (click)="useMapCenterForNew()"><i class="fa-solid fa-map-pin"></i> Centro del mapa</button>
+                  <label class="ns-lbl">Ubicación — busca el lugar y ajusta el pin</label>
+                  <div class="ns-search">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input class="ns-inp" type="text" [(ngModel)]="pickQuery" (keyup.enter)="searchPickPlace()"
+                           placeholder="Buscar dirección, barrio, ciudad…" />
+                    <button type="button" class="ns-searchbtn" (click)="searchPickPlace()" [disabled]="pickSearching()">
+                      <i class="fa-solid" [class.fa-arrow-right]="!pickSearching()" [class.fa-spinner]="pickSearching()" [class.fa-spin]="pickSearching()"></i>
+                    </button>
                   </div>
-                  <div class="ns-coords">
-                    <input class="ns-inp" type="number" step="0.000001" [(ngModel)]="newStation.lat" placeholder="Latitud" />
-                    <input class="ns-inp" type="number" step="0.000001" [(ngModel)]="newStation.lon" placeholder="Longitud" />
+                  <div class="ns-results" *ngIf="pickResults().length">
+                    <button type="button" class="ns-result" *ngFor="let r of pickResults()" (click)="pickPlace(r)">
+                      <i class="fa-solid fa-location-dot"></i> {{ r.name }}
+                    </button>
                   </div>
-                  <p class="muted" style="font-size:.78rem;margin:2px 0 0" *ngIf="newStation.lat != null && newStation.lon != null">
-                    <i class="fa-solid fa-circle-check" style="color:#22c55e"></i> Ubicación fijada.
-                  </p>
+                  <div class="ns-map-wrap">
+                    <div #pickMapEl class="ns-map"></div>
+                    <div class="ns-pin"><i class="fa-solid fa-location-dot"></i></div>
+                    <button type="button" class="ns-myloc" (click)="useMyLocationForNew()" title="Mi ubicación"><i class="fa-solid fa-location-crosshairs"></i></button>
+                  </div>
+                  <p class="muted ns-hint"><i class="fa-solid fa-circle-info"></i> Mueve y acerca el mapa: el pin del centro marca la ubicación.<span *ngIf="newStation.lat != null"> · {{ coordText() }}</span></p>
 
                   <label class="ns-lbl">Acceso</label>
                   <div class="seg ns-seg">
@@ -1159,6 +1188,11 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('heroMapEl') heroMapEl?: ElementRef<HTMLDivElement>;
   private heroMap?: L.Map;
   private heroMarker?: L.Marker;
+  @ViewChild('pickMapEl') pickMapEl?: ElementRef<HTMLDivElement>;
+  private pickMap?: L.Map;
+  pickQuery = '';
+  readonly pickResults = signal<Place[]>([]);
+  readonly pickSearching = signal(false);
 
   readonly isTest = signal(false);
   readonly isAdmin = signal(false);
@@ -1523,6 +1557,8 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     const prev = this.tab();
     this.tab.set(t);
     if (t === 'account') { const p = this.loadProfile(); this.car = { ...p, connectors: [...p.connectors] }; this.savedMsg.set(''); this.editingCar.set(false); }
+    if (prev === 'info' && t !== 'info' && this.pickMap) { try { this.pickMap.remove(); } catch { } this.pickMap = undefined; }
+    if (t === 'info' && !this.isGuest()) setTimeout(() => this.initPickMap(), 140);
     if (t === 'near') setTimeout(() => this.initHeroMap(), 130);
     if (t !== 'near' && t !== prev) this.pushGuard();  // atrás vuelve a la anterior
     if (t === 'map') setTimeout(() => {
@@ -1570,25 +1606,65 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.newStation.chargers.length <= 1) return;
     this.newStation.chargers = this.newStation.chargers.filter((_, idx) => idx !== i);
   }
+  coordText(): string {
+    const n = this.newStation;
+    return n.lat == null || n.lon == null ? '' : `${n.lat.toFixed(5)}, ${n.lon.toFixed(5)}`;
+  }
+  /** Mapa selector: pin fijo al centro; al mover/acercar se actualiza la ubicación. */
+  private initPickMap(): void {
+    const el = this.pickMapEl?.nativeElement;
+    if (!el) return;
+    if (this.pickMap) { try { this.pickMap.invalidateSize(); } catch { } return; }
+    const dark = this.isDark();
+    const start: [number, number] = this.newStation.lat != null && this.newStation.lon != null
+      ? [this.newStation.lat, this.newStation.lon]
+      : (this.userPos() ?? [4.65, -74.1]);
+    const zoom = this.newStation.lat != null || this.userPos() ? 15 : 6;
+    const map = L.map(el, { zoomControl: true, attributionControl: false }).setView(start, zoom);
+    const key = (window as any).__CARTO_KEY || '';
+    const base = dark ? 'dark_all' : 'light_all';
+    L.tileLayer(`https://{s}.basemaps.cartocdn.com/${base}/{z}/{x}/{y}{r}.png` + (key ? '?key=' + key : ''),
+      { subdomains: 'abcd', maxZoom: 19 }).addTo(map);
+    const sync = () => this.zone.run(() => {
+      const c = map.getCenter();
+      this.newStation.lat = +c.lat.toFixed(6);
+      this.newStation.lon = +c.lng.toFixed(6);
+    });
+    map.on('moveend', sync);
+    this.pickMap = map;
+    setTimeout(() => { try { map.invalidateSize(); } catch { } if (this.newStation.lat != null) sync(); }, 120);
+  }
+  searchPickPlace(): void {
+    const q = this.pickQuery.trim();
+    if (!q || this.pickSearching()) return;
+    this.pickSearching.set(true);
+    this.api.geocode(q).subscribe({
+      next: (r) => this.zone.run(() => { this.pickSearching.set(false); this.pickResults.set(r || []);
+        if ((r || []).length) this.pickPlace(r[0]); }),
+      error: () => this.zone.run(() => { this.pickSearching.set(false); this.stationMsg.set('No se pudo buscar el lugar.'); }),
+    });
+  }
+  pickPlace(p: Place): void {
+    this.pickResults.set([]);
+    this.pickQuery = p.name;
+    this.newStation.lat = +p.lat.toFixed(6);
+    this.newStation.lon = +p.lon.toFixed(6);
+    if (this.pickMap) this.pickMap.setView([p.lat, p.lon], 16);
+  }
   useMyLocationForNew(): void {
     if (!navigator.geolocation) { this.stationMsg.set('Tu dispositivo no permite geolocalización.'); return; }
-    this.stationMsg.set('Obteniendo tu ubicación…');
     navigator.geolocation.getCurrentPosition(
       (pos) => this.zone.run(() => {
-        this.newStation.lat = +pos.coords.latitude.toFixed(6);
-        this.newStation.lon = +pos.coords.longitude.toFixed(6);
+        const p: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+        this.userPos.set(p);
+        this.newStation.lat = +p[0].toFixed(6);
+        this.newStation.lon = +p[1].toFixed(6);
+        if (this.pickMap) this.pickMap.setView(p, 16);
         this.stationMsg.set('');
       }),
-      () => this.zone.run(() => this.stationMsg.set('No se pudo obtener tu ubicación. Escríbela o usa el centro del mapa.')),
+      () => this.zone.run(() => this.stationMsg.set('No se pudo obtener tu ubicación. Búscala en el mapa.')),
       { enableHighAccuracy: true, timeout: 8000 },
     );
-  }
-  useMapCenterForNew(): void {
-    if (!this.map) { this.stationMsg.set('Abre el mapa primero para tomar su centro.'); return; }
-    const c = this.map.getCenter();
-    this.newStation.lat = +c.lat.toFixed(6);
-    this.newStation.lon = +c.lng.toFixed(6);
-    this.stationMsg.set('');
   }
   canSaveStation(): boolean {
     const n = this.newStation;
