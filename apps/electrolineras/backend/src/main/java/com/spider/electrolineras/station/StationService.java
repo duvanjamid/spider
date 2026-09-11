@@ -90,6 +90,9 @@ public class StationService {
                 for (int j : bucket) {
                     if (j <= i) continue;
                     Row b = rows.get(j);
+                    // Las estaciones aportadas por usuarios (manual) no se fusionan con
+                    // otras: quedan como su propio pin y no las absorbe el dedup.
+                    if ("manual".equals(a.source()) || "manual".equals(b.source())) continue;
                     if (haversine(a.lat(), a.lon(), b.lat(), b.lon()) <= DEDUP_METERS) union(parent, i, j);
                 }
             }
@@ -845,6 +848,59 @@ public class StationService {
             return id;
         } catch (Exception e) { throw new RuntimeException("No se pudo agregar el cargador", e); }
     }
+
+    /**
+     * Crea una estación aportada por un usuario (source='manual'): nombre, GPS,
+     * pública/privada y sus cargadores (tipo + potencia). Queda como su propio
+     * grupo (canonical_id = su id) para que no la absorba el dedup y aparezca en
+     * el mapa de inmediato. {@code chargers}: lista de [type, kw] (kw puede ser null).
+     */
+    public long createStation(String email, String name, double lat, double lon, boolean isPublic,
+                              List<Map<String, Object>> chargers) {
+        java.util.LinkedHashSet<String> types = new java.util.LinkedHashSet<>();
+        double maxKw = 0;
+        if (chargers != null) for (Map<String, Object> ch : chargers) {
+            String t = ch.get("type") == null ? "" : String.valueOf(ch.get("type")).trim();
+            if (!t.isBlank()) types.add(t);
+            Object k = ch.get("kw");
+            double kw = k instanceof Number nn ? nn.doubleValue() : 0;
+            if (kw > maxKw) maxKw = kw;
+        }
+        String connectors = String.join(", ", types);
+        String speed = maxKw >= 50 ? "Rápida" : maxKw >= 22 ? "Semi-rápida" : maxKw > 0 ? "Lenta" : null;
+        try (Connection c = ds.getConnection()) {
+            c.setAutoCommit(false);
+            long id;
+            String ext = "user-" + System.currentTimeMillis() + "-" + (int) (Math.random() * 100000);
+            try (PreparedStatement ps = c.prepareStatement("""
+                    INSERT INTO station (source, external_id, name, lat, lon, connectors, speed,
+                                         source_active, verified, access, added_by)
+                    VALUES ('manual', ?, ?, ?, ?, ?, ?, TRUE, TRUE, ?, ?) RETURNING id""")) {
+                ps.setString(1, ext);
+                ps.setString(2, name.trim());
+                ps.setDouble(3, lat);
+                ps.setDouble(4, lon);
+                ps.setString(5, connectors.isBlank() ? null : connectors);
+                ps.setString(6, speed);
+                ps.setString(7, isPublic ? "public" : "private");
+                ps.setString(8, email);
+                try (ResultSet rs = ps.executeQuery()) { rs.next(); id = rs.getLong(1); }
+            }
+            try (PreparedStatement ps = c.prepareStatement("UPDATE station SET canonical_id = ? WHERE id = ?")) {
+                ps.setLong(1, id); ps.setLong(2, id); ps.executeUpdate();
+            }
+            int i = 0;
+            if (chargers != null) for (Map<String, Object> ch : chargers) {
+                String t = ch.get("type") == null ? "" : String.valueOf(ch.get("type")).trim();
+                if (t.isBlank()) continue;
+                Object k = ch.get("kw");
+                double kw = k instanceof Number nn ? nn.doubleValue() : 0;
+                insertManualCharger(c, id, t + " #" + (++i), t, kw > 0 ? kw : null);
+            }
+            c.commit();
+            return id;
+        } catch (Exception e) { throw new RuntimeException("No se pudo crear la estación", e); }
+    }
     public void editCharger(long chargerId, String label, String type, Double kw) {
         try (Connection c = ds.getConnection()) {
             try (PreparedStatement ps = c.prepareStatement("UPDATE charger SET label=?, connector_type=?, power_kw=?, manual=TRUE WHERE id=?")) {
@@ -1068,6 +1124,8 @@ public class StationService {
                     out.put("website", rs.getString("website"));
                     out.put("source", rs.getString("source"));
                     out.put("verified", rs.getBoolean("verified"));
+                    out.put("access", rs.getString("access"));
+                    out.put("addedBy", rs.getString("added_by"));
                     out.put("updatedAt", String.valueOf(rs.getObject("updated_at")));
                 }
             }

@@ -333,6 +333,32 @@ interface CarProfile {
            font-weight: 800; padding: 1px 8px; flex: none; }
     .acc-cta { margin: 14px 0 2px; }
     .acc-foot { text-align: center; color: var(--muted); font-size: .76rem; margin: 22px 0 2px; }
+    /* Formulario "Agregar estación" */
+    .ns-form { display: flex; flex-direction: column; gap: 8px; }
+    .ns-lbl { font-size: .72rem; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+    .ns-inp { width: 100%; border: 1px solid var(--border); border-radius: 11px; background: var(--panel-2); color: var(--fg);
+              padding: 11px 12px; font-size: .95rem; }
+    .ns-loc { display: flex; gap: 8px; }
+    .ns-locbtn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 10px;
+                 border: 1px solid var(--border); border-radius: 11px; background: var(--panel-2); color: var(--accent-strong);
+                 font-weight: 700; font-size: .86rem; cursor: pointer; }
+    .ns-locbtn:active { transform: scale(.97); }
+    .ns-coords { display: flex; gap: 8px; }
+    .ns-coords .ns-inp { flex: 1; min-width: 0; }
+    .ns-seg { display: flex; gap: 4px; background: var(--panel-2); border-radius: 12px; padding: 4px; }
+    .ns-seg button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: none;
+                     background: transparent; color: var(--muted); padding: 9px; border-radius: 9px; cursor: pointer; font-weight: 700; }
+    .ns-seg button.on { background: var(--panel); color: var(--accent-strong); box-shadow: var(--shadow); }
+    .ns-charger { display: flex; gap: 8px; align-items: center; }
+    .ns-charger .ns-inp { flex: 1; min-width: 0; }
+    .ns-kw { position: relative; width: 118px; flex: none; }
+    .ns-kw .ns-inp { width: 100%; padding-right: 34px; }
+    .ns-kw .ns-unit { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: .82rem; font-weight: 700; }
+    .ns-del { border: none; background: var(--panel-2); color: var(--muted); width: 40px; height: 40px; border-radius: 10px; flex: none; cursor: pointer; }
+    .ns-del:disabled { opacity: .4; }
+    .ns-add { align-self: flex-start; border: 1px dashed var(--border); background: transparent; color: var(--accent-strong);
+              padding: 9px 14px; border-radius: 11px; cursor: pointer; font-weight: 700; font-size: .88rem; margin-top: 2px; }
+    .ns-msg { text-align: center; font-size: .86rem; color: var(--accent-strong); margin: 4px 0; }
     .logout { width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 14px;
            border: 1px solid color-mix(in srgb, #ef4444 40%, var(--border)); border-radius: 14px; background: none;
            color: #ef4444; font: inherit; font-weight: 700; font-size: .96rem; cursor: pointer; }
@@ -642,29 +668,64 @@ interface CarProfile {
         <!-- INFO -->
         <section class="scr" *ngIf="tab() === 'info'">
           <div class="scroll">
-            <div class="s-head"><h1>Información</h1><p>De dónde salen los datos y cómo funciona.</p></div>
-            <div class="stat"><div class="n">{{ meta()?.total ?? '—' }}</div><div><div style="font-weight:700">Estaciones cargadas</div><div class="muted" style="font-size:.84rem">en {{ meta()?.cities ?? 0 }} ciudad(es)</div></div></div>
-            <!-- El detalle de agregadores (fuentes) es solo para el administrador. -->
-            <ng-container *ngIf="isAdmin()">
-              <h3 class="sec">Agregadores (fuentes de datos)</h3>
-              <div class="stat" *ngFor="let s of meta()?.bySource || []"><div class="n">{{ s.count }}</div><div><div style="font-weight:700">{{ sourceLabel(s.source) }}</div><div class="muted" style="font-size:.84rem">{{ sourceDesc(s.source) }}</div></div></div>
+            <div class="s-head"><h1>Agregar estación</h1><p>¿Falta una electrolinera? Regístrala y aparecerá en el mapa.</p></div>
+
+            <div class="acc-cta" *ngIf="isGuest()">
+              <a href="/admin/" style="text-decoration:none"><p-button label="Entrar con Google" icon="fa-brands fa-google" styleClass="w" /></a>
+              <p class="muted" style="text-align:center;font-size:.82rem;margin:8px 4px 0">Inicia sesión para agregar estaciones al mapa.</p>
+            </div>
+
+            <ng-container *ngIf="!isGuest()">
+              <div class="acc-group">
+                <div class="acc-title"><i class="fa-solid fa-charging-station"></i> Datos de la estación</div>
+                <div class="card ns-form">
+                  <label class="ns-lbl">Nombre</label>
+                  <input class="ns-inp" type="text" [(ngModel)]="newStation.name" placeholder="p. ej. Centro Comercial Cabecera" />
+
+                  <label class="ns-lbl">Ubicación (GPS)</label>
+                  <div class="ns-loc">
+                    <button type="button" class="ns-locbtn" (click)="useMyLocationForNew()"><i class="fa-solid fa-location-crosshairs"></i> Mi ubicación</button>
+                    <button type="button" class="ns-locbtn" (click)="useMapCenterForNew()"><i class="fa-solid fa-map-pin"></i> Centro del mapa</button>
+                  </div>
+                  <div class="ns-coords">
+                    <input class="ns-inp" type="number" step="0.000001" [(ngModel)]="newStation.lat" placeholder="Latitud" />
+                    <input class="ns-inp" type="number" step="0.000001" [(ngModel)]="newStation.lon" placeholder="Longitud" />
+                  </div>
+                  <p class="muted" style="font-size:.78rem;margin:2px 0 0" *ngIf="newStation.lat != null && newStation.lon != null">
+                    <i class="fa-solid fa-circle-check" style="color:#22c55e"></i> Ubicación fijada.
+                  </p>
+
+                  <label class="ns-lbl">Acceso</label>
+                  <div class="seg ns-seg">
+                    <button type="button" [class.on]="newStation.isPublic" (click)="newStation.isPublic = true"><i class="fa-solid fa-earth-americas"></i> Pública</button>
+                    <button type="button" [class.on]="!newStation.isPublic" (click)="newStation.isPublic = false"><i class="fa-solid fa-lock"></i> Privada</button>
+                  </div>
+                  <p class="muted" style="font-size:.78rem;margin:2px 0 0">{{ newStation.isPublic ? 'Abierta al público.' : 'De acceso restringido (conjunto, empresa, hogar…).' }}</p>
+                </div>
+              </div>
+
+              <div class="acc-group">
+                <div class="acc-title"><i class="fa-solid fa-plug-circle-bolt"></i> Cargadores</div>
+                <div class="card ns-form">
+                  <div class="ns-charger" *ngFor="let ch of newStation.chargers; let i = index">
+                    <select class="ns-inp" [(ngModel)]="ch.connectorType" [name]="'nsct'+i">
+                      <option *ngFor="let ct of CONNECTOR_TYPES" [value]="ct">{{ ct }}</option>
+                    </select>
+                    <div class="ns-kw">
+                      <input class="ns-inp" type="number" step="1" [(ngModel)]="ch.powerKw" [name]="'nskw'+i" placeholder="Potencia" />
+                      <span class="ns-unit">kW</span>
+                    </div>
+                    <button type="button" class="ns-del" (click)="removeStationCharger(i)" [disabled]="newStation.chargers.length <= 1" title="Quitar"><i class="fa-solid fa-xmark"></i></button>
+                  </div>
+                  <button type="button" class="ns-add" (click)="addStationCharger()"><i class="fa-solid fa-plus"></i> Agregar cargador</button>
+                </div>
+              </div>
+
+              <p class="ns-msg" *ngIf="stationMsg()">{{ stationMsg() }}</p>
+              <p-button label="Publicar estación" icon="fa-solid fa-map-location-dot" styleClass="w"
+                        [loading]="savingStation()" [disabled]="!canSaveStation()" (onClick)="submitNewStation()" />
+              <div class="acc-foot">Se agrega como aporte de la comunidad y se marca verificada.</div>
             </ng-container>
-            <h3 class="sec">Velocidad de carga (color del pin)</h3>
-            <div class="legend">
-              <span><i class="d" style="background:#f97316"></i> Rápida (DC)</span>
-              <span><i class="d" style="background:#14b8a6"></i> Semi-rápida</span>
-              <span><i class="d" style="background:#3b82f6"></i> Lenta (AC)</span>
-              <span><i class="d" style="background:#9aa3b2"></i> Sin dato</span>
-            </div>
-            <h3 class="sec">Estado (reportado por la comunidad)</h3>
-            <div class="legend">
-              <span><i class="d" style="box-shadow:0 0 0 2px #22c55e inset;background:transparent;border:1px solid #22c55e"></i> Activa (anillo verde)</span>
-              <span><i class="d" style="box-shadow:0 0 0 2px #ef4444 inset;background:transparent;border:1px solid #ef4444"></i> Inactiva (borde rojo)</span>
-            </div>
-            <p class="muted" style="font-size:.86rem">El estado en vivo no está en datos abiertos; lo construimos entre todos. Cuando uses una estación, reporta si está activa/ocupada y comenta.</p>
-            <div class="note" style="margin-top:12px" *ngIf="isAdmin()">
-              <b>Agregación de fuentes.</b> Consolidamos varias fuentes de electrolineras de Colombia (OpenStreetMap, EPM, ESSA y —opcional— Open Charge Map) y unificamos las estaciones que están en el mismo punto para no repetir pines. Cada pin muestra las fuentes que lo respaldan.
-            </div>
           </div>
         </section>
 
@@ -782,7 +843,7 @@ interface CarProfile {
             <div class="acc-group" *ngIf="isAdmin()">
               <div class="acc-title"><i class="fa-solid fa-screwdriver-wrench"></i> Administración</div>
               <div class="menu">
-                <button (click)="setTab('info')"><i class="fa-solid fa-layer-group"></i><span>Ver agregadores (fuentes)</span><i class="fa-solid fa-chevron-right go"></i></button>
+                <button (click)="showSources.set(!showSources())"><i class="fa-solid fa-layer-group"></i><span>Agregadores (fuentes)</span><i class="fa-solid" [class.fa-chevron-down]="!showSources()" [class.fa-chevron-up]="showSources()" style="color:var(--muted);font-size:.8rem"></i></button>
                 <button (click)="openReview()"><i class="fa-solid fa-inbox"></i><span>Sugerencias pendientes</span>
                   <span class="badge" *ngIf="pendingCount()">{{ pendingCount() }}</span><i class="fa-solid fa-chevron-right go"></i></button>
                 <button (click)="clearCache()" [disabled]="clearingCache()">
@@ -790,6 +851,11 @@ interface CarProfile {
                   <span>Invalidar caché de fuentes</span><i class="fa-solid fa-chevron-right go"></i></button>
               </div>
               <p class="muted" *ngIf="cacheMsg()" style="font-size:.84rem;margin-top:8px">{{ cacheMsg() }}</p>
+              <div *ngIf="showSources()" style="margin-top:10px">
+                <div class="stat"><div class="n">{{ meta()?.total ?? '—' }}</div><div><div style="font-weight:700">Estaciones cargadas</div><div class="muted" style="font-size:.84rem">en {{ meta()?.cities ?? 0 }} ciudad(es)</div></div></div>
+                <div class="stat" *ngFor="let s of meta()?.bySource || []"><div class="n">{{ s.count }}</div><div><div style="font-weight:700">{{ sourceLabel(s.source) }}</div><div class="muted" style="font-size:.84rem">{{ sourceDesc(s.source) }}</div></div></div>
+                <div class="note" style="margin-top:10px"><b>Agregación de fuentes.</b> Consolidamos OpenStreetMap, EPM, ESSA y —opcional— Open Charge Map, unificando estaciones co-ubicadas para no repetir pines. Las aportadas por usuarios (manual) quedan como su propio pin.</div>
+              </div>
             </div>
 
             <div class="acc-group" *ngIf="!isGuest()">
@@ -805,7 +871,7 @@ interface CarProfile {
         <button class="bnav-item" [class.on]="tab() === 'near'" (click)="setTab('near')"><i class="fa-solid fa-house"></i><span>Inicio</span></button>
         <button class="bnav-item" [class.on]="tab() === 'map'" (click)="setTab('map')"><i class="fa-solid fa-map-location-dot"></i><span>Mapa</span></button>
         <button class="bnav-fab" [class.on]="tab() === 'trip'" (click)="setTab('trip')" aria-label="Planear viaje"><i class="fa-solid fa-route"></i></button>
-        <button class="bnav-item" [class.on]="tab() === 'info'" (click)="setTab('info')"><i class="fa-solid fa-circle-info"></i><span>Info</span></button>
+        <button class="bnav-item" [class.on]="tab() === 'info'" (click)="setTab('info')"><i class="fa-solid fa-circle-plus"></i><span>Agregar</span></button>
         <button class="bnav-item" [class.on]="tab() === 'account'" (click)="setTab('account')" aria-label="Mi cuenta">
           <span class="bnav-icwrap">
             <span class="bnav-ava" *ngIf="me()?.picture && !avatarBroken"><img [src]="me()?.picture" alt="" (error)="avatarBroken = true" referrerpolicy="no-referrer" /></span>
@@ -1135,6 +1201,14 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   readonly cities = computed(() => [...new Set(this.allLoaded().map((s) => s.city).filter(Boolean))].sort());
   readonly speeds = computed(() => [...new Set(this.allLoaded().map((s) => s.speed).filter(Boolean))].sort());
   readonly activeCount = computed(() => this.stations().filter((s) => s.communityStatus === 'active').length);
+
+  // ── Agregar estación (aporte del usuario) ──
+  newStation: { name: string; lat: number | null; lon: number | null; isPublic: boolean;
+    chargers: { connectorType: string; powerKw: number | null }[] } =
+    { name: '', lat: null, lon: null, isPublic: true, chargers: [{ connectorType: 'CCS2', powerKw: 50 }] };
+  readonly savingStation = signal(false);
+  readonly stationMsg = signal('');
+  readonly showSources = signal(false);
 
   readonly detail = signal<StationFull | null>(null);
   readonly detailError = signal(false);
@@ -1489,6 +1563,59 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     });
   }
   tint(s: string | null): string { const c = this.statusColor(s); return `linear-gradient(135deg, ${c}26, ${c}0d)`; }
+
+  // ── Agregar estación ──
+  addStationCharger(): void { this.newStation.chargers = [...this.newStation.chargers, { connectorType: 'CCS2', powerKw: null }]; }
+  removeStationCharger(i: number): void {
+    if (this.newStation.chargers.length <= 1) return;
+    this.newStation.chargers = this.newStation.chargers.filter((_, idx) => idx !== i);
+  }
+  useMyLocationForNew(): void {
+    if (!navigator.geolocation) { this.stationMsg.set('Tu dispositivo no permite geolocalización.'); return; }
+    this.stationMsg.set('Obteniendo tu ubicación…');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => this.zone.run(() => {
+        this.newStation.lat = +pos.coords.latitude.toFixed(6);
+        this.newStation.lon = +pos.coords.longitude.toFixed(6);
+        this.stationMsg.set('');
+      }),
+      () => this.zone.run(() => this.stationMsg.set('No se pudo obtener tu ubicación. Escríbela o usa el centro del mapa.')),
+      { enableHighAccuracy: true, timeout: 8000 },
+    );
+  }
+  useMapCenterForNew(): void {
+    if (!this.map) { this.stationMsg.set('Abre el mapa primero para tomar su centro.'); return; }
+    const c = this.map.getCenter();
+    this.newStation.lat = +c.lat.toFixed(6);
+    this.newStation.lon = +c.lng.toFixed(6);
+    this.stationMsg.set('');
+  }
+  canSaveStation(): boolean {
+    const n = this.newStation;
+    return !!n.name.trim() && n.lat != null && n.lon != null
+      && n.chargers.some((c) => !!c.connectorType);
+  }
+  submitNewStation(): void {
+    if (!this.canSaveStation() || this.savingStation()) return;
+    const n = this.newStation;
+    this.savingStation.set(true); this.stationMsg.set('');
+    const chargers = n.chargers
+      .filter((c) => !!c.connectorType)
+      .map((c) => ({ connectorType: c.connectorType, powerKw: c.powerKw != null && c.powerKw > 0 ? c.powerKw : null }));
+    this.api.addStation({ name: n.name.trim(), lat: n.lat!, lon: n.lon!, isPublic: n.isPublic, chargers }).subscribe({
+      next: () => this.zone.run(() => {
+        const lat = n.lat!, lon = n.lon!;
+        this.savingStation.set(false);
+        this.newStation = { name: '', lat: null, lon: null, isPublic: true, chargers: [{ connectorType: 'CCS2', powerKw: 50 }] };
+        this.setTab('map');
+        setTimeout(() => { if (this.map) this.map.setView([lat, lon], 15); }, 200);
+      }),
+      error: (e) => this.zone.run(() => {
+        this.savingStation.set(false);
+        this.stationMsg.set(e?.status === 401 ? 'Inicia sesión para agregar estaciones.' : 'No se pudo guardar la estación.');
+      }),
+    });
+  }
 
   // ── Ubicación ──
   locate(): void {

@@ -22,6 +22,8 @@ import java.util.Map;
 public final class StationController {
 
     public record ReportInput(Long chargerId, String status) {}
+    public record ChargerSpec(String connectorType, Double powerKw) {}
+    public record CreateStationInput(String name, Double lat, Double lon, Boolean isPublic, java.util.List<ChargerSpec> chargers) {}
     public record CommentInput(String body) {}
     public record ChargerInput(String label, String connectorType, Double powerKw) {}
     public record RateInput(Integer stars) {}
@@ -54,6 +56,31 @@ public final class StationController {
             Double[] b = parseBbox(ctx.queryParam("bbox"));
             int limit = parseInt(ctx.queryParam("limit"), b[0] != null ? 2000 : 0);
             ctx.json(stations.list(b[0], b[1], b[2], b[3], limit));
+        });
+
+        // Registrar una estación nueva (requiere sesión). Aparece en el mapa al instante.
+        app.post("/stations", ctx -> {
+            if (identity.emailFromCookie(ctx.header("Cookie")) == null) {
+                ctx.status(401).json(Map.of("error", "inicia sesión para agregar una estación")); return;
+            }
+            CreateStationInput in = ctx.body(CreateStationInput.class);
+            if (in == null || in.name() == null || in.name().isBlank() || in.lat() == null || in.lon() == null) {
+                ctx.status(400).json(Map.of("error", "nombre y ubicación (lat/lon) requeridos")); return;
+            }
+            if (in.lat() < -90 || in.lat() > 90 || in.lon() < -180 || in.lon() > 180) {
+                ctx.status(400).json(Map.of("error", "coordenadas inválidas")); return;
+            }
+            java.util.List<Map<String, Object>> chargers = new java.util.ArrayList<>();
+            if (in.chargers() != null) for (ChargerSpec ch : in.chargers()) {
+                if (ch == null || ch.connectorType() == null || ch.connectorType().isBlank()) continue;
+                Map<String, Object> m = new java.util.HashMap<>();
+                m.put("type", ch.connectorType().trim());
+                m.put("kw", ch.powerKw());
+                chargers.add(m);
+            }
+            long id = stations.createStation(email(ctx.header("Cookie")), in.name(), in.lat(), in.lon(),
+                    in.isPublic() == null || in.isPublic(), chargers);
+            ctx.status(201).json(Map.of("id", id));
         });
 
         app.get("/stations/{id}", ctx -> {

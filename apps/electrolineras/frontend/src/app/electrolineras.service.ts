@@ -22,6 +22,7 @@ export interface StationFull {
   sources?: string[]; verified?: boolean; rating?: number; ratings?: number;
   priceKwh?: number | null; priceSource?: string | null; priceCount?: number;
   idleFee?: string | null; idleFeeSource?: string | null; idleYes?: number; idleNo?: number;
+  access?: string | null; addedBy?: string | null;
 }
 export interface Suggestion { stationId: number; stationName: string; stationCity: string; kind: string; value: string; votes: number; needed: number; detail: string | null; lastAt: string; }
 export interface Me { email: string; guest: boolean; admin: boolean; name?: string; picture?: string; suggestionsPending?: number; }
@@ -46,6 +47,10 @@ export class ElectrolinerasService {
     return this.http.get<Station[]>(`${this.base}/stations${qs}`, this.opts);
   }
   station(id: number): Observable<StationFull> { return this.http.get<StationFull>(`${this.base}/stations/${id}`, this.opts); }
+  addStation(payload: { name: string; lat: number; lon: number; isPublic: boolean;
+    chargers: { connectorType: string; powerKw: number | null }[] }): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(`${this.base}/stations`, payload, this.opts);
+  }
   comments(id: number): Observable<Comment[]> { return this.http.get<Comment[]>(`${this.base}/stations/${id}/comments`, this.opts); }
   addComment(id: number, body: string): Observable<{ id: number }> {
     return this.http.post<{ id: number }>(`${this.base}/stations/${id}/comments`, { body }, this.opts);
