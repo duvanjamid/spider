@@ -28,7 +28,7 @@ public final class Sessions {
 
     private static final Base64.Encoder B64 = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder B64D = Base64.getUrlDecoder();
-    private static final long TTL_SECONDS = 7 * 24 * 3600; // 7 días
+    public static final long TTL_SECONDS = 30 * 24 * 3600; // 30 días (sesión persistente)
 
     private final byte[] secret;
     private final ObjectMapper json = new ObjectMapper();

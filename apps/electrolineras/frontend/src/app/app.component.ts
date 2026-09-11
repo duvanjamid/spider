@@ -380,6 +380,26 @@ interface CarProfile {
                 border: 1px solid var(--border); background: var(--panel); color: var(--accent-strong); cursor: pointer;
                 box-shadow: var(--shadow); }
     .ns-hint { font-size: .78rem; margin: 2px 0 0; }
+    /* Botón "Elegir ubicación" en el formulario */
+    .ns-locpick { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; cursor: pointer;
+                  border: 1px solid var(--border); border-radius: 12px; background: var(--panel-2); padding: 12px 13px; color: var(--fg); }
+    .ns-locpick.set { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); background: var(--accent-weak); }
+    .ns-locpick > i:first-child { color: var(--accent-strong); font-size: 1.15rem; width: 22px; text-align: center; }
+    .ns-locpick-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .ns-locpick-txt b { font-size: .92rem; }
+    .ns-locpick-txt small { color: var(--muted); font-size: .8rem; }
+    .ns-locpick .go { color: var(--muted); font-size: .8rem; }
+    /* Ventana selector de ubicación (full-screen) */
+    .locp { position: fixed; inset: 0; z-index: 2000; background: var(--bg); display: flex; flex-direction: column; }
+    .locp-top { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--panel); }
+    .locp-back, .locp-x { width: 38px; height: 38px; border-radius: 11px; border: 1px solid var(--border); background: var(--panel-2);
+                          color: var(--fg); cursor: pointer; flex: none; }
+    .locp-title { flex: 1; font-weight: 800; font-size: 1.02rem; }
+    .locp-body { flex: 1; overflow-y: auto; padding: 14px; }
+    .locp-map-step { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    .locp-map-wrap { position: relative; flex: 1; min-height: 0; }
+    .locp-map { position: absolute; inset: 0; }
+    .locp-actions { padding: 14px; border-top: 1px solid var(--border); background: var(--panel); }
     .logout { width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 14px;
            border: 1px solid color-mix(in srgb, #ef4444 40%, var(--border)); border-radius: 14px; background: none;
            color: #ef4444; font: inherit; font-weight: 700; font-size: .96rem; cursor: pointer; }
@@ -703,26 +723,16 @@ interface CarProfile {
                   <label class="ns-lbl">Nombre</label>
                   <input class="ns-inp" type="text" [(ngModel)]="newStation.name" placeholder="p. ej. Centro Comercial Cabecera" />
 
-                  <label class="ns-lbl">Ubicación — busca el lugar y ajusta el pin</label>
-                  <div class="ns-search">
-                    <i class="fa-solid fa-magnifying-glass"></i>
-                    <input class="ns-inp" type="text" [(ngModel)]="pickQuery" (keyup.enter)="searchPickPlace()"
-                           placeholder="Buscar dirección, barrio, ciudad…" />
-                    <button type="button" class="ns-searchbtn" (click)="searchPickPlace()" [disabled]="pickSearching()">
-                      <i class="fa-solid" [class.fa-arrow-right]="!pickSearching()" [class.fa-spinner]="pickSearching()" [class.fa-spin]="pickSearching()"></i>
-                    </button>
-                  </div>
-                  <div class="ns-results" *ngIf="pickResults().length">
-                    <button type="button" class="ns-result" *ngFor="let r of pickResults()" (click)="pickPlace(r)">
-                      <i class="fa-solid fa-location-dot"></i> {{ r.name }}
-                    </button>
-                  </div>
-                  <div class="ns-map-wrap">
-                    <div #pickMapEl class="ns-map"></div>
-                    <div class="ns-pin"><i class="fa-solid fa-location-dot"></i></div>
-                    <button type="button" class="ns-myloc" (click)="useMyLocationForNew()" title="Mi ubicación"><i class="fa-solid fa-location-crosshairs"></i></button>
-                  </div>
-                  <p class="muted ns-hint"><i class="fa-solid fa-circle-info"></i> Mueve y acerca el mapa: el pin del centro marca la ubicación.<span *ngIf="newStation.lat != null"> · {{ coordText() }}</span></p>
+                  <label class="ns-lbl">Ubicación</label>
+                  <button type="button" class="ns-locpick" [class.set]="newStation.lat != null" (click)="openLocPicker()">
+                    <i class="fa-solid" [class.fa-map-location-dot]="newStation.lat == null" [class.fa-location-dot]="newStation.lat != null"></i>
+                    <span class="ns-locpick-txt">
+                      <b>{{ newStation.lat != null ? (pickLabel() || 'Ubicación fijada') : 'Elegir ubicación en el mapa' }}</b>
+                      <small *ngIf="newStation.lat != null">{{ coordText() }}</small>
+                      <small *ngIf="newStation.lat == null">Buscar lugar y ajustar el punto</small>
+                    </span>
+                    <i class="fa-solid fa-chevron-right go"></i>
+                  </button>
 
                   <label class="ns-lbl">Acceso</label>
                   <div class="seg ns-seg">
@@ -893,6 +903,51 @@ interface CarProfile {
             <div class="acc-foot">Electrolineras · Spider<span *ngIf="isTest()"> · entorno test</span></div>
           </div>
         </section>
+      </div>
+
+      <!-- ═══ Selector de ubicación (ventana) — buscar lugar / ajustar en mapa ═══ -->
+      <div class="locp" *ngIf="locStep()">
+        <div class="locp-top">
+          <button class="locp-back" (click)="locStep() === 'map' ? backLocSearch() : closeLocPicker()" aria-label="Atrás"><i class="fa-solid fa-arrow-left"></i></button>
+          <span class="locp-title">{{ locStep() === 'map' ? 'Ajusta el punto' : 'Buscar lugar' }}</span>
+          <button class="locp-x" (click)="closeLocPicker()" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <!-- Paso 1: buscar y escoger de un listado -->
+        <div class="locp-body" *ngIf="locStep() === 'search'">
+          <div class="ns-search" style="margin-bottom:12px">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input #locSearchInp class="ns-inp" type="text" [(ngModel)]="pickQuery" (keyup.enter)="searchPickPlace()"
+                   placeholder="Dirección, barrio, ciudad…" />
+            <button type="button" class="ns-searchbtn" (click)="searchPickPlace()" [disabled]="pickSearching()">
+              <i class="fa-solid" [class.fa-arrow-right]="!pickSearching()" [class.fa-spinner]="pickSearching()" [class.fa-spin]="pickSearching()"></i>
+            </button>
+          </div>
+          <button type="button" class="ns-locbtn" style="width:100%;margin-bottom:12px" (click)="useMyLocationForNew()">
+            <i class="fa-solid fa-location-crosshairs"></i> Usar mi ubicación
+          </button>
+          <div class="ns-results" *ngIf="pickResults().length">
+            <button type="button" class="ns-result" *ngFor="let r of pickResults()" (click)="pickPlace(r)">
+              <i class="fa-solid fa-location-dot"></i> {{ r.name }}
+            </button>
+          </div>
+          <p class="muted" *ngIf="!pickResults().length && !pickSearching()" style="text-align:center;padding:24px 8px;font-size:.88rem">
+            Busca el lugar y escógelo de la lista. Luego ajustas el punto exacto en el mapa.
+          </p>
+        </div>
+
+        <!-- Paso 2: ajustar el pin en el mapa -->
+        <div class="locp-map-step" *ngIf="locStep() === 'map'">
+          <div class="locp-map-wrap">
+            <div #pickMapEl class="locp-map"></div>
+            <div class="ns-pin"><i class="fa-solid fa-location-dot"></i></div>
+            <button type="button" class="ns-myloc" (click)="useMyLocationForNew()" title="Mi ubicación"><i class="fa-solid fa-location-crosshairs"></i></button>
+          </div>
+          <div class="locp-actions">
+            <p class="muted" style="text-align:center;font-size:.82rem;margin:0 0 10px"><i class="fa-solid fa-circle-info"></i> Mueve y acerca el mapa: el pin del centro marca la ubicación.<span *ngIf="newStation.lat != null"> · {{ coordText() }}</span></p>
+            <p-button label="Confirmar ubicación" icon="fa-solid fa-check" styleClass="w" (onClick)="confirmLocPicker()" />
+          </div>
+        </div>
       </div>
 
       <!-- Bottom nav con FAB central (Viaje) -->
@@ -1193,6 +1248,8 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   pickQuery = '';
   readonly pickResults = signal<Place[]>([]);
   readonly pickSearching = signal(false);
+  readonly pickLabel = signal('');
+  readonly locStep = signal<'search' | 'map' | null>(null);
 
   readonly isTest = signal(false);
   readonly isAdmin = signal(false);
@@ -1450,6 +1507,8 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   }
   /** Gesto/botón atrás: cierra la capa abierta; nunca sale de la app. */
   goBack(): void {
+    if (this.locStep() === 'map') { this.backLocSearch(); return; }
+    if (this.locStep() === 'search') { this.closeLocPicker(); return; }
     if (this.tab() === 'account' && this.editingCar()) { this.editingCar.set(false); return; }
     if (this.reviewOpen()) { this.reviewOpen.set(false); return; }
     if (this.detailVisible) {
@@ -1557,8 +1616,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     const prev = this.tab();
     this.tab.set(t);
     if (t === 'account') { const p = this.loadProfile(); this.car = { ...p, connectors: [...p.connectors] }; this.savedMsg.set(''); this.editingCar.set(false); }
-    if (prev === 'info' && t !== 'info' && this.pickMap) { try { this.pickMap.remove(); } catch { } this.pickMap = undefined; }
-    if (t === 'info' && !this.isGuest()) setTimeout(() => this.initPickMap(), 140);
+    if (prev === 'info' && t !== 'info') this.closeLocPicker();
     if (t === 'near') setTimeout(() => this.initHeroMap(), 130);
     if (t !== 'near' && t !== prev) this.pushGuard();  // atrás vuelve a la anterior
     if (t === 'map') setTimeout(() => {
@@ -1610,17 +1668,38 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     const n = this.newStation;
     return n.lat == null || n.lon == null ? '' : `${n.lat.toFixed(5)}, ${n.lon.toFixed(5)}`;
   }
+  // ── Selector de ubicación (ventana): buscar → escoger → ajustar → volver ──
+  openLocPicker(): void {
+    this.pickResults.set([]);
+    this.locStep.set('search');
+    this.pushGuard();   // el botón atrás cierra la ventana, no la app
+  }
+  closeLocPicker(): void {
+    if (this.pickMap) { try { this.pickMap.remove(); } catch { } this.pickMap = undefined; }
+    this.locStep.set(null);
+  }
+  backLocSearch(): void {
+    if (this.pickMap) { try { this.pickMap.remove(); } catch { } this.pickMap = undefined; }
+    this.locStep.set('search');
+  }
+  confirmLocPicker(): void {
+    // lat/lon ya vienen sincronizados del centro del mapa (moveend).
+    this.closeLocPicker();
+  }
+  private goToLocMap(center: [number, number], label: string): void {
+    this.pickLabel.set(label);
+    this.newStation.lat = +center[0].toFixed(6);
+    this.newStation.lon = +center[1].toFixed(6);
+    this.locStep.set('map');
+    setTimeout(() => this.initPickMap(center), 120);
+  }
   /** Mapa selector: pin fijo al centro; al mover/acercar se actualiza la ubicación. */
-  private initPickMap(): void {
+  private initPickMap(center: [number, number]): void {
     const el = this.pickMapEl?.nativeElement;
     if (!el) return;
-    if (this.pickMap) { try { this.pickMap.invalidateSize(); } catch { } return; }
+    if (this.pickMap) { try { this.pickMap.remove(); } catch { } this.pickMap = undefined; }
     const dark = this.isDark();
-    const start: [number, number] = this.newStation.lat != null && this.newStation.lon != null
-      ? [this.newStation.lat, this.newStation.lon]
-      : (this.userPos() ?? [4.65, -74.1]);
-    const zoom = this.newStation.lat != null || this.userPos() ? 15 : 6;
-    const map = L.map(el, { zoomControl: true, attributionControl: false }).setView(start, zoom);
+    const map = L.map(el, { zoomControl: true, attributionControl: false }).setView(center, 16);
     const key = (window as any).__CARTO_KEY || '';
     const base = dark ? 'dark_all' : 'light_all';
     L.tileLayer(`https://{s}.basemaps.cartocdn.com/${base}/{z}/{x}/{y}{r}.png` + (key ? '?key=' + key : ''),
@@ -1632,37 +1711,29 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     });
     map.on('moveend', sync);
     this.pickMap = map;
-    setTimeout(() => { try { map.invalidateSize(); } catch { } if (this.newStation.lat != null) sync(); }, 120);
+    setTimeout(() => { try { map.invalidateSize(); } catch { } sync(); }, 120);
   }
   searchPickPlace(): void {
     const q = this.pickQuery.trim();
     if (!q || this.pickSearching()) return;
-    this.pickSearching.set(true);
+    this.pickSearching.set(true); this.pickResults.set([]);
     this.api.geocode(q).subscribe({
-      next: (r) => this.zone.run(() => { this.pickSearching.set(false); this.pickResults.set(r || []);
-        if ((r || []).length) this.pickPlace(r[0]); }),
+      next: (r) => this.zone.run(() => { this.pickSearching.set(false); this.pickResults.set(r || []); }),
       error: () => this.zone.run(() => { this.pickSearching.set(false); this.stationMsg.set('No se pudo buscar el lugar.'); }),
     });
   }
-  pickPlace(p: Place): void {
-    this.pickResults.set([]);
-    this.pickQuery = p.name;
-    this.newStation.lat = +p.lat.toFixed(6);
-    this.newStation.lon = +p.lon.toFixed(6);
-    if (this.pickMap) this.pickMap.setView([p.lat, p.lon], 16);
-  }
+  /** Escoge un resultado de la lista → paso de ajuste en el mapa. */
+  pickPlace(p: Place): void { this.goToLocMap([p.lat, p.lon], p.name); }
   useMyLocationForNew(): void {
     if (!navigator.geolocation) { this.stationMsg.set('Tu dispositivo no permite geolocalización.'); return; }
     navigator.geolocation.getCurrentPosition(
       (pos) => this.zone.run(() => {
         const p: [number, number] = [pos.coords.latitude, pos.coords.longitude];
         this.userPos.set(p);
-        this.newStation.lat = +p[0].toFixed(6);
-        this.newStation.lon = +p[1].toFixed(6);
-        if (this.pickMap) this.pickMap.setView(p, 16);
-        this.stationMsg.set('');
+        if (this.locStep() === 'map' && this.pickMap) { this.pickMap.setView(p, 16); this.pickLabel.set('Mi ubicación'); }
+        else this.goToLocMap(p, 'Mi ubicación');
       }),
-      () => this.zone.run(() => this.stationMsg.set('No se pudo obtener tu ubicación. Búscala en el mapa.')),
+      () => this.zone.run(() => this.stationMsg.set('No se pudo obtener tu ubicación. Búscala por nombre.')),
       { enableHighAccuracy: true, timeout: 8000 },
     );
   }

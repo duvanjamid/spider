@@ -66,7 +66,10 @@ public final class AuthController {
             }
             try {
                 var session = auth.completeLogin(code);
-                ctx.header("Set-Cookie", auth.cookieName() + "=" + session.token() + COOKIE_ATTRS);
+                // Cookie PERSISTENTE (Max-Age): la sesión sobrevive a recargas y a cerrar
+                // la PWA; dura hasta el logout o hasta que caduque el token (30 días).
+                ctx.header("Set-Cookie", auth.cookieName() + "=" + session.token()
+                        + COOKIE_ATTRS + "; Max-Age=" + Sessions.TTL_SECONDS);
                 ctx.redirect(base + "/");
             } catch (Exception e) {
                 // No dejamos un 500 mudo: registramos el detalle y mostramos el motivo en el login.
