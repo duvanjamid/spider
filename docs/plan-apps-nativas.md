@@ -38,7 +38,8 @@ Alternativa rápida solo-Android: **TWA / PWABuilder** (sección 3), útil si la
 | **PWA → TWA / PWABuilder** | ✅ 100% | Android sólido; iOS limitado | ❌ (solo APIs web) | Muy bajo | Atajo Android |
 | **Tauri 2** (Rust + WebView, con soporte móvil) | ✅ el web; shell en Rust | ✅ (móvil aún más joven) | ✅ vía plugins | Medio–alto | "Más moderno" pero ecosistema móvil menos maduro |
 | **NativeScript-Angular** | ⚠️ comparte TS, reescribe UI | ✅ | ✅ | Alto | No aporta vs Capacitor |
-| **Reescritura React Native/Expo o Flutter** | ❌ desde cero | ✅ | ✅ | Muy alto | No: tira el trabajo hecho |
+| **Flutter** (reescribir en Dart) | ❌ 0% de UI (solo backend) | ✅ | ✅ | Muy alto | Mejor rendimiento/feel, pero reescritura total → ver **§2.1** |
+| **Reescritura React Native/Expo** | ❌ desde cero | ✅ | ✅ | Muy alto | No: tira el trabajo hecho |
 
 ### Sobre "algo más moderno que Ionic"
 Lo que la gente llama "Ionic" en realidad son **dos cosas**: (a) el **framework de UI** (viejo,
@@ -47,6 +48,48 @@ opcional) y (b) **Capacitor**, el runtime nativo (moderno, activo). La forma mod
 **Tauri 2** (shell en Rust, binario más liviano); es atractivo pero su soporte **móvil** es
 reciente y con menos plugins/documentación que Capacitor, así que para producción hoy
 Capacitor es la apuesta segura. Podemos revisar Tauri en 6–12 meses.
+
+---
+
+## 2.1 Benchmarking: Capacitor vs Flutter
+
+Flutter (Google, lenguaje **Dart**, motor de render propio **Impeller/Skia**) es el rival
+"serio" a considerar cuando se quiere el máximo rendimiento/UX nativa. Es una **reescritura
+completa**: no reutiliza nada del Angular/PrimeNG actual — se rehace la UI en Dart. Comparado
+de frente para **este** proyecto:
+
+| Criterio | **Capacitor** (envolver lo actual) | **Flutter** (reescribir en Dart) |
+|---|---|---|
+| Reutilización del código actual | ✅ ~100% (Angular + PrimeNG + lógica) | ❌ 0% de UI; solo se conserva el backend Java |
+| Esfuerzo inicial (3 apps) | Bajo–medio (envolver + auth token) | **Muy alto** (rehacer 3 UIs completas + estado + mapas + gráficas) |
+| Lenguaje/skills del equipo | TypeScript/Angular (ya lo dominan) | **Dart** (curva de aprendizaje nueva) |
+| Rendimiento de UI / animaciones | Bueno (WebView; suficiente para estas apps) | **Excelente** (60–120 fps, render propio) |
+| Feel "100% nativo" (scroll, gestos, transiciones) | Muy bueno con pulido | **El mejor**, de fábrica |
+| Arranque en frío | Ligeramente mayor (arranca WebView) | Más rápido |
+| Tamaño del binario | Pequeño (comparte WebView del SO) | Mayor (~8–15 MB de motor Flutter) |
+| Cámara / GPS / push | Plugins Capacitor (los que ya necesitamos) | Plugins pub.dev (equivalentes, muy maduros) |
+| Mapas | Leaflet actual reutilizado (0 trabajo) | `google_maps_flutter` / `flutter_map` (rehacer) |
+| Gráficas (dashboards de gastos) | PrimeNG/Chart.js actuales reutilizados | `fl_chart`/`syncfusion` (rehacer) |
+| Web + PWA desde el mismo código | ✅ (un código → web + Android + iOS) | ⚠️ Flutter Web existe pero pesa y el SEO/PWA es flojo; en la práctica la web actual quedaría aparte |
+| Escaneo IA / lógica de negocio | En el backend Java (**igual en ambos**) | Igual (no cambia) |
+| Madurez / soporte largo plazo | Alta (Ionic) | **Alta** (Google, gran comunidad) |
+| Time-to-market para ESTE repo | **Semanas** | **Meses** |
+
+**Lectura del benchmark.** Flutter *gana* en rendimiento puro, fluidez de animaciones y en la
+sensación nativa "de fábrica" — es la mejor opción **si empezaras de cero** o si la app fuera
+muy intensiva en gráficos/animación (juegos, editores, transiciones complejas). Pero para
+**Spider**, donde las apps son formularios, listas, mapas y dashboards —cargas donde un WebView
+bien hecho rinde de sobra— esas ventajas **no compensan** tirar el Angular/PrimeNG ya
+construido y pulido, aprender Dart y mantener la web por separado. El costo (meses de
+reescritura × 3 apps, más romper el "un código → web+móvil") es desproporcionado frente a la
+ganancia real percibida por el usuario en este tipo de app.
+
+**Cuándo reconsiderar Flutter:** si a futuro una app nueva necesita rendimiento/animación
+extremos, o si se decide abandonar la web y vivir solo en móvil, Flutter sería la vía a evaluar
+para *esa* app puntual — no para migrar lo que ya funciona.
+
+**Veredicto:** para este proyecto, **Capacitor**. Flutter queda documentado como la alternativa
+premium-pero-cara, a reconsiderar caso por caso.
 
 ---
 
