@@ -294,3 +294,124 @@ npx cap open android   # correr en emulador
 ```
 …y en paralelo implementar el **login por token** (sección 5), que es lo que desbloquea todo lo
 demás. Cuando digas cuál app es el piloto, arranco por ahí.
+
+---
+
+## 11. Independizar una app del monorepo (front y back por separado en Coolify)
+
+Parte del ciclo de graduación (§0): cuando una app madura, conviene **sacarla del monorepo
+`spider`** a **su propio repositorio** con **su propio despliegue** (frontend y backend como
+**servicios separados en Coolify**), su propia BD/esquema y su propio dominio. Así deja de
+depender de la incubadora y puede evolucionar y publicarse (web + nativo) por su cuenta.
+
+> Nota: esto se relaciona con `docs/plan-multidominio-y-auth.md`. La diferencia: allí cada app
+> vivía en el mismo repo con su subdominio; aquí la app **se extrae a su propio repo** y su
+> propio proyecto en Coolify. Es el grado máximo de aislamiento, previo (o paralelo) a nativo.
+
+### 11.1 Qué se separa
+| Recurso | Hoy (monorepo) | Independizada |
+|---|---|---|
+| Repositorio | `duvanjamid/spider` (todas las apps) | `duvanjamid/<app>` (solo esa app) |
+| Coolify | 1 app `spider-prod` (docker-compose con todo) | 1 **proyecto** con 2 **recursos**: `<app>-front` y `<app>-back` |
+| Dominio | `spider.muvatec.com/<app>` (por path) | `<app>.muvatec.com` (front) + API en `/api` o `api.<app>...` |
+| Base de datos | 1 Postgres, **schema por app** | mismo Postgres con su schema **o** BD propia |
+| Auth | cookie compartida que emite `admin` | **login propio** (su OAuth + su token) — ver §5 y §11.5 |
+| CI/CD | deploy del monorepo a `main` | push a `main` de su repo → Coolify (front y back por separado) |
+
+### 11.2 Extraer el código CON su historial (git)
+No copiar a mano: preservar el historial de la app con `git subtree` (o `git filter-repo`).
+```bash
+# En un clon del monorepo, sacar el subárbol de la app a una rama nueva:
+git subtree split -P apps/<app> -b split-<app>
+
+# Crear el repo destino y traer ese subárbol como raíz:
+mkdir ../<app> && cd ../<app> && git init
+git pull ../spider split-<app>        # queda backend/ y frontend/ en la raíz
+# Crear el repo remoto <app> y:
+git remote add origin git@github.com:duvanjamid/<app>.git
+git push -u origin main
+```
+Resultado: repo nuevo con `backend/` y `frontend/` en la raíz, conservando commits.
+(`git filter-repo --path apps/<app>/ --path-rename apps/<app>/:` es la alternativa si se quiere
+reescribir rutas con más control.)
+
+### 11.3 Estructura del repo independiente
+```
+<app>/
+  backend/            (Java + Ligero + Flyway; su Dockerfile ya existe)
+  frontend/           (Angular + PrimeNG; su Dockerfile nginx ya existe)
+  docker-compose.yml  (para correr local: db + back + front)
+  README.md
+```
+El **Dockerfile de cada parte ya existe** en el monorepo; se reutiliza tal cual (el bloque de
+bootstrap de Ligero sigue aplicando hasta que Ligero publique en Maven Central).
+
+### 11.4 Coolify: dos servicios separados
+Crear un **Proyecto** nuevo en Coolify (p. ej. `<app>`) con **dos recursos**:
+
+1. **`<app>-back`** (Dockerfile app)
+   - Build context: `backend/` · Dockerfile: `backend/Dockerfile`.
+   - Env: `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD` (o `DATABASE_URL`), `DB_SCHEMA=<app>`,
+     `AUTH_JWT_SECRET`, claves de APIs, `PUBLIC_BASE_URL`.
+   - Health check: `/health`. Puerto interno el del backend.
+   - Dominio: `api.<app>.muvatec.com` **o** sin dominio público y solo accesible por el front
+     (ver 11.6).
+2. **`<app>-front`** (Dockerfile → nginx)
+   - Build context: `frontend/` · Dockerfile: `frontend/Dockerfile`.
+   - Dominio público: `https://<app>.muvatec.com`.
+   - El nginx del front **proxya** `/api` → servicio `<app>-back` (misma técnica que el gateway
+     actual), así el front llama a `/<app>-api` o `/api` en su mismo origen y no hay problemas de
+     CORS ni de cookies de terceros.
+
+DNS: un registro (o wildcard `*.muvatec.com`) apuntando a Coolify; Coolify emite el TLS.
+
+### 11.5 Autenticación al independizarse (importante)
+Hoy la sesión la emite `admin` bajo `spider.muvatec.com`. En `<app>.muvatec.com` (otro origen)
+**esa cookie ya no sirve**. Opciones:
+- **A — Login propio (recomendado al independizar):** la app registra su **propio cliente de
+  Google OAuth** y emite **su** sesión (el backend ya trae `Sessions`/HMAC; se copia el patrón
+  de `admin`). Independencia total.
+- **B — Seguir usando `admin` como identity central:** la app redirige el login a
+  `admin.muvatec.com` y valida el token con el **mismo `AUTH_JWT_SECRET`**. Menos trabajo, pero
+  mantiene un acople con Spider.
+
+En ambos casos, conviene ya emitir **token Bearer** además de cookie (§5): así el mismo login
+sirve para web y para la app nativa (Capacitor).
+
+### 11.6 Datos
+- **Opción simple:** apuntar `<app>-back` al **mismo Postgres** con su `DB_SCHEMA=<app>` (los
+  datos ya viven ahí; no se migra nada).
+- **Aislamiento total:** crear **BD propia** y migrar el schema con `pg_dump -n <app>` →
+  `pg_restore`. Flyway del backend recrea el esquema; los datos se cargan del dump.
+
+### 11.7 Checklist de independización
+- [ ] `git subtree split` → repo `<app>` con historial, `backend/` + `frontend/` en la raíz.
+- [ ] Proyecto en Coolify con recursos `<app>-back` y `<app>-front` (Dockerfiles reutilizados).
+- [ ] Dominio `<app>.muvatec.com` + `/api` proxy al backend (TLS por Coolify).
+- [ ] Env/secretos migrados; `DB_SCHEMA=<app>` (mismo Postgres) o BD propia con dump.
+- [ ] Auth propia (o vía `admin`) emitiendo **token** además de cookie.
+- [ ] Verificar `/health`, login, y flujos clave en el nuevo dominio.
+- [ ] Apagar la app dentro del monorepo (quitar del docker-compose/gateway) cuando el nuevo
+      dominio esté estable; dejar redirección si hace falta.
+- [ ] (Después) añadir **Capacitor** sobre el `frontend/` ya independiente (§7).
+
+### 11.8 Orden recomendado
+Primero **independizar** (repo + Coolify + dominio + auth propia) y **después** hacer nativo.
+Así el nativo se construye sobre una app que ya es autónoma, con su login por token listo — que
+es justo lo que Capacitor necesita.
+
+---
+
+## 12. Nota de repos y ramas (estado a la fecha)
+- **Dónde vive este plan:** rama `claude/project-structure-analysis-xh0e2q`, junto a
+  `docs/plan-multidominio-y-auth.md`. No está en `main` (son documentos de planeación).
+- **`develop` vs `main`:** hoy **NO están sincronizados**. `main` va **~59 commits adelante**
+  (todo el trabajo reciente de gastos y electrolineras se hizo y desplegó directo en `main`, que
+  es lo que Coolify publica). `develop` quedó en un punto viejo (0 commits por delante).
+- **Implicación:** el gitflow descrito en `CLAUDE.md` (feature → develop → main) **no** se está
+  siguiendo en la práctica; el flujo real es *trabajar y desplegar en `main`*. Recomendación:
+  o **sincronizar `develop`** con `main` (`git checkout develop && git merge --ff-only main` si
+  no diverge, o `git reset --hard origin/main` si se acepta descartar su estado viejo), o bien
+  **oficializar que `main` es la rama de trabajo/deploy** y usar `develop` solo si se reactiva un
+  entorno de test. Al **independizar** cada app (§11), este punto se simplifica: cada repo nuevo
+  arranca con su propia estrategia de ramas limpia.
