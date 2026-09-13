@@ -405,9 +405,9 @@ es justo lo que Capacitor necesita.
 ## 12. Nota de repos y ramas (estado a la fecha)
 - **Dónde vive este plan:** rama `claude/project-structure-analysis-xh0e2q`, junto a
   `docs/plan-multidominio-y-auth.md`. No está en `main` (son documentos de planeación).
-- **`develop` vs `main`:** hoy **NO están sincronizados**. `main` va **~59 commits adelante**
-  (todo el trabajo reciente de gastos y electrolineras se hizo y desplegó directo en `main`, que
-  es lo que Coolify publica). `develop` quedó en un punto viejo (0 commits por delante).
+- **`develop` vs `main`:** **ya sincronizados** (back-port hecho: `develop` fast-forwardeado a
+  `main`, divergencia 0/0). Antes `main` iba ~59 commits adelante porque todo el trabajo reciente
+  se hizo y desplegó directo en `main` (que es lo que Coolify publica).
 - **Implicación:** el gitflow descrito en `CLAUDE.md` (feature → develop → main) **no** se está
   siguiendo en la práctica; el flujo real es *trabajar y desplegar en `main`*. Recomendación:
   o **sincronizar `develop`** con `main` (`git checkout develop && git merge --ff-only main` si
@@ -415,3 +415,70 @@ es justo lo que Capacitor necesita.
   **oficializar que `main` es la rama de trabajo/deploy** y usar `develop` solo si se reactiva un
   entorno de test. Al **independizar** cada app (§11), este punto se simplifica: cada repo nuevo
   arranca con su propia estrategia de ramas limpia.
+
+---
+
+## 13. Plan de ejecución acordado — **Blaze** (electrolineras independizada)
+
+La **primera app en graduarse** es **electrolineras**, que al salir del monorepo pasa a
+llamarse **Blaze**. Este es el orden en firme:
+
+### Orden
+1. **Mejoras de diseño primero** — pulir la UI/UX de electrolineras **dentro de Spider**
+   (sigue incubando), desplegando a `spider.muvatec.com/electrolineras` como hasta ahora.
+   Cuando el diseño esté bien, recién se independiza.
+2. **Migrar SOLO electrolineras a repos propios** (front y back separados) → ver §11.
+3. **App Android con Capacitor** (§7) sobre `blaze-frontend`.
+4. **App iOS con Capacitor** (§7) sobre `blaze-frontend`.
+
+### Repositorios destino (ya creados, org `muvatec`)
+| Repo | Contenido |
+|---|---|
+| `git@github.com:muvatec/blaze-frontend.git` | App Angular + PrimeNG (hoy `apps/electrolineras/frontend`) + luego Capacitor (android/ios) |
+| `git@github.com:muvatec/blaze-backend.git` | Backend Java + Ligero + Flyway (hoy `apps/electrolineras/backend`) |
+| `git@github.com:muvatec/blaze-landing.git` | Landing/marketing (sitio aparte, público) |
+
+### Dominios
+| Dominio | Sirve | Servicio Coolify |
+|---|---|---|
+| `blaze.muvatec.com` | La **app** (frontend Angular) | `blaze-frontend` |
+| `blaze.muvatec.com/landing` | La **landing** (marketing) | `blaze-landing` (ruta `/landing`) |
+| `blaze-api.muvatec.com` | El **backend** (API) | `blaze-backend` |
+
+### Extracción con historial (git subtree)
+```bash
+# En un clon del monorepo:
+git subtree split -P apps/electrolineras/frontend -b split-blaze-frontend
+git subtree split -P apps/electrolineras/backend  -b split-blaze-backend
+# Frontend:
+mkdir ../blaze-frontend && cd ../blaze-frontend && git init
+git pull ../spider split-blaze-frontend
+git remote add origin git@github.com:muvatec/blaze-frontend.git && git push -u origin main
+# Backend (análogo):
+mkdir ../blaze-backend && cd ../blaze-backend && git init
+git pull ../spider split-blaze-backend
+git remote add origin git@github.com:muvatec/blaze-backend.git && git push -u origin main
+```
+`blaze-landing` se crea nuevo (no sale del monorepo).
+
+### Coolify (3 servicios, en un proyecto `blaze`)
+- **`blaze-backend`** → dominio `blaze-api.muvatec.com`. Env: `DB_SCHEMA=electrolineras`
+  (mismo Postgres) o BD propia; `AUTH_JWT_SECRET`, claves de APIs (OCM/TomTom…), `PUBLIC_BASE_URL=https://blaze-api.muvatec.com`. Health `/health`.
+- **`blaze-frontend`** → dominio `blaze.muvatec.com` (raíz). `environment.prod.apiBase =
+  https://blaze-api.muvatec.com`.
+- **`blaze-landing`** → mismo dominio `blaze.muvatec.com` en la ruta **`/landing`**.
+  Se resuelve con el enrutado de Coolify por path (o un pequeño nginx en `blaze-frontend` que
+  proxee `/landing` → `blaze-landing`). La app queda en `/`, la landing en `/landing`.
+
+### Ojo con auth y CORS (backend en subdominio distinto)
+El front (`blaze.muvatec.com`) llama al API en **otro origen** (`blaze-api.muvatec.com`), así que:
+- La **cookie compartida de Spider ya no aplica** → Blaze usa **login propio** y **token
+  Bearer** (§5 y §11.5). Esto además deja lista la auth para las apps nativas.
+- Habilitar **CORS** en `blaze-backend` permitiendo `https://blaze.muvatec.com` (y los orígenes
+  nativos de Capacitor: `capacitor://localhost` / `https://localhost`).
+- OAuth de Google: registrar el cliente con redirect a `blaze-api.muvatec.com` y orígenes
+  autorizados `blaze.muvatec.com`.
+
+### Estado de la fase 1 (diseño)
+Antes de migrar, se trabajan las **mejoras de diseño** de electrolineras en Spider. Cuando estén
+listas y aprobadas, se ejecuta la extracción (paso 2) y luego Capacitor (pasos 3 y 4).
