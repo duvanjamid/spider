@@ -479,6 +479,33 @@ El front (`blaze.muvatec.com`) llama al API en **otro origen** (`blaze-api.muvat
 - OAuth de Google: registrar el cliente con redirect a `blaze-api.muvatec.com` y orígenes
   autorizados `blaze.muvatec.com`.
 
-### Estado de la fase 1 (diseño)
-Antes de migrar, se trabajan las **mejoras de diseño** de electrolineras en Spider. Cuando estén
-listas y aprobadas, se ejecuta la extracción (paso 2) y luego Capacitor (pasos 3 y 4).
+### Decisiones finales (2026-09) — orden actualizado
+Tras revisar el prototipo de diseño (Claude Design, "Blaze"), se acordó:
+1. **Migrar primero a Blaze** (repos propios) y aplicar el rediseño allá — NO en Spider.
+2. **Estructura + visual idénticos al prototipo**: se adopta también su navegación
+   (Bienvenida → Registro → Mi carro → Mapa; dock Mapa/Ruta/Añadir/Perfil) y el look por
+   plataforma/tema (iOS/Android × claro/oscuro), con los tokens del prototipo.
+3. **Auth: correo/contraseña + Google, con vinculación de cuentas.** Manejar todos los
+   escenarios (p. ej. si el correo ya existe vía Google y se intenta registrar con contraseña,
+   avisar "ya está vinculada con Google" y ofrecer iniciar con Google / establecer contraseña).
+
+### Extracción ya realizada
+La extracción con historial ya se hizo desde el monorepo (`git subtree split` de
+`apps/electrolineras/frontend` y `/backend`) y se entregaron **git bundles**:
+`blaze-frontend.bundle` (40 commits) y `blaze-backend.bundle` (22 commits), listos para subir a
+`muvatec/blaze-frontend` y `muvatec/blaze-backend`.
+
+### Nota de sesión (acceso a repos)
+Esta sesión de Claude Code está acotada a la organización `duvanjamid` y **no puede empujar a
+`muvatec/*`** (GitHub no permite mezclar organizaciones en una misma sesión). Para que Claude
+haga el rediseño + auth **dentro de los repos Blaze**, hay que **abrir una nueva sesión sembrada
+con `muvatec/blaze-frontend` (+ `blaze-backend`)** como fuentes. Alternativa: el rediseño se
+construye en `apps/electrolineras` (Spider) y migra idéntico después — mismo código, distinto
+orden.
+
+### Prototipo de diseño (referencia)
+El prototipo vive en el zip de handoff (`Electrolineras.dc.html`): pantallas bienvenida, registro,
+mi carro, mapa, listado, detalle, ruta, añadir, perfil; 4 paletas (iOS/Android × claro/oscuro)
+en el método `tokens()`; dock flotante (iOS) / barra Material con píldora (Android). Se valida
+con capturas en el navegador (el prototipo arranca con React desde CDN; en entorno sin red se
+inyecta React local para renderizarlo).
