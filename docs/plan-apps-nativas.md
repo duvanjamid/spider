@@ -8,6 +8,48 @@
 
 ---
 
+## 0. Spider como incubadora (modelo de ciclo de vida)
+
+Spider **no** es el destino final de cada app: es una **incubadora**. El valor de Spider es
+poder **crear e iterar apps muy rápido** —con Claude Code en la nube, sin fricción de setup— y
+**validarlas en la web/PWA** con usuarios reales, barato y en minutos por cambio. Cuando una
+app **madura** (se estabiliza, tiene tracción y merece estar en las tiendas), **"se gradúa"** y
+sale a **nativa** por la vía de este documento (Capacitor). Ese salto a nativo es el **final**
+del proceso, no el principio.
+
+```
+   ┌─────────────────────── SPIDER (incubadora) ───────────────────────┐
+   │  scaffold-app → iterar rápido (cloud) → PWA en spider.muvatec.com  │
+   │  validar con usuarios → pulir  ── (repetir barato) ──              │
+   └───────────────────────────────┬───────────────────────────────────┘
+                                    │  la app "está bien" (madura)
+                                    ▼
+                    GRADUACIÓN A NATIVO (Capacitor, este plan)
+                        Android + iOS en las tiendas
+```
+
+**Implicaciones para este plan:**
+- La fase de **incubación (web/PWA) se mantiene siempre**: es donde se desarrolla y se prueba.
+  Lo nativo es un **empaque adicional** del mismo código, no un reemplazo. Por eso Capacitor
+  (mismo código Angular → web + Android + iOS) encaja con el modelo; reescribir en Flutter lo
+  rompería (partiría la web de lo móvil).
+- Ir a nativo **por app y cuando esté lista**, no todas a la vez. Cada app se gradúa por su
+  cuenta cuando cumple el checklist de abajo.
+- El **backend en la nube (Coolify) sigue siendo el mismo** en web y en nativo; solo cambia el
+  empaque del frontend y la autenticación por token (§5).
+
+### Checklist de graduación (¿la app ya está lista para salir a nativo?)
+- [ ] Funcionalidad estable: pocos cambios de UI/flujo semana a semana.
+- [ ] Validada con usuarios reales en la PWA (uso recurrente, feedback incorporado).
+- [ ] Sin bugs bloqueantes abiertos; sesión/permisos sólidos.
+- [ ] Necesita algo que solo lo nativo aporta (mejor cámara/GPS, push nativo, estar en tiendas).
+- [ ] Hay quién sostenga el ciclo de tiendas (revisiones, versiones, firmas).
+
+Mientras una app **no** cumpla esto, se queda incubando en la web —que es precisamente para lo
+que Spider es bueno—.
+
+---
+
 ## 1. Conclusión primero (recomendación)
 
 **Usar [Capacitor](https://capacitorjs.com) para envolver cada app Angular tal cual.**
